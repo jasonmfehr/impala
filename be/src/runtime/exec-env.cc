@@ -142,6 +142,9 @@ DECLARE_string(admission_service_host);
 DECLARE_int32(admission_service_port);
 DECLARE_string(catalog_service_host);
 DECLARE_int32(catalog_service_port);
+DECLARE_string(store_query_history);
+DECLARE_string(query_history_table_name);
+DECLARE_int32(query_history_write_duration_s);
 
 DECLARE_string(ssl_client_ca_certificate);
 
@@ -719,5 +722,18 @@ std::shared_ptr<const TNetworkAddress> ExecEnv::GetCatalogdAddress() const {
   std::shared_ptr<const TNetworkAddress> address = catalogd_address_;
   return address;
 }
+
+std::string ExecEnv::GetStoreQueryHistory() const {
+  return FLAGS_store_query_history;
+}
+
+std::string ExecEnv::GetQueryHistoryTableName() const {
+  return FLAGS_query_history_table_name;
+}
+
+std::int32_t ExecEnv::GetQueryHistoryWriteDuration() const {
+  return FLAGS_query_history_write_duration_s;
+}
+
 
 } // namespace impala

@@ -1311,6 +1311,9 @@ class ImpalaServer : public ImpalaServiceIf,
   /// Thread that runs AdmissionHeartbeatThread().
   std::unique_ptr<Thread> admission_heartbeat_thread_;
 
+  /// Thread that runs QueryHistoryDaemin().
+  std::unique_ptr<Thread> query_history_thread_;
+
   /// The QueryDriverMap maps query ids to QueryDrivers. The QueryDrivers are owned by the
   /// ImpalaServer and QueryDriverMap references them using shared_ptr to allow
   /// asynchronous deletion.

@@ -61,6 +61,7 @@
 #include "exprs/timezone_db.h"
 #include "gen-cpp/CatalogService_constants.h"
 #include "gen-cpp/admission_control_service.proxy.h"
+#include "information/information.h"
 #include "kudu/rpc/rpc_context.h"
 #include "kudu/rpc/rpc_controller.h"
 #include "kudu/security/security_flags.h"
@@ -614,6 +615,13 @@ ImpalaServer::ImpalaServer(ExecEnv* exec_env)
     ABORT_IF_ERROR(Thread::Create("impala-server", "admission-heartbeat-thread",
         bind<void>(&ImpalaServer::AdmissionHeartbeatThread, this),
         &admission_heartbeat_thread_));
+  }
+
+  if (!exec_env->GetStoreQueryHistory().empty()) {
+    ABORT_IF_ERROR(Thread::Create("impala-server", "query_history",
+        &QueryHistoryDaemon::Run,
+        exec_env->GetStoreQueryHistory(), exec_env->GetQueryHistoryTableName(),
+        exec_env->GetQueryHistoryWriteDuration(), &query_history_thread_));
   }
 
   is_coordinator_ = FLAGS_is_coordinator;

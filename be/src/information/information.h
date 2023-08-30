@@ -32,10 +32,22 @@ struct CompletedQuery {
 
 class CompletedQueryQueue {
   public:
-    void AddCompletedQuery(const std::shared_ptr<CompletedQuery>& q);
+    void add_completed_query(const std::shared_ptr<CompletedQuery>& q);
+    void add_completed_queries(
+        std::queue<std::shared_ptr<CompletedQuery>>& queries_to_add);
+    std::shared_ptr<CompletedQuery> pop();
+    bool empty() const;
 
   private:
-    std::queue<std::shared_ptr<CompletedQuery>> queries;
+    std::queue<std::shared_ptr<CompletedQuery>> queries_;
+};
+
+class QueryHistoryDaemon {
+  public:
+    [[noreturn]] void Run(const std::string store_query_history,
+        const std::string query_history_table_name,
+        const std::int32_t query_history_write_duration_s,
+        std::shared_ptr<CompletedQueryQueue> completed_query_queue);
 };
 
 }

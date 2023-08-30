@@ -218,6 +218,11 @@ class ExecEnv {
   /// Return the current address of Catalog service.
   std::shared_ptr<const TNetworkAddress> GetCatalogdAddress() const;
 
+  std::string GetStoreQueryHistory() const;
+  std::string GetQueryHistoryTableName() const;
+  std::int32_t GetQueryHistoryWriteDuration() const;
+
+
  private:
   // Used to uniquely identify this impalad.
   BackendIdPB backend_id_;

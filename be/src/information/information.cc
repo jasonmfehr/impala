@@ -20,6 +20,7 @@
 
 #include "common/logging.h"
 #include "information/information.h"
+#include "util/time.h"
 
 using namespace impala;
 
@@ -47,8 +48,46 @@ DEFINE_int32(query_history_write_duration_s, 300, "Number of seconds to wait bef
 
 namespace impala {
 
-void CompletedQueryQueue::AddCompletedQuery(const std::shared_ptr<CompletedQuery>& q) {
-  queries.push(q);
+void CompletedQueryQueue::add_completed_query(const std::shared_ptr<CompletedQuery>& q) {
+  this->queries_.push(q);
+}
+
+void CompletedQueryQueue::add_completed_queries(
+    std::queue<std::shared_ptr<CompletedQuery>>& queries_to_add) {
+  while (!queries_to_add.empty()) {
+    this->queries_.push(queries_to_add.front());
+    queries_to_add.pop();
+  }
+}
+
+bool CompletedQueryQueue::empty() const {
+  return this->queries_.empty();
+}
+
+std::shared_ptr<CompletedQuery> CompletedQueryQueue::pop() {
+    if (this->queries_.empty()) {
+      return nullptr;
+    }
+
+    std::shared_ptr<CompletedQuery> elem = this->queries_.front();
+    this->queries_.pop();
+
+    return elem;
+}
+
+[[noreturn]] void QueryHistoryDaemon::Run(const std::string store_query_history, 
+        const std::string query_history_table_name, 
+        const std::int32_t query_history_write_duration_s,
+        std::shared_ptr<CompletedQueryQueue> completed_query_queue) {
+
+  while (true) {
+    SleepForMs(query_history_write_duration_s * 1000);
+    LOG(INFO) << "QueryHistoryDaemon awakes";
+    std::shared_ptr<CompletedQuery> elem;
+    while ((elem = completed_query_queue.get()->pop()) != nullptr) {
+      LOG(INFO) << "found queued query: " << elem.get()->query_id;
+    }
+  }
 }
 
 }
