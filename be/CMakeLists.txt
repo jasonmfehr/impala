@@ -499,6 +499,7 @@ set (IMPALA_LIBS
   GlobalFlags
   histogram_proto
   ImpalaThrift
+  Information
   Io
   kudu_curl_util
   kudu_util
@@ -593,6 +594,7 @@ if (BUILD_SHARED_LIBS)
     ExecText
     CodeGen
     Exprs
+    Information
     Rpc
     Service
     security
@@ -835,6 +837,7 @@ add_subdirectory(src/codegen)
 add_subdirectory(src/common)
 add_subdirectory(src/exec)
 add_subdirectory(src/exprs)
+add_subdirectory(src/information)
 add_subdirectory(src/kudu/security)
 add_subdirectory(src/kudu/rpc)
 add_subdirectory(src/kudu/util)
@@ -863,6 +866,7 @@ link_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/build/common
   ${CMAKE_CURRENT_SOURCE_DIR}/build/exec
   ${CMAKE_CURRENT_SOURCE_DIR}/build/exprs
+  ${CMAKE_CURRENT_SOURCE_DIR}/build/information
   ${CMAKE_CURRENT_SOURCE_DIR}/build/rpc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/runtime
   ${CMAKE_CURRENT_SOURCE_DIR}/build/statestore
