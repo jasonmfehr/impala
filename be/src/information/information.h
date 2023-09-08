@@ -40,8 +40,7 @@ namespace impala {
         void Push(std::shared_ptr<CompletedQuery> query);
         void Push(CompletedQuery& query);
         bool Empty() const;
-        std::string InsertSQL();
-        int DeleteAll();
+        std::string BuildInsertSQL();
 
       private:
         mutable std::recursive_mutex mu_;

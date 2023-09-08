@@ -97,17 +97,7 @@ namespace impala {
       return ret;
     }
 
-    int CompletedQueries::DeleteAll() {
-      int deleteCount = 0;
-
-      this->mu_.lock();
-      // std::des
-      this->mu_.unlock();
-
-      return deleteCount;
-    }
-
-    std::string CompletedQueries::InsertSQL() {
+    std::string CompletedQueries::BuildInsertSQL() {
       std::string sql = "INSERT INTO " + this->query_history_table_name() + 
           "(query_id, session_id, session_type, server_port) VALUES ";
 

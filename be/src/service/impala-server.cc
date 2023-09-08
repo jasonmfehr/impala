@@ -3031,7 +3031,7 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       // more completed queries are being inserted
       information::CompletedQueries batch;
       batch.TransferFrom(exec_env_->completed_queries());
-      LOG(INFO) << "COMPLETED QUERIES SQL: " << batch.InsertSQL();
+      LOG(INFO) << "COMPLETED QUERIES SQL: " << batch.BuildInsertSQL();
     }
   }
 }
