@@ -28,6 +28,7 @@
 #include "common/atomic.h"
 #include "common/global-types.h"
 #include "common/status.h"
+#include "information/information.h"
 #include "runtime/client-cache-types.h"
 #include "testutil/gtest-util.h"
 #include "util/hdfs-bulk-ops-defs.h" // For declaration of HdfsOpThreadPool
@@ -218,9 +219,13 @@ class ExecEnv {
   /// Return the current address of Catalog service.
   std::shared_ptr<const TNetworkAddress> GetCatalogdAddress() const;
 
-  std::string GetStoreQueryHistory() const;
-  std::string GetQueryHistoryTableName() const;
-  std::int32_t GetQueryHistoryWriteDuration() const;
+  std::string store_query_history() const;
+  std::string query_history_table_name() const;
+  std::int32_t query_history_write_duration() const;
+
+  std::shared_ptr<information::CompletedQueries> completed_queries() {
+    return completed_queries_;
+  };
 
 
  private:
@@ -361,6 +366,8 @@ class ExecEnv {
 
   /// Initialize 'system_state_info_' to track system resource usage.
   void InitSystemStateInfo();
+
+  std::shared_ptr<information::CompletedQueries> completed_queries_;
 };
 
 } // namespace impala

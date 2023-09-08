@@ -28,6 +28,7 @@
 #include "common/logging.h"
 #include "common/object-pool.h"
 #include "exec/kudu/kudu-util.h"
+#include "information/information.h"
 #include "kudu/rpc/service_if.h"
 #include "rpc/rpc-mgr.h"
 #include "runtime/bufferpool/buffer-pool.h"
@@ -274,6 +275,8 @@ ExecEnv::ExecEnv(int krpc_port, int subscriber_port, int webserver_port,
     StatestoreSubscriber::UpdateCatalogdCallback update_catalogd_cb =
         bind<void>(mem_fn(&ExecEnv::UpdateActiveCatalogd), this, _1, _2, _3);
     statestore_subscriber_->AddUpdateCatalogdTopic(update_catalogd_cb);
+
+    completed_queries_ = make_shared<information::CompletedQueries>();
   }
   StatestoreSubscriber::CompleteRegistrationCallback complete_registration_cb =
       bind<void>(mem_fn(&ExecEnv::SetStatestoreRegistrationCompleted), this);
@@ -723,17 +726,16 @@ std::shared_ptr<const TNetworkAddress> ExecEnv::GetCatalogdAddress() const {
   return address;
 }
 
-std::string ExecEnv::GetStoreQueryHistory() const {
+std::string ExecEnv::store_query_history() const {
   return FLAGS_store_query_history;
 }
 
-std::string ExecEnv::GetQueryHistoryTableName() const {
+std::string ExecEnv::query_history_table_name() const {
   return FLAGS_query_history_table_name;
 }
 
-std::int32_t ExecEnv::GetQueryHistoryWriteDuration() const {
+std::int32_t ExecEnv::query_history_write_duration() const {
   return FLAGS_query_history_write_duration_s;
 }
-
 
 } // namespace impala

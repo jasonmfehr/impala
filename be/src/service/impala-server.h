@@ -1198,6 +1198,10 @@ class ImpalaServer : public ImpalaServiceIf,
   /// current query ids to the admissiond.
   [[noreturn]] void AdmissionHeartbeatThread();
 
+  /// If storing query history is enabled, periodically insert a list of all
+  /// completed queries into the history table.
+  [[noreturn]] void CompletedQueriesThread();
+
   /// Called from ExpireQueries() to check query resource limits for 'crs'. If the query
   /// exceeded a resource limit, returns a non-OK status with information about what
   /// limit was exceeded. Returns OK if the query will continue running and expiration

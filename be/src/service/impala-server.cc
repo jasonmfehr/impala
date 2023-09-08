@@ -246,7 +246,7 @@ DEFINE_string(ssl_private_key_password_cmd, "", "A Unix command whose output ret
 DEFINE_string(ssl_cipher_list, SecurityDefaults::kDefaultTlsCiphers,
     "The cipher suite preferences to use for TLS-secured "
     "Thrift RPC connections. Uses the OpenSSL cipher preference list format. See man (1) "
-    "ciphers for more information. If empty, the default cipher list for your platform "
+    "ciphers for more  . If empty, the default cipher list for your platform "
     "is used");
 
 DEFINE_string(tls_ciphersuites,
@@ -617,11 +617,22 @@ ImpalaServer::ImpalaServer(ExecEnv* exec_env)
         &admission_heartbeat_thread_));
   }
 
-  if (!exec_env->GetStoreQueryHistory().empty()) {
+  if (!exec_env_->store_query_history().empty()) {
+    LOG(INFO) << "storing query history";
+    
+    for (std::uint16_t i=0; i<5; i++) {
+      information::CompletedQuery cq;
+      cq.query_id = "query:id" + std::to_string(i);
+      cq.session_id = "session:id" + std::to_string(i);
+      cq.session_type = "HIVESERVER2" + std::to_string(i);
+      cq.server_port = 65535;
+      cq.server_port += i;
+      exec_env_->completed_queries()->Push(std::make_shared<information::CompletedQuery>(cq));
+    }
+
     ABORT_IF_ERROR(Thread::Create("impala-server", "query_history",
-        &QueryHistoryDaemon::Run,
-        exec_env->GetStoreQueryHistory(), exec_env->GetQueryHistoryTableName(),
-        exec_env->GetQueryHistoryWriteDuration(), &query_history_thread_));
+        bind<void>(&ImpalaServer::CompletedQueriesThread, this),
+        &query_history_thread_));
   }
 
   is_coordinator_ = FLAGS_is_coordinator;
@@ -3006,6 +3017,21 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
     Status heartbeat_status(response.status());
     if (!heartbeat_status.ok()) {
       LOG(ERROR) << "Admission heartbeat failed: " << heartbeat_status;
+    }
+  }
+}
+
+[[noreturn]] void ImpalaServer::CompletedQueriesThread() {
+  while(true) {
+    SleepForMs(exec_env_->query_history_write_duration() * 1000);
+    LOG(INFO) << "QueryHistoryDaemon awakes";
+
+    if (!exec_env_->completed_queries()->Empty()) {
+      // empty out the completed queries queue so additional queries can be added while
+      // more completed queries are being inserted
+      information::CompletedQueries batch;
+      batch.TransferFrom(exec_env_->completed_queries());
+      LOG(INFO) << "COMPLETED QUERIES SQL: " << batch.InsertSQL();
     }
   }
 }

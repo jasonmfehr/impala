@@ -18,36 +18,36 @@
 #pragma once
 
 #include <memory>
-#include <queue>
+#include <mutex>
+#include <forward_list>
 #include <string>
 
 namespace impala {
+  namespace information {
 
-struct CompletedQuery {
-  std::string   query_id;     // Impala assigned query identifier
-  std::string   session_id;   // Impala assigned session id for the client session
-  std::string   session_type; // client session type
-  std::uint16_t server_port;  // server's tcp port where the client connected
-}; 
+    struct CompletedQuery {
+      std::string   query_id;     // Impala assigned query identifier
+      std::string   session_id;   // Impala assigned session id for the client session
+      std::string   session_type; // client session type
+      std::uint16_t server_port;  // server's tcp port where the client connected
+    };
 
-class CompletedQueryQueue {
-  public:
-    void add_completed_query(const std::shared_ptr<CompletedQuery>& q);
-    void add_completed_queries(
-        std::queue<std::shared_ptr<CompletedQuery>>& queries_to_add);
-    std::shared_ptr<CompletedQuery> pop();
-    bool empty() const;
+    class CompletedQueries {
+      public:
+        CompletedQueries();
+        void TransferFrom(std::shared_ptr<CompletedQueries> other);
+        std::shared_ptr<CompletedQuery> Pop();
+        void Push(std::shared_ptr<CompletedQuery> query);
+        void Push(CompletedQuery& query);
+        bool Empty() const;
+        std::string InsertSQL();
+        int DeleteAll();
 
-  private:
-    std::queue<std::shared_ptr<CompletedQuery>> queries_;
-};
+      private:
+        mutable std::recursive_mutex mu_;
+        std::forward_list<std::shared_ptr<CompletedQuery>> queries_;
+        std::string query_history_table_name();
+    };
 
-class QueryHistoryDaemon {
-  public:
-    [[noreturn]] void Run(const std::string store_query_history,
-        const std::string query_history_table_name,
-        const std::int32_t query_history_write_duration_s,
-        std::shared_ptr<CompletedQueryQueue> completed_query_queue);
-};
-
+  }
 }

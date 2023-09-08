@@ -16,6 +16,7 @@
 // under the License.
 
 #include <gflags/gflags.h>
+#include <memory>
 #include <string>
 
 #include "common/logging.h"
@@ -47,47 +48,90 @@ DEFINE_int32(query_history_write_duration_s, 300, "Number of seconds to wait bef
     "indicates that queries should be inserted immediately after completion.");
 
 namespace impala {
+  namespace information {
 
-void CompletedQueryQueue::add_completed_query(const std::shared_ptr<CompletedQuery>& q) {
-  this->queries_.push(q);
-}
-
-void CompletedQueryQueue::add_completed_queries(
-    std::queue<std::shared_ptr<CompletedQuery>>& queries_to_add) {
-  while (!queries_to_add.empty()) {
-    this->queries_.push(queries_to_add.front());
-    queries_to_add.pop();
-  }
-}
-
-bool CompletedQueryQueue::empty() const {
-  return this->queries_.empty();
-}
-
-std::shared_ptr<CompletedQuery> CompletedQueryQueue::pop() {
-    if (this->queries_.empty()) {
-      return nullptr;
+    CompletedQueries::CompletedQueries() {
+      this->queries_ = std::forward_list<std::shared_ptr<CompletedQuery>>();
     }
 
-    std::shared_ptr<CompletedQuery> elem = this->queries_.front();
-    this->queries_.pop();
+    std::shared_ptr<CompletedQuery> CompletedQueries::Pop() {
+      std::shared_ptr<CompletedQuery> elem = nullptr;
 
-    return elem;
-}
+      this->mu_.lock();
 
-[[noreturn]] void QueryHistoryDaemon::Run(const std::string store_query_history, 
-        const std::string query_history_table_name, 
-        const std::int32_t query_history_write_duration_s,
-        std::shared_ptr<CompletedQueryQueue> completed_query_queue) {
+      if (!this->queries_.empty()) {
+        elem = this->queries_.front();
+        this->queries_.pop_front();
+      }
 
-  while (true) {
-    SleepForMs(query_history_write_duration_s * 1000);
-    LOG(INFO) << "QueryHistoryDaemon awakes";
-    std::shared_ptr<CompletedQuery> elem;
-    while ((elem = completed_query_queue.get()->pop()) != nullptr) {
-      LOG(INFO) << "found queued query: " << elem.get()->query_id;
+      this->mu_.unlock();
+
+      return elem;
     }
-  }
-}
 
+    void CompletedQueries::Push(std::shared_ptr<CompletedQuery> query) {
+      this->mu_.lock();
+      this->queries_.push_front(query);
+      this->mu_.unlock();
+    }
+
+    void CompletedQueries::Push(CompletedQuery& query) {
+      this->Push(std::make_shared<CompletedQuery>(query));
+    }
+
+    void CompletedQueries::TransferFrom(std::shared_ptr<CompletedQueries> other) {
+      std::shared_ptr<CompletedQuery> elem;
+
+      while ((elem = other->Pop()) != nullptr) {
+        this->Push(elem);
+      }
+    }
+
+    bool CompletedQueries::Empty() const {
+      bool ret;
+
+      this->mu_.lock();
+      ret = this->queries_.empty();
+      this->mu_.unlock();
+
+      return ret;
+    }
+
+    int CompletedQueries::DeleteAll() {
+      int deleteCount = 0;
+
+      this->mu_.lock();
+      // std::des
+      this->mu_.unlock();
+
+      return deleteCount;
+    }
+
+    std::string CompletedQueries::InsertSQL() {
+      std::string sql = "INSERT INTO " + this->query_history_table_name() + 
+          "(query_id, session_id, session_type, server_port) VALUES ";
+
+      this->mu_.lock();
+
+      auto iter = this->queries_.cbegin();
+      while (iter != this->queries_.cend()) {
+        sql += "(";
+        sql += "'" + iter->get()->query_id + "', ";
+        sql += "'" + iter->get()->session_id + "', ";
+        sql += "'" + iter->get()->session_type + "', ";
+        sql += std::to_string(iter->get()->server_port);
+        sql += ")";
+        iter++;
+      }
+
+      this->mu_.unlock();
+
+      return sql;
+    }
+
+    std::string CompletedQueries::query_history_table_name() {
+      return FLAGS_query_history_table_name;
+    }
+
+  }
 }
