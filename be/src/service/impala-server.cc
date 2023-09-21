@@ -3022,16 +3022,55 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
 }
 
 [[noreturn]] void ImpalaServer::CompletedQueriesThread() {
+  bool inited = false;
+
   while(true) {
     SleepForMs(exec_env_->query_history_write_duration() * 1000);
     LOG(INFO) << "QueryHistoryDaemon awakes";
+    
+    if (!inited) {
+      inited = true;
 
-    if (!exec_env_->completed_queries()->Empty()) {
-      // empty out the completed queries queue so additional queries can be added while
-      // more completed queries are being inserted
-      information::CompletedQueries batch;
-      batch.TransferFrom(exec_env_->completed_queries());
-      LOG(INFO) << "COMPLETED QUERIES SQL: " << batch.BuildInsertSQL();
+      // generate random session id
+      uuid session_uuid;
+      {
+        lock_guard<mutex> l(uuid_lock_);
+        session_uuid = crypto_uuid_generator_();
+      }
+      TUniqueId session_id;
+      UUIDToTUniqueId(session_uuid, &session_id);
+
+      // generate random secret
+      uuid secret_uuid;
+      {
+        lock_guard<mutex> l(uuid_lock_);
+        secret_uuid = crypto_uuid_generator_();
+      }
+      TUniqueId secret;
+      UUIDToTUniqueId(secret_uuid, &secret);
+
+      // build a session
+      TSessionState session;
+      session.__set_connected_user("impala");
+      session.__set_database("default");
+      session.__set_delegated_user(session.connected_user);
+      session.__set_session_id(session_id);
+      session.__set_session_type(TSessionType::HIVESERVER2);
+
+      // build a session state object
+      shared_ptr<SessionState> session_state = make_shared<SessionState>(this, session_id, secret);
+      session_state->ref_count = 1;
+      
+      // build a query context
+      TQueryCtx query_context;
+      query_context.client_request.stmt = "create table default.foo(id INT) stored as iceberg";
+      query_context.__set_session(session);
+
+      // build a query handle
+      QueryHandle handle;
+
+      Status s = this->Execute(&query_context, session_state, &handle, nullptr);
+      LOG(INFO) << "CREATE TABLE CODE: " << s.code();
     }
   }
 }
