@@ -3026,7 +3026,7 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
 
   while(true) {
     SleepForMs(exec_env_->query_history_write_duration() * 1000);
-    LOG(INFO) << "QueryHistoryDaemon awakes";
+    LOG(INFO) << "QueryHistoryDaemon awakes" << std::endl;
     
     if (!inited) {
       inited = true;
@@ -3052,25 +3052,63 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       // build a session
       TSessionState session;
       session.__set_connected_user("impala");
-      session.__set_database("default");
       session.__set_delegated_user(session.connected_user);
+      session.__set_database("default");
       session.__set_session_id(session_id);
       session.__set_session_type(TSessionType::HIVESERVER2);
 
       // build a session state object
       shared_ptr<SessionState> session_state = make_shared<SessionState>(this, session_id, secret);
-      session_state->ref_count = 1;
+      this->MarkSessionActive(session_state);
       
       // build a query context
       TQueryCtx query_context;
-      query_context.client_request.stmt = "create table default.foo(id INT) stored as iceberg";
+      query_context.client_request.stmt = "create table if not exists default.foo(id INT) stored as iceberg";
       query_context.__set_session(session);
+
+      Status stat;
+      std::string stat_msg;
 
       // build a query handle
       QueryHandle handle;
 
-      Status s = this->Execute(&query_context, session_state, &handle, nullptr);
-      LOG(INFO) << "CREATE TABLE CODE: " << s.code();
+      LOG(INFO) << "CREATE TABLE BEFORE EXEC" << std::endl;
+      stat = this->Execute(&query_context, session_state, &handle, nullptr);
+      LOG(INFO) << "CREATE TABLE SUBMIT STATUS CODE: " << stat.code() << std::endl;
+      
+      bool timed_out;
+      int64_t block_wait_time = 30000000;
+      stat = this->WaitForResults(query_context.query_id, &handle, &block_wait_time, &timed_out);
+      LOG(INFO) << "CREATE TABLE TIMED OUT: " << timed_out << std::endl;
+      LOG(INFO) << "CREATE TABLE EXEC STATUS CODE: " << stat.code() << std::endl;
+
+      const TResultSetMetadata* result_set_md = handle->result_metadata();
+      DCHECK(result_set_md != NULL);
+      for (int i=0; i<result_set_md->columns.size(); i++) {
+        LOG(INFO) << "CREATE TABLE RESULT METADATA" << std::endl;
+        result_set_md->printTo(LOG(INFO));
+      }
+
+      handle->set_fetched_rows();
+      ABORT_IF_ERROR(handle->RestartFetch());
+
+      shared_ptr<vector<string>> row_set = make_shared<vector<string>>();
+      shared_ptr<QueryResultSet> result_set = shared_ptr<QueryResultSet>(
+        new QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true));
+      while (!handle->eos()) {
+        ABORT_IF_ERROR(handle->FetchRows(10, result_set.get(), block_wait_time));
+        for (auto iter = row_set->cbegin(); iter != row_set->cend(); iter++) {
+          LOG(INFO) << "ROW RESULT: " << iter->data() << std::endl;
+        }
+      }
+
+      /*
+      stat = this->UnregisterQuery(query_context.query_id, true);
+      LOG(INFO) << "CREATE TABLE UNREGISTER QUERY CODE: " << stat.code() << std::endl;
+      */
+
+      // this->FinishUnregisterQuery(handle);
+      this->MarkSessionInactive(session_state);
     }
   }
 }
