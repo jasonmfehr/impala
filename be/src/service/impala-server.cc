@@ -3093,10 +3093,9 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       ABORT_IF_ERROR(handle->RestartFetch());
 
       shared_ptr<vector<string>> row_set = make_shared<vector<string>>();
-      shared_ptr<QueryResultSet> result_set = shared_ptr<QueryResultSet>(
-        new QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true));
+      QueryResultSet result_set = QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true);
       while (!handle->eos()) {
-        ABORT_IF_ERROR(handle->FetchRows(10, result_set.get(), block_wait_time));
+        ABORT_IF_ERROR(handle->FetchRows(10, *result_set, block_wait_time));
         for (auto iter = row_set->cbegin(); iter != row_set->cend(); iter++) {
           LOG(INFO) << "ROW RESULT: " << iter->data() << std::endl;
         }
