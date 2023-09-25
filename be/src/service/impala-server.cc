@@ -3031,47 +3031,40 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
     if (!inited) {
       inited = true;
 
-      // generate random session id
-      uuid session_uuid;
+      // generate random connection id
+      uuid conn_uuid;
       {
         lock_guard<mutex> l(uuid_lock_);
-        session_uuid = crypto_uuid_generator_();
+        conn_uuid = crypto_uuid_generator_();
       }
+      TUniqueId conn_id;
+      UUIDToTUniqueId(conn_uuid, &conn_id);
+
+      ThriftServer::ConnectionContext conn_ctx;
+      conn_ctx.connection_id = conn_id;
+      conn_ctx.server_name = BEESWAX_SERVER_NAME;
+      conn_ctx.username = "impala";
+
+      this->ConnectionStart(conn_ctx);
+
       TUniqueId session_id;
-      UUIDToTUniqueId(session_uuid, &session_id);
-
-      // generate random secret
-      uuid secret_uuid;
       {
-        lock_guard<mutex> l(uuid_lock_);
-        secret_uuid = crypto_uuid_generator_();
+        lock_guard<mutex> l(connection_to_sessions_map_lock_);
+        session_id = *connection_to_sessions_map_[conn_ctx.connection_id].cbegin();
       }
-      TUniqueId secret;
-      UUIDToTUniqueId(secret_uuid, &secret);
 
-      // build a session
-      TSessionState session;
-      session.__set_connected_user("impala");
-      session.__set_delegated_user(session.connected_user);
-      session.__set_database("default");
-      session.__set_session_id(session_id);
-      session.__set_session_type(TSessionType::HIVESERVER2);
-
-      // build a session state object
-      shared_ptr<SessionState> session_state = make_shared<SessionState>(this, session_id, secret);
-      session_state->start_time_ms = UnixMillis();
-      session_state->last_accessed_ms = UnixMillis();
-      session_state->database = session.database;
-      session_state->session_type = TSessionType::BEESWAX;
-      session_state->server_default_query_options = &default_query_options_;
-      session_state->connected_user = session.connected_user;
+      shared_ptr<SessionState> session_state;
+      {
+        lock_guard<mutex> l(session_state_map_lock_);
+        session_state = session_state_map_[session_id];
+      }
 
       this->MarkSessionActive(session_state);
       
       // build a query context
       TQueryCtx query_context;
       query_context.client_request.stmt = "create table if not exists default.foo(id INT) stored as iceberg";
-      query_context.__set_session(session);
+      session_state->ToThrift(session_id, &query_context.session);
 
       Status stat;
       std::string stat_msg;
@@ -3099,10 +3092,8 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
         }
       }
 
-      stat = this->UnregisterQuery(query_context.query_id, true);
-      LOG(INFO) << "CREATE TABLE UNREGISTER QUERY CODE: " << stat.code() << std::endl;
-
       this->MarkSessionInactive(session_state);
+      this->ConnectionEnd(conn_ctx);
     }
   }
 }
