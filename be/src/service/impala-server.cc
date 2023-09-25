@@ -3075,27 +3075,45 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       LOG(INFO) << "CREATE TABLE BEFORE EXEC" << std::endl;
       stat = this->Execute(&query_context, session_state, &handle, nullptr);
       LOG(INFO) << "CREATE TABLE SUBMIT STATUS CODE: " << stat.code() << std::endl;
+
+      ABORT_IF_ERROR(this->SetQueryInflight(session_state, handle));
+      LOG(INFO) << "QUERY SET IN FLIGHT" << std::endl;
       
-      bool timed_out;
       int64_t block_wait_time = 30000000;
-      stat = this->WaitForResults(query_context.query_id, &handle, &block_wait_time, &timed_out);
-      LOG(INFO) << "CREATE TABLE TIMED OUT: " << timed_out << std::endl;
-      LOG(INFO) << "CREATE TABLE EXEC STATUS CODE: " << stat.code() << std::endl;
+      // stat = this->WaitForResults(query_context.query_id, &handle, &block_wait_time, &timed_out);
+      handle->Wait();
+      LOG(INFO) << "DONE WAITING" << std::endl;
 
-      const TResultSetMetadata* result_set_md = handle->result_metadata();
-      DCHECK(result_set_md != NULL);
-      for (int i=0; i<result_set_md->columns.size(); i++) {
-        LOG(INFO) << "CREATE TABLE RESULT METADATA" << std::endl;
-        result_set_md->printTo(LOG(INFO));
-      }
+      // const TResultSetMetadata* result_set_md = handle->result_metadata();
+      // DCHECK(result_set_md != NULL);
+      // for (int i=0; i<result_set_md->columns.size(); i++) {
+      //   LOG(INFO) << "CREATE TABLE RESULT METADATA" << std::endl;
+      //   result_set_md->printTo(LOG(INFO));
+      // }
 
-      handle->set_fetched_rows();
-      ABORT_IF_ERROR(handle->RestartFetch());
+      // handle->set_fetched_rows();
+      // switch (handle->exec_state()) {
+      //   case ClientRequestState::ExecState::ERROR:
+      //     LOG(INFO) << "QUERY STATE: ERROR" << std::endl;
+      //     break;
+      //   case ClientRequestState::ExecState::INITIALIZED:
+      //     LOG(INFO) << "QUERY STATE: INITIALIZED" << std::endl;
+      //     break;
+      //   case ClientRequestState::ExecState::RUNNING:
+      //     LOG(INFO) << "QUERY STATE: RUNNING" << std::endl;
+      //     break;
+      //   case ClientRequestState::ExecState::FINISHED:
+      //     LOG(INFO) << "QUERY STATE: FINISHED" << std::endl;
+      //     break;
+      //   case ClientRequestState::ExecState::PENDING:
+      //     LOG(INFO) << "QUERY STATE: PENDING" << std::endl;
+      //     break;
+      // }
 
       shared_ptr<vector<string>> row_set = make_shared<vector<string>>();
-      QueryResultSet result_set = QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true);
+      auto result_set = QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true);
       while (!handle->eos()) {
-        ABORT_IF_ERROR(handle->FetchRows(10, *result_set, block_wait_time));
+        ABORT_IF_ERROR(handle->FetchRows(10, result_set, block_wait_time));
         for (auto iter = row_set->cbegin(); iter != row_set->cend(); iter++) {
           LOG(INFO) << "ROW RESULT: " << iter->data() << std::endl;
         }
