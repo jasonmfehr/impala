@@ -3059,6 +3059,13 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
 
       // build a session state object
       shared_ptr<SessionState> session_state = make_shared<SessionState>(this, session_id, secret);
+      session_state->start_time_ms = UnixMillis();
+      session_state->last_accessed_ms = UnixMillis();
+      session_state->database = session.database;
+      session_state->session_type = TSessionType::BEESWAX;
+      session_state->server_default_query_options = &default_query_options_;
+      session_state->connected_user = session.connected_user;
+
       this->MarkSessionActive(session_state);
       
       // build a query context
@@ -3079,13 +3086,12 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       ABORT_IF_ERROR(this->SetQueryInflight(session_state, handle));
       LOG(INFO) << "QUERY SET IN FLIGHT" << std::endl;
       
-      int64_t block_wait_time = 30000000;
-      // stat = this->WaitForResults(query_context.query_id, &handle, &block_wait_time, &timed_out);
-      handle->Wait();
+      handle->Wait(); // TODO need to set a timeout
       LOG(INFO) << "DONE WAITING" << std::endl;
 
       shared_ptr<vector<string>> row_set = make_shared<vector<string>>();
-      auto result_set = QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true);
+      QueryResultSet* result_set = QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true);
+      int64_t block_wait_time = 30000000;
       while (!handle->eos()) {
         ABORT_IF_ERROR(handle->FetchRows(10, result_set, block_wait_time));
         for (auto iter = row_set->cbegin(); iter != row_set->cend(); iter++) {
