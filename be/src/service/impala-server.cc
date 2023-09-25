@@ -3044,6 +3044,7 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       conn_ctx.connection_id = conn_id;
       conn_ctx.server_name = BEESWAX_SERVER_NAME;
       conn_ctx.username = "impala";
+      conn_ctx.network_address.hostname = "in-memory.localhost";
 
       this->ConnectionStart(conn_ctx);
 
