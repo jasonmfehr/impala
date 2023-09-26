@@ -40,6 +40,7 @@ add_library(Service
   impala-http-handler.cc
   impalad-main.cc
   impala-server.cc
+  internal-server.cc
   query-options.cc
   query-result-set.cc
 )

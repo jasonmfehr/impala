@@ -86,6 +86,7 @@
 #include "service/client-request-state.h"
 #include "service/frontend.h"
 #include "service/impala-http-handler.h"
+#include "service/internal-server.h"
 #include "util/auth-util.h"
 #include "util/bit-util.h"
 #include "util/coding-util.h"
@@ -454,7 +455,6 @@ const string LINEAGE_LOG_FILE_PREFIX = "impala_lineage_log_1.0-";
 
 const uint32_t MAX_CANCELLATION_QUEUE_SIZE = 65536;
 
-const string BEESWAX_SERVER_NAME = "beeswax-frontend";
 const string HS2_SERVER_NAME = "hiveserver2-frontend";
 const string HS2_HTTP_SERVER_NAME = "hiveserver2-http-frontend";
 
@@ -3030,7 +3030,11 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
     
     if (!inited) {
       inited = true;
+      TUniqueId session_id = this->internal_server_->OpenSession();
+      LOG(INFO) << "CREATE TABLE SESSION ID" << std::endl;
+      session_id->printTo(LOG(INFO));
 
+      /*
       // generate random connection id
       uuid conn_uuid;
       {
@@ -3076,12 +3080,23 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       LOG(INFO) << "CREATE TABLE BEFORE EXEC" << std::endl;
       stat = this->Execute(&query_context, session_state, &handle, nullptr);
       LOG(INFO) << "CREATE TABLE SUBMIT STATUS CODE: " << stat.code() << std::endl;
+      LOG(INFO) << "CREATE TABLE NEW QUERY ID: " << handle->query_id() << std::endl;
 
       ABORT_IF_ERROR(this->SetQueryInflight(session_state, handle));
       LOG(INFO) << "QUERY SET IN FLIGHT" << std::endl;
       
       handle->Wait(); // TODO need to set a timeout
       LOG(INFO) << "DONE WAITING" << std::endl;
+      // {
+      //   lock_guard<mutex> l(*query_handle->lock());
+      //   status = query_handle->query_status();
+      // }
+      // if (!status.ok()) {
+      //   discard_result(UnregisterQuery(query_handle->query_id(), false, &status));
+      //   RaiseBeeswaxException(status.GetDetail(), SQLSTATE_GENERAL_ERROR);
+      // }
+
+      
 
       shared_ptr<vector<string>> row_set = make_shared<vector<string>>();
       QueryResultSet* result_set = QueryResultSet::CreateAsciiQueryResultSet(*handle->result_metadata(), row_set.get(), true);
@@ -3093,8 +3108,10 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
         }
       }
 
+      this->CloseClientRequestState(handle);
       this->MarkSessionInactive(session_state);
       this->ConnectionEnd(conn_ctx);
+      */
     }
   }
 }
@@ -3328,6 +3345,8 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
       hs2_http_server_.reset(http_server);
       hs2_http_server_->SetConnectionHandler(this);
     }
+
+    this->internal_server_ = make_shared<InternalServer>(handler);
   }
   LOG(INFO) << "Initialized coordinator/executor Impala server on "
             << TNetworkAddressToString(exec_env_->configured_backend_address());

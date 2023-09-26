@@ -62,6 +62,7 @@ class ExecEnv;
 class DataSink;
 class CancellationWork;
 class ImpalaHttpHandler;
+class InternalServer;
 class RowDescriptor;
 class TDmlResult;
 class TExecutePlannedStatementReq;
@@ -658,9 +659,12 @@ class ImpalaServer : public ImpalaServiceIf,
   friend struct SessionState;
   friend class ImpalaServerTest;
   friend class QueryDriver;
+  friend class InternalServer;
 
   // Used to identify external frontend RPC calls
   const string EXTERNAL_FRONTEND_SERVER_NAME = "external-frontend";
+  
+  const string BEESWAX_SERVER_NAME = "beeswax-frontend";
 
   boost::scoped_ptr<ImpalaHttpHandler> http_handler_;
 
@@ -1668,6 +1672,7 @@ class ImpalaServer : public ImpalaServiceIf,
   boost::scoped_ptr<ThriftServer> hs2_server_;
   boost::scoped_ptr<ThriftServer> hs2_http_server_;
   boost::scoped_ptr<ThriftServer> external_fe_server_;
+  std::shared_ptr<InternalServer> internal_server_;
 
   /// Flag that records if backend and/or client services have been started. The flag is
   /// set after all services required for the server have been started.
