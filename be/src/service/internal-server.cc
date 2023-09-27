@@ -23,6 +23,7 @@
 #include "common/status.h"
 #include "gen-cpp/Types_types.h"
 #include "runtime/query-driver.h"
+#include "service/client-request-state.h"
 #include "service/impala-server.h"
 #include "service/internal-server.h"
 #include "service/query-result-set.h"
@@ -36,7 +37,6 @@ namespace impala {
 
   InternalServer::InternalServer(std::shared_ptr<ImpalaServer> impala_server) {
     this->impala_server_ = impala_server;
-    this->sessions_ = std::map<TUniqueId, shared_ptr<SessionData>>();
   }
 
   InternalServer::~InternalServer() {
@@ -54,7 +54,7 @@ namespace impala {
 
   TUniqueId InternalServer::OpenSession(const std::string& user_name) {
     std::shared_ptr<ThriftServer::ConnectionContext> conn_ctx =
-        make_shared<ThriftServer::ConnectionContext>();
+        std::make_shared<ThriftServer::ConnectionContext>();
     conn_ctx->connection_id = this->RandomUUID();
     conn_ctx->server_name = this->impala_server_->BEESWAX_SERVER_NAME;
     conn_ctx->username = user_name;
@@ -64,32 +64,32 @@ namespace impala {
 
     TUniqueId session_id;
     {
-      lock_guard<mutex> l(this->impala_server_->connection_to_sessions_map_lock_);
+      lock_guard<std::mutex> l(this->impala_server_->connection_to_sessions_map_lock_);
       session_id = *this->impala_server_->connection_to_sessions_map_[conn_ctx->connection_id].cbegin();
     }
 
-    shared_ptr<ImpalaServer::SessionState> session_state;
+    std::shared_ptr<ImpalaServer::SessionState> session_state;
     {
-      lock_guard<mutex> l(this->impala_server_->session_state_map_lock_);
+      lock_guard<std::mutex> l(this->impala_server_->session_state_map_lock_);
       session_state = this->impala_server_->session_state_map_[session_id];
     }
 
     this->impala_server_->MarkSessionActive(session_state);
 
     {
-      lock_guard<mutex> l(this->sessions_lock_);
-      this->sessions_.insert(make_pair(session_id,
-          make_shared<SessionData>(conn_ctx, session_state)));
+      lock_guard<std::mutex> l(this->sessions_lock_);
+      this->sessions_.insert(std::make_pair(session_id,
+          std::make_shared<SessionData>(conn_ctx, session_state)));
     }
 
     return session_id;
   }
 
   void InternalServer::CloseSession(const TUniqueId& session_id) {
-    shared_ptr<SessionData> session_data;
+    std::shared_ptr<SessionData> session_data;
 
     {
-      lock_guard<mutex> l(this->sessions_lock_);
+      lock_guard<std::mutex> l(this->sessions_lock_);
       auto sd = this->sessions_.find(session_id);
       if (sd == this->sessions_.end()) {
         LOG(INFO) << "Attempted to close session " << PrintId(session_id) << 
@@ -100,22 +100,30 @@ namespace impala {
         this->sessions_.erase(sd);
       }
 
-      this->impala_server_->MarkSessionInactive(session_data->session_state);
-      this->impala_server_->ConnectionEnd(*(session_data->connection_context.get()));
+      // TODO - do the session queries need to be closed here or will other impala_server code take care of it?
+      {
+        std::lock_guard<std::mutex> l(session_data->lock);
+        this->impala_server_->MarkSessionInactive(session_data->session_state);
+        this->impala_server_->ConnectionEnd(*session_data->connection_context.get());
+      }
     }
   }
 
   Status InternalServer::SubmitQuery(const std::string sql, const TUniqueId session_id,
-      const TUniqueId& query_id) {
+      TUniqueId& query_id) {
     
     std::shared_ptr<SessionData> session_data = this->GetSessionDataSafe(session_id);
     if (session_data == NULL) {
-      return Status::OK(); //todo - something else
+      return Status::OK(); //TODO - do something else
     }
     // build a query context
     TQueryCtx query_context;
     query_context.client_request.stmt = "create table if not exists default.foo(id INT) stored as iceberg";
-    session_data->session_state->ToThrift(session_id, &query_context.session);
+
+    {
+      std::lock_guard<std::mutex> l(session_data->lock);
+      session_data->session_state->ToThrift(session_id, &query_context.session);
+    }
 
     Status stat;
     std::string stat_msg;
@@ -123,32 +131,92 @@ namespace impala {
     // build a query handle
     QueryHandle handle;
 
-    ABORT_IF_ERROR(this->impala_server_->Execute(&query_context,
-        session_data->session_state, &handle, nullptr));
+    {
+      std::lock_guard<std::mutex> l(session_data->lock);
+      RETURN_IF_ERROR(this->impala_server_->Execute(&query_context,
+          session_data->session_state, &handle, nullptr));
+      
+      session_data->running_queries.insert(handle->query_id());
+    }
 
-    ABORT_IF_ERROR(this->impala_server_->SetQueryInflight(session_data->session_state,
-        handle));
+    {
+      std::lock_guard<std::mutex> l(session_data->lock);
+      RETURN_IF_ERROR(this->impala_server_->SetQueryInflight(
+          session_data->session_state, handle));
+    }
+    
+    query_id = handle->query_id();
+
+    std::shared_ptr<QueryHandle> handle_ptr = make_shared<QueryHandle>(handle);
+
+    {
+      std::lock_guard<std::mutex> l(this->queries_index_lock_);
+      this->queries_index_.insert(std::make_pair(handle->query_id(), 
+          std::make_shared<QueryData>(session_id, handle_ptr)));
+    }
+
+    {
+      std::lock_guard<std::mutex> l(session_data->lock);
+      session_data->running_queries.insert(handle->query_id());
+    }
 
     return Status::OK();
   }
 
   Status InternalServer::WaitForQuery(const TUniqueId& query_id) {
+    std::shared_ptr<QueryData> query_data = this->GetQuerySafe(query_id);
+
+    if (query_data == NULL) {
+      return Status::OK();  // TODO - do something else
+    }
+
+    {
+      std::lock_guard<std::mutex> l(query_data->lock);
+      (*query_data->query_handle)->Wait(); // TODO - need to set a timeout
+    }
+
     return Status::OK();
   }
 
-  Status InternalServer::FetchRows(const int32_t max_rows, QueryResultSet* fetched_rows,
-      const int64_t block_on_wait_time_us) {
-    return Status::OK();
+  Status InternalServer::FetchRows(const TUniqueId& query_id, const int32_t max_rows,
+      QueryResultSet* fetched_rows, const int64_t block_on_wait_time_us) {
+    
+    std::shared_ptr<QueryData> query_data = this->GetQuerySafe(query_id);
+
+    if (query_data == NULL) {
+      return Status::OK();  // TODO - do something else
+    }
+
+    std::lock_guard<std::mutex> l(query_data->lock);
+    return (*query_data->query_handle)->FetchRows(max_rows, fetched_rows, block_on_wait_time_us);
   }
 
   Status InternalServer::CloseQuery(const TUniqueId query_id) {
+    std::shared_ptr<QueryData> query_data;
+
+    {
+      std::lock_guard<std::mutex> l(this->queries_index_lock_);
+      const auto iter = this->queries_index_.find(query_id);
+      if (iter == this->queries_index_.end()) {
+        return Status::OK(); // TODO - is this the right decision to ignore a query not found?
+      }
+
+      query_data = iter->second;
+      this->queries_index_.erase(iter);
+    }
+
+    std::lock_guard<std::mutex> l(query_data->lock);
+    this->impala_server_->CloseClientRequestState(*query_data->query_handle);
+
+    // TODO - remove the query from it's session running_queries set
+
     return Status::OK();
   }
 
   TUniqueId InternalServer::RandomUUID() {
      uuid conn_uuid;
     {
-      lock_guard<mutex> l(this->uuid_lock_);
+      lock_guard<std::mutex> l(this->uuid_lock_);
       conn_uuid = this->crypto_uuid_generator_();
     }
     TUniqueId conn_id;
@@ -159,22 +227,34 @@ namespace impala {
 
   const std::shared_ptr<InternalServer::SessionData> InternalServer::GetSessionDataSafe
       (TUniqueId session_id) {
-    shared_ptr<SessionData> session_data;
+    
+    std::shared_ptr<SessionData> session_data;
+    std::lock_guard<std::mutex> l(this->sessions_lock_);
 
-    {
-      lock_guard<mutex> l(this->sessions_lock_);
-      auto sd = this->sessions_.find(session_id);
-      if (sd == this->sessions_.end()) {
-        LOG(INFO) << "Attempted to close session " << PrintId(session_id) << 
-            " but session was not found";
-        return NULL;
-      } else {
-        session_data = sd->second;
-        this->sessions_.erase(sd);
-      }
+    const auto sd = this->sessions_.find(session_id);
+    if (sd == this->sessions_.end()) {
+      LOG(INFO) << "Attempted to close session " << PrintId(session_id) << 
+          " but session was not found";
+      return NULL;
     }
+      
+    session_data = sd->second;
+    this->sessions_.erase(sd);
 
     return session_data;
+  }
+
+  const std::shared_ptr<InternalServer::QueryData> InternalServer::GetQuerySafe(
+      const TUniqueId& query_id) {
+    
+    std::lock_guard<std::mutex> l(this->queries_index_lock_);
+    
+    const auto iter = this->queries_index_.find(query_id);
+    if (iter == this->queries_index_.end()) {
+      return NULL;
+    }
+
+    return iter->second;
   }
 
 } // namespace impala

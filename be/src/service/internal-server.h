@@ -20,6 +20,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include <boost/uuid/uuid.hpp>
@@ -52,24 +53,38 @@ namespace impala {
       void CloseSession(const TUniqueId& session_id);
 
       Status SubmitQuery(const std::string sql, const TUniqueId session_id,
-          const TUniqueId& query_id);
+          TUniqueId& query_id);
       Status WaitForQuery(const TUniqueId& query_id);
-      Status FetchRows(const int32_t max_rows, QueryResultSet* fetched_rows,
-          const int64_t block_on_wait_time_us);
+      Status FetchRows(const TUniqueId& query_id, const int32_t max_rows,
+          QueryResultSet* fetched_rows, const int64_t block_on_wait_time_us);
       Status CloseQuery(const TUniqueId query_id);
 
     private:
 
       struct SessionData {
-        SessionData(std::shared_ptr<ThriftServer::ConnectionContext> connection_context,
-            std::shared_ptr<ImpalaServer::SessionState> session_state) : 
-            connection_context(connection_context), session_state(session_state) {
+        SessionData(std::shared_ptr<ThriftServer::ConnectionContext> _connection_context,
+            std::shared_ptr<ImpalaServer::SessionState> _session_state) :
+            connection_context(_connection_context), session_state(_session_state) {
           // no-op
         }
 
-        std::shared_ptr<ThriftServer::ConnectionContext> connection_context;
-        std::shared_ptr<ImpalaServer::SessionState>      session_state;
-      };
+        std::shared_ptr<ThriftServer::ConnectionContext>  connection_context;
+        std::shared_ptr<ImpalaServer::SessionState>       session_state;
+        std::set<TUniqueId>                               running_queries; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
+        std::mutex                                        lock;
+      }; // struct SessionData
+
+      struct QueryData {
+        QueryData(const TUniqueId& _session_id, std::shared_ptr<QueryHandle> _query_handle) :
+            session_id(_session_id), query_handle(_query_handle) {
+          // no-op
+        }
+
+        const TUniqueId session_id; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
+        std::shared_ptr<QueryHandle> query_handle;
+        std::mutex lock;
+        // TODO - track query state here so we don't try to FetchRows on a closed query
+      }; // struct QueryData
 
       std::shared_ptr<ImpalaServer> impala_server_;
 
@@ -79,11 +94,17 @@ namespace impala {
       std::mutex uuid_lock_;
 
       // map of open sessions, key is the session id
-      std::map<TUniqueId, shared_ptr<SessionData>> sessions_;
+      std::map<TUniqueId, std::shared_ptr<SessionData>> sessions_;
       std::mutex sessions_lock_;
+
+      // map of query id to query handle to enable quicker query handle lookup
+      // TODO - need a way of locking individual handles
+      std::map<TUniqueId, std::shared_ptr<QueryData>> queries_index_;
+      std::mutex queries_index_lock_;
 
       TUniqueId RandomUUID();
       const std::shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id);
+      const std::shared_ptr<QueryData> GetQuerySafe(const TUniqueId& query_id);
       
 
   }; // InternalServer class

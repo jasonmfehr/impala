@@ -3032,7 +3032,12 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       inited = true;
       TUniqueId session_id = this->internal_server_->OpenSession();
       LOG(INFO) << "CREATE TABLE SESSION ID" << std::endl;
-      session_id->printTo(LOG(INFO));
+      session_id.printTo(LOG(INFO));
+
+      Status stat;
+      TUniqueId query_id;
+      stat = this->internal_server_->SubmitQuery("create table if not exists default.foo(id INT) stored as iceberg", session_id, query_id);
+      LOG(INFO) << "SubmitQuery return code: " << stat.code() << std::endl;
 
       /*
       // generate random connection id
@@ -3088,11 +3093,11 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       handle->Wait(); // TODO need to set a timeout
       LOG(INFO) << "DONE WAITING" << std::endl;
       // {
-      //   lock_guard<mutex> l(*query_handle->lock());
-      //   status = query_handle->query_status();
+      //   lock_guard<mutex> l(*handle->lock());
+      //   status = handle->query_status();
       // }
       // if (!status.ok()) {
-      //   discard_result(UnregisterQuery(query_handle->query_id(), false, &status));
+      //   discard_result(UnregisterQuery(handle->query_id(), false, &status));
       //   RaiseBeeswaxException(status.GetDetail(), SQLSTATE_GENERAL_ERROR);
       // }
 
