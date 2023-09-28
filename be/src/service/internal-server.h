@@ -34,76 +34,96 @@
 #include "service/query-result-set.h"
 
 namespace impala {
-  struct QueryData {
-    QueryData(const TUniqueId& _session_id, std::shared_ptr<QueryHandle> _query_handle) :
-        session_id(_session_id), query_handle(_query_handle) {
-      // no-op
+  /// Thin wrapper around a QueryHandle that enables coordinated access to a query that
+  /// was started by an InternalServer.
+  ///
+  /// When directly accessing the `handle` member, first lock the mutex:
+  /// `std::lock_guard<std::mutex> l(internal_query.lock);`
+  struct InternalQuery {
+    QueryHandle handle;
+    mutex lock;
+    TUniqueId session_id;
+
+    /// Convenience wrapper around the `QueryHandle.FetchRows` method.  Returns all the
+    /// query results in a single `std::vector`.
+    ///
+    /// This method locks the internal mutex.  Thus, callers must ensure they do not
+    /// hold a lock on the internal mutex before calling this method.
+    shared_ptr<vector<string>> FetchAllRowsText() {
+      shared_ptr<vector<string>> full_row_set = make_shared<vector<string>>();
+    
+      lock_guard<mutex> l(this->lock);
+      auto results_metadata = this->handle->result_metadata();
+      vector<string> row_set = vector<string>();
+      QueryResultSet* result_set = QueryResultSet::CreateAsciiQueryResultSet(
+          *results_metadata, &row_set, true);
+      int64_t block_wait_time = 30000000;
+
+      while (!this->handle->eos()) {
+        ABORT_IF_ERROR(handle->FetchRows(10, result_set, block_wait_time));
+        full_row_set->insert(full_row_set->cend(), row_set.cbegin(), row_set.cend());
+      }
+
+      return full_row_set;
     }
+  };
 
-    const TUniqueId session_id; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
-    std::shared_ptr<QueryHandle> query_handle;
-    std::mutex lock;
-    // TODO - track query state here so we don't try to FetchRows on a closed query
-  }; // struct QueryData
-
+  /// Enables Impala coordinators to submit queries to themselves.
+  ///
+  /// Internally, this class directly calls the methods on ImpalaServer that are called by
+  /// the Beeswax and HS2 servers.  Thus, it does not strictly adhere to either protocol.
+  /// Since Impala requires sessions to have a defined type, sessions created by
+  /// InternalServer show up as Beeswax sessions. Since sessions are considered Beeswax
+  /// sessions, they also only support a single query per session. Even though there is a
+  /// one-to-one relationship between sessions and queries, each has its own distinct id.
   class InternalServer {
     public:
-      InternalServer(std::shared_ptr<ImpalaServer> impala_server);
-      ~InternalServer();
+      InternalServer(shared_ptr<ImpalaServer> impala_server);
 
-      // Runs the entire lifecycle of session creation, query submission, query execution,
-      // query cleanup, and session close. Blocks until the entire lifecycle has completed
-      // or an error has occurred.  Results cannot be retrieved.
-      //
-      // Returns the overall status of executing the query.
-      Status ExecuteAndWait(const std::string& sql);
-      Status ExecuteAndWait(const std::string& sql, TUniqueId& session_id,
-          TUniqueId& query_id);
+      /// Creates a new session under the specified user and submits a query under that
+      /// session. Blocks until result rows are available.
+      ///
+      /// Returns a Status indicating the result of submitting the query.
+      Status ExecuteAndWait(const string &user_name, const string& sql,
+          InternalQuery& query);
 
-      TUniqueId OpenSession(const std::string& user_name = "impala");
-      void CloseSession(const TUniqueId& session_id);
+      ///
+      shared_ptr<vector<string>> ExecuteAndFetchAllText(const string &user_name,
+          const string& sql);
 
-      Status SubmitQuery(const std::string sql, const TUniqueId session_id,
-          TUniqueId& query_id);
-      Status WaitForQuery(const TUniqueId& query_id);
-      shared_ptr<vector<string>> FetchAllRowsText(const TUniqueId& query_id);
-      Status CloseQuery(const TUniqueId query_id);
+      Status SubmitQuery(const string &user_name, const string sql, InternalQuery& query);
 
-      const std::shared_ptr<QueryData> GetQuerySafe(const TUniqueId& query_id);
+      void CloseQuery(InternalQuery& query);
 
     private:
 
       struct SessionData {
-        SessionData(std::shared_ptr<ThriftServer::ConnectionContext> _connection_context,
-            std::shared_ptr<ImpalaServer::SessionState> _session_state) :
+        SessionData(shared_ptr<ThriftServer::ConnectionContext> _connection_context,
+            shared_ptr<ImpalaServer::SessionState> _session_state) :
             connection_context(_connection_context), session_state(_session_state) {
           // no-op
         }
 
-        std::shared_ptr<ThriftServer::ConnectionContext>  connection_context;
-        std::shared_ptr<ImpalaServer::SessionState>       session_state;
-        std::set<TUniqueId>                               running_queries; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
-        std::mutex                                        lock;
+        shared_ptr<ThriftServer::ConnectionContext>  connection_context;
+        shared_ptr<ImpalaServer::SessionState>       session_state;
+        mutex                                        lock;
       }; // struct SessionData
 
-      std::shared_ptr<ImpalaServer> impala_server_;
+      shared_ptr<ImpalaServer> impala_server_;
 
       // UUID generator for session IDs and secrets. Uses system random device to get
       // cryptographically secure random numbers.
       boost::uuids::basic_random_generator<boost::random_device> crypto_uuid_generator_;
-      std::mutex uuid_lock_;
+      mutex uuid_lock_;
 
       // map of open sessions, key is the session id
-      std::map<TUniqueId, std::shared_ptr<SessionData>> sessions_;
-      std::mutex sessions_lock_;
-
-      // map of query id to query handle to enable quicker query handle lookup
-      // TODO - need a way of locking individual handles
-      std::map<TUniqueId, std::shared_ptr<QueryData>> queries_index_;
-      std::mutex queries_index_lock_;
+      map<TUniqueId, shared_ptr<SessionData>> sessions_;
+      mutex sessions_lock_;
 
       TUniqueId RandomUUID();
-      const std::shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id);
+      const shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id,
+          bool erase = false);
+      shared_ptr<SessionData> OpenSession(const string& user_name);
 
   }; // InternalServer class
 
