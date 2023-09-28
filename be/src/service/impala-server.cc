@@ -3031,6 +3031,24 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
     if (!inited) {
       inited = true;
 
+      InternalQuery query;
+      ABORT_IF_ERROR(this->internal_server_->SubmitQuery("impala", "create table if not exists default.foo(id INT) stored as iceberg", query));
+
+      query.handle->Wait();
+      this->internal_server_->CloseQuery(query);
+
+      /*
+      shared_ptr<vector<string>> full_results = this->internal_server_->ExecuteAndFetchAllText("impala", "create table if not exists default.foo(id INT) stored as iceberg");
+      if (full_results == NULL) {
+        ABORT_WITH_ERROR("****************** error executing query");
+      }
+      for (auto iter = full_results->cbegin(); iter != full_results->cend(); iter++) {
+        LOG(INFO) << "ROW RESULT: " << iter->data() << std::endl;
+      }
+      */
+      
+
+      /*
       TUniqueId session_id = this->internal_server_->OpenSession();
       LOG(INFO) << "****************** CREATE TABLE SESSION ID:";
       session_id.printTo(LOG(INFO));
@@ -3059,7 +3077,7 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       stat = this->internal_server_->CloseQuery(query_id);
       LOG(INFO) << "****************** CloseQuery return code: " << stat.code() << std::endl;
       this->internal_server_->CloseSession(session_id);
-      
+      */
         
       /*
       // generate random connection id
@@ -3138,8 +3156,8 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
       // this->CloseClientRequestState(handle);
       this->MarkSessionInactive(session_state);
       this->ConnectionEnd(conn_ctx);
+      */
     }
-    */
   }
 }
 

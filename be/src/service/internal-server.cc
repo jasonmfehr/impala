@@ -80,20 +80,14 @@ namespace impala {
 
     {
       lock_guard<mutex> l(session_data->lock);
+      lock_guard<mutex> l2(query.lock);
+
       session_data->session_state->ToThrift(session_data->session_state->session_id,
           &query_context.session);
-    }
 
-    {
-      lock_guard<mutex> l(session_data->lock);
-      lock_guard<mutex> l2(query.lock);
       RETURN_IF_ERROR(this->impala_server_->Execute(&query_context,
           session_data->session_state, &query.handle, nullptr));
-    }
 
-    {
-      lock_guard<mutex> l(session_data->lock);
-      lock_guard<mutex> l2(query.lock);
       RETURN_IF_ERROR(this->impala_server_->SetQueryInflight(
           session_data->session_state, query.handle));
     }
