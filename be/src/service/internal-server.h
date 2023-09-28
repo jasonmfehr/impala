@@ -34,6 +34,17 @@
 #include "service/query-result-set.h"
 
 namespace impala {
+  struct QueryData {
+    QueryData(const TUniqueId& _session_id, std::shared_ptr<QueryHandle> _query_handle) :
+        session_id(_session_id), query_handle(_query_handle) {
+      // no-op
+    }
+
+    const TUniqueId session_id; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
+    std::shared_ptr<QueryHandle> query_handle;
+    std::mutex lock;
+    // TODO - track query state here so we don't try to FetchRows on a closed query
+  }; // struct QueryData
 
   class InternalServer {
     public:
@@ -55,9 +66,10 @@ namespace impala {
       Status SubmitQuery(const std::string sql, const TUniqueId session_id,
           TUniqueId& query_id);
       Status WaitForQuery(const TUniqueId& query_id);
-      Status FetchRows(const TUniqueId& query_id, const int32_t max_rows,
-          QueryResultSet* fetched_rows, const int64_t block_on_wait_time_us);
+      shared_ptr<vector<string>> FetchAllRowsText(const TUniqueId& query_id);
       Status CloseQuery(const TUniqueId query_id);
+
+      const std::shared_ptr<QueryData> GetQuerySafe(const TUniqueId& query_id);
 
     private:
 
@@ -73,18 +85,6 @@ namespace impala {
         std::set<TUniqueId>                               running_queries; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
         std::mutex                                        lock;
       }; // struct SessionData
-
-      struct QueryData {
-        QueryData(const TUniqueId& _session_id, std::shared_ptr<QueryHandle> _query_handle) :
-            session_id(_session_id), query_handle(_query_handle) {
-          // no-op
-        }
-
-        const TUniqueId session_id; // TODO - this can be removed if impala_server automatically closes queries when a session is closed
-        std::shared_ptr<QueryHandle> query_handle;
-        std::mutex lock;
-        // TODO - track query state here so we don't try to FetchRows on a closed query
-      }; // struct QueryData
 
       std::shared_ptr<ImpalaServer> impala_server_;
 
@@ -104,8 +104,6 @@ namespace impala {
 
       TUniqueId RandomUUID();
       const std::shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id);
-      const std::shared_ptr<QueryData> GetQuerySafe(const TUniqueId& query_id);
-      
 
   }; // InternalServer class
 

@@ -3030,15 +3030,37 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
     
     if (!inited) {
       inited = true;
+
       TUniqueId session_id = this->internal_server_->OpenSession();
-      LOG(INFO) << "CREATE TABLE SESSION ID" << std::endl;
+      LOG(INFO) << "****************** CREATE TABLE SESSION ID:";
       session_id.printTo(LOG(INFO));
+      LOG(INFO) << std::endl;
 
       Status stat;
       TUniqueId query_id;
       stat = this->internal_server_->SubmitQuery("create table if not exists default.foo(id INT) stored as iceberg", session_id, query_id);
-      LOG(INFO) << "SubmitQuery return code: " << stat.code() << std::endl;
+      LOG(INFO) << "****************** SubmitQuery return code: " << stat.code() << std::endl;
+      ABORT_IF_ERROR(stat);
 
+      stat = this->internal_server_->WaitForQuery(query_id);
+      LOG(INFO) << "****************** WaitForQuery return code: " << stat.code() << std::endl;
+      ABORT_IF_ERROR(stat);
+
+      shared_ptr<QueryData> qd = this->internal_server_->GetQuerySafe(query_id);
+      if (qd == NULL) {
+        ABORT_WITH_ERROR("query not found null");
+      }
+
+      auto all_rows = this->internal_server_->FetchAllRowsText(query_id);
+      for (auto iter = all_rows->cbegin(); iter != all_rows->cend(); iter++) {
+        LOG(INFO) << "ROW RESULT: " << iter->data() << std::endl;
+      }
+
+      stat = this->internal_server_->CloseQuery(query_id);
+      LOG(INFO) << "****************** CloseQuery return code: " << stat.code() << std::endl;
+      this->internal_server_->CloseSession(session_id);
+      
+        
       /*
       // generate random connection id
       uuid conn_uuid;
@@ -3113,11 +3135,11 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
         }
       }
 
-      this->CloseClientRequestState(handle);
+      // this->CloseClientRequestState(handle);
       this->MarkSessionInactive(session_state);
       this->ConnectionEnd(conn_ctx);
-      */
     }
+    */
   }
 }
 

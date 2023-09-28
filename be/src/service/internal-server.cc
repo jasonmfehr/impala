@@ -34,6 +34,7 @@ using boost::uuids::random_generator;
 using boost::uuids::uuid;
 
 namespace impala {
+  // using namespace std;
 
   InternalServer::InternalServer(std::shared_ptr<ImpalaServer> impala_server) {
     this->impala_server_ = impala_server;
@@ -178,17 +179,31 @@ namespace impala {
     return Status::OK();
   }
 
-  Status InternalServer::FetchRows(const TUniqueId& query_id, const int32_t max_rows,
-      QueryResultSet* fetched_rows, const int64_t block_on_wait_time_us) {
-    
-    std::shared_ptr<QueryData> query_data = this->GetQuerySafe(query_id);
+  shared_ptr<vector<string>> InternalServer::FetchAllRowsText(const TUniqueId& query_id) {
+    shared_ptr<QueryData> query_data = this->GetQuerySafe(query_id);
 
     if (query_data == NULL) {
-      return Status::OK();  // TODO - do something else
+      return NULL;  // TODO - do something else
     }
 
-    std::lock_guard<std::mutex> l(query_data->lock);
-    return (*query_data->query_handle)->FetchRows(max_rows, fetched_rows, block_on_wait_time_us);
+    shared_ptr<vector<string>> full_row_set = make_shared<vector<string>>();
+    
+    {
+      std::lock_guard<std::mutex> l(query_data->lock);
+      auto results_metadata = (*query_data->query_handle)->result_metadata();
+      vector<string> row_set = vector<string>();
+      QueryResultSet* result_set = QueryResultSet::CreateAsciiQueryResultSet(
+          *results_metadata, &row_set, true);
+      int64_t block_wait_time = 30000000;
+
+      while (!(*query_data->query_handle)->eos()) {
+        ABORT_IF_ERROR((*query_data->query_handle)->FetchRows(10, result_set,
+            block_wait_time));
+        full_row_set->insert(full_row_set->cend(), row_set.cbegin(), row_set.cend());
+      }
+    }
+
+    return full_row_set;
   }
 
   Status InternalServer::CloseQuery(const TUniqueId query_id) {
@@ -206,7 +221,7 @@ namespace impala {
     }
 
     std::lock_guard<std::mutex> l(query_data->lock);
-    this->impala_server_->CloseClientRequestState(*query_data->query_handle);
+    // this->impala_server_->CloseClientRequestState(*query_data->query_handle);
 
     // TODO - remove the query from it's session running_queries set
 
@@ -244,7 +259,7 @@ namespace impala {
     return session_data;
   }
 
-  const std::shared_ptr<InternalServer::QueryData> InternalServer::GetQuerySafe(
+  const std::shared_ptr<QueryData> InternalServer::GetQuerySafe(
       const TUniqueId& query_id) {
     
     std::lock_guard<std::mutex> l(this->queries_index_lock_);
