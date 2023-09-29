@@ -3031,21 +3031,20 @@ void ImpalaServer::UnregisterSessionTimeout(int32_t session_timeout) {
     if (!inited) {
       inited = true;
 
+      /*
       InternalQuery query;
       ABORT_IF_ERROR(this->internal_server_->SubmitQuery("impala", "create table if not exists default.foo(id INT) stored as iceberg", query));
 
       query.handle->Wait();
-      this->internal_server_->CloseQuery(query);
 
-      /*
-      shared_ptr<vector<string>> full_results = this->internal_server_->ExecuteAndFetchAllText("impala", "create table if not exists default.foo(id INT) stored as iceberg");
-      if (full_results == NULL) {
-        ABORT_WITH_ERROR("****************** error executing query");
-      }
+      this->internal_server_->CloseQuery(query);
+      */
+
+      shared_ptr<vector<string>> full_results = make_shared<vector<string>>();
+      ABORT_IF_ERROR(this->internal_server_->ExecuteAndFetchAllText("impala", "create table if not exists default.foo(id INT) stored as iceberg", full_results));
       for (auto iter = full_results->cbegin(); iter != full_results->cend(); iter++) {
         LOG(INFO) << "ROW RESULT: " << iter->data() << std::endl;
       }
-      */
       
 
       /*
