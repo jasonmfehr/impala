@@ -44,7 +44,7 @@ namespace impala {
   /// `std::lock_guard<std::mutex> l(internal_query.lock);`
   struct InternalQuery {
     QueryHandle handle;
-    std::mutex lock;
+    mutable std::mutex lock;
     TUniqueId session_id;
 
     /// Convenience wrapper around the `QueryHandle.FetchRows` method.  Returns all the
@@ -64,7 +64,7 @@ namespace impala {
       int64_t block_wait_time = 30000000;
 
       while (!this->handle->eos()) {
-        ABORT_IF_ERROR(handle->FetchRows(10, result_set, block_wait_time));
+        ABORT_IF_ERROR(this->handle->FetchRows(10, result_set, block_wait_time));
         full_row_set->insert(full_row_set->cend(), row_set.cbegin(), row_set.cend());
       }
 
@@ -112,11 +112,16 @@ namespace impala {
       /// Parameters:
       ///   `user_name` specifies the username that will be reported as running this query
       ///   `sql`       text of the sql query to run
+      ///   `results`   output parameter, `std::vector<std::string>` containing all result
+      ///               rows from the query, any existing elements will be left in-place,
+      ///               result rows will be added at the end of the vector
       /// 
-      /// Returns:
-      ///   `std::vector<std::string>` containing all result rows from the query.
-      std::shared_ptr<std::vector<std::string>> ExecuteAndFetchAllText(
-          const std::string &user_name, const std::string& sql);
+      /// Return:
+      ///   `impala::Status` indicating the result of submitting the query and waiting for
+      ///   it to return.
+      const Status ExecuteAndFetchAllText(
+          const std::string &user_name, const std::string& sql,
+          std::shared_ptr<std::vector<std::string>>& results);
 
       /// Creates a new session under the specified user and submits a query under that
       /// session. No authentication is performed. Blocks until result rows are available.
@@ -127,13 +132,13 @@ namespace impala {
       /// Parameters:
       ///   `user_name` specifies the username that will be reported as running this query
       ///   `sql`       text of the sql query to run
-      ///   `query`     in-out parameter that will be populated with information about
-      ///               the executing query, the query lock must be available or else this
+      ///   `query`     output parameter that will be populated with information about the
+      ///               executing query, the query lock must be available or else this
       ///               method will deadlock
       ///
-      /// Returns:
+      /// Return:
       ///   `impala::Status` indicating the result of submitting the query.
-      Status ExecuteAndWait(const std::string &user_name, const std::string& sql,
+      const Status ExecuteAndWait(const std::string &user_name, const std::string& sql,
           InternalQuery& query);
 
       /// Creates a new session under the specified user and submits a query under that
@@ -143,13 +148,13 @@ namespace impala {
       /// Parameters:
       ///   `user_name` specifies the username that will be reported as running this query
       ///   `sql`       text of the sql query to run
-      ///   `query`     in-out parameter that will be populated with information about
-      ///               the executing query, the query lock must be available or else this
+      ///   `query`     output parameter that will be populated with information about the
+      ///               executing query, the query lock must be available or else this
       ///               method will deadlock
       ///
-      /// Returns:
+      /// Return:
       ///   `impala::Status` indicating the result of submitting the query.
-      Status SubmitQuery(const std::string &user_name, const std::string sql,
+      const Status SubmitQuery(const std::string &user_name, const std::string sql,
           InternalQuery& query);
 
       /// Closes and cleans up the query and its associated session.
@@ -157,7 +162,10 @@ namespace impala {
       /// Parameters:
       ///   `query` object from the call to `SubmitQuery`, the query lock must be
       ///           available or else this method will deadlock
-      void CloseQuery(InternalQuery& query);
+      ///
+      /// Return:
+      ///   `bool` value of `true` if the query was found, `false` otherwise
+      const bool CloseQuery(const InternalQuery& query);
 
     private:
       /// Convenience struct to store data related to individual Impala sessions
@@ -192,15 +200,19 @@ namespace impala {
       /// Convenience method that looks up a session in the `sessions_` map.
       ///
       /// Parameters:
-      ///   `session_id` specifies the id of the session to retrieve from the sessions map
+      ///   `session_id`   specifies the id of the session to retrieve from the sessions
+      ///                  map
+      ///   `session_data` output parameter containing the `SessionData` for the specified
+      ///                  session_id, will not be modified if the session could not be
+      ///                  found
       ///   `erase`      if set to `true`, the session will be removed from the sessions
       ///                map after it is found
       ///
-      /// Returns:
-      ///   `impala::SessionData` representing the provided session id, if the session
-      ///                         could not be found, will be `NULL`
-      const std::shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id,
-          bool erase = false);
+      /// Return:
+      ///   `bool` value of `true` if a `SessionData` object was found for the provided
+      ///    session id, value of `false` if the `SessionData` object could not be found
+      const bool GetSessionDataSafe(const TUniqueId session_id,
+          std::shared_ptr<SessionData>& session_data, const bool erase = false);
 
       /// Convenience method that initializes a session
       std::shared_ptr<SessionData> OpenSession(const std::string& user_name);

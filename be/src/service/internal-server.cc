@@ -39,7 +39,20 @@ namespace impala {
     this->impala_server_ = impala_server;
   }
 
-  Status InternalServer::ExecuteAndWait(const string &user_name, const string& sql,
+  const Status InternalServer::ExecuteAndFetchAllText(const string &user_name,
+      const string& sql, std::shared_ptr<std::vector<std::string>>& results) {
+    InternalQuery query;
+    RETURN_IF_ERROR(this->ExecuteAndWait(user_name, sql, query));
+
+    shared_ptr<vector<string>> full_row_set = query.FetchAllRowsText();
+    this->CloseQuery(query);
+
+    results->insert(results->cend(), full_row_set->cbegin(), full_row_set->cend());
+
+    return Status::OK();
+  }
+
+  const Status InternalServer::ExecuteAndWait(const string &user_name, const string& sql,
       InternalQuery& query) {
     RETURN_IF_ERROR(this->SubmitQuery(user_name, sql, query));
 
@@ -51,24 +64,7 @@ namespace impala {
     return Status::OK();
   }
 
-  shared_ptr<vector<string>> InternalServer::ExecuteAndFetchAllText(
-      const string &user_name, const string& sql) {
-    InternalQuery query;
-    Status stat = this->ExecuteAndWait(user_name, sql, query);
-
-    if (!stat.ok()) {
-      return NULL;
-    }
-
-    shared_ptr<vector<string>> full_row_set = query.FetchAllRowsText();
-
-    lock_guard<mutex> l(query.lock);
-    this->CloseQuery(query);
-
-    return full_row_set;
-  }
-
-  Status InternalServer::SubmitQuery(const string &user_name, const string sql,
+  const Status InternalServer::SubmitQuery(const string &user_name, const string sql,
       InternalQuery& query) {
     
     shared_ptr<SessionData> session_data = this->OpenSession(user_name);
@@ -132,14 +128,19 @@ namespace impala {
     return session_data;
   }
 
-  void InternalServer::CloseQuery(InternalQuery& query) {
-    shared_ptr<SessionData> session_data = this->GetSessionDataSafe(query.session_id,
-        true);
+  const bool InternalServer::CloseQuery(const InternalQuery& query) {
+    shared_ptr<SessionData> session_data;
 
-    lock_guard<mutex> l(session_data->lock);
-    lock_guard<mutex> l2(query.lock);
-    this->impala_server_->MarkSessionInactive(session_data->session_state);
-    this->impala_server_->ConnectionEnd(*session_data->connection_context.get());
+    if (this->GetSessionDataSafe(query.session_id, session_data, true)) {
+      lock_guard<mutex> l(session_data->lock);
+      lock_guard<mutex> l2(query.lock);
+      this->impala_server_->MarkSessionInactive(session_data->session_state);
+      this->impala_server_->ConnectionEnd(*session_data->connection_context.get());
+
+      return true;
+    }
+
+    return false;
   }
 
   TUniqueId InternalServer::RandomUUID() {
@@ -154,15 +155,13 @@ namespace impala {
     return conn_id;
   }
 
-  const shared_ptr<InternalServer::SessionData> InternalServer::GetSessionDataSafe
-      (TUniqueId session_id, bool erase) {
-    
-    shared_ptr<SessionData> session_data;
+  const bool InternalServer::GetSessionDataSafe(const TUniqueId session_id,
+      std::shared_ptr<SessionData>& session_data, const bool erase) {
     lock_guard<mutex> l(this->sessions_lock_);
 
     const auto sd = this->sessions_.find(session_id);
     if (sd == this->sessions_.end()) {
-      return NULL;
+      return false;
     }
       
     session_data = sd->second;
@@ -170,7 +169,7 @@ namespace impala {
       this->sessions_.erase(sd);
     }
 
-    return session_data;
+    return true;
   }
 
 } // namespace impala
