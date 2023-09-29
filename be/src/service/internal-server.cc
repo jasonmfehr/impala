@@ -19,22 +19,21 @@
 #include <mutex>
 #include <string>
 
-#include "common/logging.h"
+#include <boost/uuid/uuid.hpp>
+
 #include "common/status.h"
+#include "gen-cpp/Query_types.h"
 #include "gen-cpp/Types_types.h"
-#include "runtime/query-driver.h"
+#include "rpc/thrift-server.h"
 #include "service/client-request-state.h"
 #include "service/impala-server.h"
 #include "service/internal-server.h"
-#include "service/query-result-set.h"
-#include "util/debug-util.h"
 #include "util/uid-util.h"
 
-using boost::uuids::random_generator;
+using namespace std;
 using boost::uuids::uuid;
 
 namespace impala {
-  // using namespace std;
 
   InternalServer::InternalServer(shared_ptr<ImpalaServer> impala_server) {
     this->impala_server_ = impala_server;
@@ -63,6 +62,7 @@ namespace impala {
 
     shared_ptr<vector<string>> full_row_set = query.FetchAllRowsText();
 
+    lock_guard<mutex> l(query.lock);
     this->CloseQuery(query);
 
     return full_row_set;
@@ -76,7 +76,7 @@ namespace impala {
     
     // build a query context
     TQueryCtx query_context;
-    query_context.client_request.stmt = "create table if not exists default.foo(id INT) stored as iceberg";
+    query_context.client_request.stmt = sql;
 
     {
       lock_guard<mutex> l(session_data->lock);

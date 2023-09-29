@@ -23,15 +23,18 @@
 #include <set>
 #include <string>
 
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
+#include <boost/random/random_device.hpp>
+#include <boost/uuid/random_generator.hpp>
 
 #include "common/status.h"
+#include "gen-cpp/Results_types.h"
 #include "gen-cpp/Types_types.h"
 #include "rpc/thrift-server.h"
+#include "runtime/query-driver.h"
+#include "service/client-request-state.h"
 #include "service/impala-server.h"
 #include "service/query-result-set.h"
+
 
 namespace impala {
   /// Thin wrapper around a QueryHandle that enables coordinated access to a query that
@@ -41,7 +44,7 @@ namespace impala {
   /// `std::lock_guard<std::mutex> l(internal_query.lock);`
   struct InternalQuery {
     QueryHandle handle;
-    mutex lock;
+    std::mutex lock;
     TUniqueId session_id;
 
     /// Convenience wrapper around the `QueryHandle.FetchRows` method.  Returns all the
@@ -49,12 +52,13 @@ namespace impala {
     ///
     /// This method locks the internal mutex.  Thus, callers must ensure they do not
     /// hold a lock on the internal mutex before calling this method.
-    shared_ptr<vector<string>> FetchAllRowsText() {
-      shared_ptr<vector<string>> full_row_set = make_shared<vector<string>>();
+    std::shared_ptr<std::vector<std::string>> FetchAllRowsText() {
+      std::shared_ptr<std::vector<std::string>> full_row_set =
+          make_shared<std::vector<std::string>>();
     
-      lock_guard<mutex> l(this->lock);
-      auto results_metadata = this->handle->result_metadata();
-      vector<string> row_set = vector<string>();
+      std::lock_guard<std::mutex> l(this->lock);
+      const TResultSetMetadata* results_metadata = this->handle->result_metadata();
+      std::vector<std::string> row_set = std::vector<std::string>();
       QueryResultSet* result_set = QueryResultSet::CreateAsciiQueryResultSet(
           *results_metadata, &row_set, true);
       int64_t block_wait_time = 30000000;
@@ -79,9 +83,24 @@ namespace impala {
   ///
   /// Since this class directly calls ImpalaServer methods, it bypasses all authentication
   /// methods.
+  ///
+  /// Usage:
+  ///   The easiest way is to use this class is to call the `ExecuteAndFetchAllText`
+  ///   function which runs the provided sql, returns all the results, and closes the
+  ///   query. This function is useful for running create/insert/update queries that do
+  ///   not return many results.
+  ///
+  ///   The next way is to call the `ExecuteAndWait` function. This function runs the
+  ///   provided sql and blocks until results become available. Retrieving the results can
+  ///   be done by leveraging the `QueryHandle` created by this method. The `CloseQuery`
+  ///   function must be called by clients once all results are read.
+  ///
+  ///   The lowest level function is `SubmitQuery`. This function starts a query running
+  ///   and returns immediately. Waiting for results, retrieving results,  and closing the
+  ///   query is left up to the client to do.
   class InternalServer {
     public:
-      InternalServer(shared_ptr<ImpalaServer> impala_server);
+      InternalServer(std::shared_ptr<ImpalaServer> impala_server);
 
       /// Creates a new session under the specified user and submits a query under that
       /// session. No authentication is performed. Blocks until result rows are available.
@@ -96,8 +115,8 @@ namespace impala {
       /// 
       /// Returns:
       ///   `std::vector<std::string>` containing all result rows from the query.
-      shared_ptr<vector<string>> ExecuteAndFetchAllText(const string &user_name,
-          const string& sql);
+      std::shared_ptr<std::vector<std::string>> ExecuteAndFetchAllText(
+          const std::string &user_name, const std::string& sql);
 
       /// Creates a new session under the specified user and submits a query under that
       /// session. No authentication is performed. Blocks until result rows are available.
@@ -114,7 +133,7 @@ namespace impala {
       ///
       /// Returns:
       ///   `impala::Status` indicating the result of submitting the query.
-      Status ExecuteAndWait(const string &user_name, const string& sql,
+      Status ExecuteAndWait(const std::string &user_name, const std::string& sql,
           InternalQuery& query);
 
       /// Creates a new session under the specified user and submits a query under that
@@ -130,7 +149,8 @@ namespace impala {
       ///
       /// Returns:
       ///   `impala::Status` indicating the result of submitting the query.
-      Status SubmitQuery(const string &user_name, const string sql, InternalQuery& query);
+      Status SubmitQuery(const std::string &user_name, const std::string sql,
+          InternalQuery& query);
 
       /// Closes and cleans up the query and its associated session.
       ///
@@ -142,29 +162,29 @@ namespace impala {
     private:
       /// Convenience struct to store data related to individual Impala sessions
       struct SessionData {
-        SessionData(shared_ptr<ThriftServer::ConnectionContext> _connection_context,
-            shared_ptr<ImpalaServer::SessionState> _session_state) :
+        SessionData(std::shared_ptr<ThriftServer::ConnectionContext> _connection_context,
+            std::shared_ptr<ImpalaServer::SessionState> _session_state) :
             connection_context(_connection_context), session_state(_session_state) {
           // no-op
         }
 
-        shared_ptr<ThriftServer::ConnectionContext>  connection_context;
-        shared_ptr<ImpalaServer::SessionState>       session_state;
-        mutex                                        lock;
+        std::shared_ptr<ThriftServer::ConnectionContext>  connection_context;
+        std::shared_ptr<ImpalaServer::SessionState>       session_state;
+        std::mutex                                   lock;
       }; // struct SessionData
 
       /// ImpalaServer that is delegated to for session and query management
-      shared_ptr<ImpalaServer> impala_server_;
+      std::shared_ptr<ImpalaServer> impala_server_;
 
       /// UUID generator for session IDs and secrets. Uses system random device to get
       /// cryptographically secure random numbers.
       boost::uuids::basic_random_generator<boost::random_device> crypto_uuid_generator_;
-      mutex uuid_lock_;
+      std::mutex uuid_lock_;
 
       /// Map of open sessions, key is the session id.
       /// Use the associated `sessions_lock_` mutex before accessing.
-      map<TUniqueId, shared_ptr<SessionData>> sessions_;
-      mutex sessions_lock_;
+      map<TUniqueId, std::shared_ptr<SessionData>> sessions_;
+      std::mutex sessions_lock_;
 
       /// Random `impala::TUniqueID` generator.
       TUniqueId RandomUUID();
@@ -179,11 +199,11 @@ namespace impala {
       /// Returns:
       ///   `impala::SessionData` representing the provided session id, if the session
       ///                         could not be found, will be `NULL`
-      const shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id,
+      const std::shared_ptr<SessionData> GetSessionDataSafe(TUniqueId session_id,
           bool erase = false);
 
       /// Convenience method that initializes a session
-      shared_ptr<SessionData> OpenSession(const string& user_name);
+      std::shared_ptr<SessionData> OpenSession(const std::string& user_name);
 
   }; // InternalServer class
 
