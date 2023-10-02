@@ -18,6 +18,7 @@
 #pragma once
 
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 #include <boost/unordered_map.hpp>
@@ -263,6 +264,10 @@ class Coordinator { // NOLINT: The member variables could be re-ordered to save 
   /// Aggregate resource utilization for the query (i.e. across all backends based on the
   /// latest status reports received from those backends).
   ResourceUtilization ComputeQueryResourceUtilization();
+
+  /// Return the backends and their associate resource utilization.
+  std::list<std::pair<NetworkAddressPB, ResourceUtilization>>
+      BackendResourceUtilization();
 
   /// Return the backends in 'candidates' that still have at least one fragment instance
   /// executing on them. The returned backends may not be in the same order as the input.

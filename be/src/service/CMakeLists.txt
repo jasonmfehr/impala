@@ -43,6 +43,8 @@ add_library(Service
   internal-server.cc
   query-options.cc
   query-result-set.cc
+  query-state-record.cc
+  workload-management.cc
 )
 add_dependencies(Service gen-deps)
 

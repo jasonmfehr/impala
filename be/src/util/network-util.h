@@ -99,6 +99,12 @@ NetworkAddressPB FromTNetworkAddress(const TNetworkAddress& address);
 Status NetworkAddressPBToSockaddr(
     const NetworkAddressPB& address, bool use_uds, kudu::Sockaddr* sockaddr);
 
+/// Custom comparator to sort network addresses first by host (alphabetically) and then by
+/// uds address (alphabetically) and finally by port (numerically).
+struct TNetworkAddressComparator {
+  bool operator()(const TNetworkAddress& a, const TNetworkAddress& b) const;
+};
+
 /// Returns a ephemeral port that is currently unused. Returns -1 on an error or if
 /// a free ephemeral port can't be found after 100 tries.
 int FindUnusedEphemeralPort();

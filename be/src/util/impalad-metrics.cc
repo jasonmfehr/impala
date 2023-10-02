@@ -166,6 +166,16 @@ const char* ImpaladMetricKeys::HEDGED_READ_OPS =
     "impala-server.hedged-read-ops";
 const char* ImpaladMetricKeys::HEDGED_READ_OPS_WIN =
     "impala-server.hedged-read-ops-win";
+const char* ImpaladMetricKeys::COMPLETED_QUERIES_QUEUED =
+    "impala-server.completed_queries.queued";
+const char* ImpaladMetricKeys::COMPLETED_QUERIES_WRITTEN =
+    "impala-server.completed_queries.written";
+const char* ImpaladMetricKeys::COMPLETED_QUERIES_FAIL =
+    "impala-server.completed_queries.failure";
+const char* ImpaladMetricKeys::COMPLETED_QUERIES_SCHEDULED_WRITES =
+    "impala-server.completed_queries.scheduled_writes";
+const char* ImpaladMetricKeys::COMPLETED_QUERIES_MAX_RECORDS_WRITES =
+    "impala-server.completed_queries.max_records_writes";
 const char* ImpaladMetricKeys::DEBUG_ACTION_NUM_FAIL = "impala.debug_action.fail";
 
 // These are created by impala-server during startup.
@@ -214,6 +224,10 @@ IntCounter* ImpaladMetrics::CATALOG_CACHE_MISS_COUNT = nullptr;
 IntCounter* ImpaladMetrics::CATALOG_CACHE_REQUEST_COUNT = nullptr;
 IntCounter* ImpaladMetrics::CATALOG_CACHE_TOTAL_LOAD_TIME = nullptr;
 IntCounter* ImpaladMetrics::DEBUG_ACTION_NUM_FAIL = nullptr;
+IntCounter* ImpaladMetrics::COMPLETED_QUERIES_WRITTEN = nullptr;
+IntCounter* ImpaladMetrics::COMPLETED_QUERIES_FAIL = nullptr;
+IntCounter* ImpaladMetrics::COMPLETED_QUERIES_SCHEDULED_WRITES = nullptr;
+IntCounter* ImpaladMetrics::COMPLETED_QUERIES_MAX_RECORDS_WRITES = nullptr;
 
 // Gauges
 IntGauge* ImpaladMetrics::CATALOG_NUM_DBS = nullptr;
@@ -243,6 +257,7 @@ DoubleGauge* ImpaladMetrics::CATALOG_CACHE_LOAD_EXCEPTION_RATE = nullptr;
 DoubleGauge* ImpaladMetrics::CATALOG_CACHE_MISS_RATE = nullptr;
 DoubleGauge* ImpaladMetrics::CATALOG_CACHE_ENTRY_MEDIAN_SIZE = nullptr;
 DoubleGauge* ImpaladMetrics::CATALOG_CACHE_ENTRY_99TH_SIZE = nullptr;
+IntGauge* ImpaladMetrics::COMPLETED_QUERIES_QUEUED = nullptr;
 
 // Properties
 BooleanProperty* ImpaladMetrics::CATALOG_READY = nullptr;
@@ -352,6 +367,16 @@ void ImpaladMetrics::CreateMetrics(MetricGroup* m) {
   // Initialize insert metrics
   NUM_FILES_OPEN_FOR_INSERT = m->AddGauge(
       ImpaladMetricKeys::NUM_FILES_OPEN_FOR_INSERT, 0);
+
+  // Initialize completed queries metrics.
+  COMPLETED_QUERIES_QUEUED = m->AddGauge(ImpaladMetricKeys::COMPLETED_QUERIES_QUEUED, 0);
+  COMPLETED_QUERIES_WRITTEN = m->AddCounter(
+      ImpaladMetricKeys::COMPLETED_QUERIES_WRITTEN, 0);
+  COMPLETED_QUERIES_FAIL = m->AddCounter(ImpaladMetricKeys::COMPLETED_QUERIES_FAIL, 0);
+  COMPLETED_QUERIES_SCHEDULED_WRITES = m->AddCounter(
+      ImpaladMetricKeys::COMPLETED_QUERIES_SCHEDULED_WRITES, 0);
+  COMPLETED_QUERIES_MAX_RECORDS_WRITES = m->AddCounter(
+      ImpaladMetricKeys::COMPLETED_QUERIES_MAX_RECORDS_WRITES, 0);
 
   // Initialize IO mgr metrics
   IO_MGR_METRICS = m->GetOrCreateChildGroup("io-mgr");

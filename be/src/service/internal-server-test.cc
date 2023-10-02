@@ -129,7 +129,7 @@ class DatabaseTest {
       this->database_name_ = StrCat(name_prefix, "_", GetCurrentTimeMicros());
       TUniqueId query_id;
       EXPECT_OK(this->impala_server_->ExecuteIgnoreResults("impala", StrCat("create "
-          "database ", this->database_name_), &query_id));
+          "database ", this->database_name_), TQueryOptions(), false, &query_id));
       assertQueryState(query_id, QUERY_STATE_SUCCESS);
 
       if (create_table) {
@@ -137,7 +137,7 @@ class DatabaseTest {
         EXPECT_OK(this->impala_server_->ExecuteIgnoreResults("impala", StrCat("create "
             "table ", table_name_, "(id INT, name STRING, first_sold TIMESTAMP, "
             "last_sold TIMESTAMP, price DECIMAL(30, 2)) partitioned by (category INT)"),
-            &query_id));
+            TQueryOptions(), false, &query_id));
         assertQueryState(query_id, QUERY_STATE_SUCCESS);
 
         // Insert some products that have a last_sold time.
@@ -161,7 +161,8 @@ class DatabaseTest {
           }
         }
 
-        EXPECT_OK(this->impala_server_->ExecuteIgnoreResults("impala", sql1, &query_id));
+        EXPECT_OK(this->impala_server_->ExecuteIgnoreResults("impala", sql1,
+            TQueryOptions(), false, &query_id));
         assertQueryState(query_id, QUERY_STATE_SUCCESS);
 
         // Insert some products that do not have a last_sold time.
@@ -182,7 +183,7 @@ class DatabaseTest {
         }
 
         EXPECT_OK(this->impala_server_->ExecuteIgnoreResults("impala", sql2,
-            &query_id));
+            TQueryOptions(), false, &query_id));
         assertQueryState(query_id, QUERY_STATE_SUCCESS);
       }
     }
@@ -279,7 +280,7 @@ TEST(InternalServerTest, MultipleQueriesMultipleSessions) {
   // Insert a record into the test table using a new session.
   ASSERT_OK(fixture->ExecuteIgnoreResults("impala", StrCat("insert into ",
       test_table_name, "(id,first_name,last_name) VALUES (1,'test','person1')"),
-      &query_id));
+      TQueryOptions(), false, &query_id));
   assertQueryState(query_id, QUERY_STATE_SUCCESS);
 
   // Select a record from the test table using a new session.
@@ -413,7 +414,7 @@ TEST(InternalServerTest, MissingClosingQuote) {
 
   const string expected_msg = "ParseException: Unmatched string literal";
   res = fixture->ExecuteIgnoreResults("impala",StrCat( "select * from ",
-      db_test.GetTableName(), " where name = 'foo"), &query_id);
+      db_test.GetTableName(), " where name = 'foo"), TQueryOptions(), false, &query_id);
   EXPECT_EQ(TErrorCode::GENERAL, res.code());
   EXPECT_EQ(expected_msg, res.msg().msg().substr(0, expected_msg.length()));
   EXPECT_EQ(TUniqueId(), query_id);
@@ -427,7 +428,7 @@ TEST(InternalServerTest, SyntaxError) {
 
   const string expected_msg = "ParseException: Syntax error in line 1";
   res = fixture->ExecuteIgnoreResults("impala", StrCat("select * from ",
-      db_test.GetTableName(), "; select"), &query_id);
+      db_test.GetTableName(), "; select"), TQueryOptions(), false, &query_id);
   EXPECT_EQ(TErrorCode::GENERAL, res.code());
   EXPECT_EQ(expected_msg, res.msg().msg().substr(0, expected_msg.length()));
   EXPECT_EQ(TUniqueId(), query_id);
@@ -439,7 +440,8 @@ TEST(InternalServerTest, UnclosedComment) {
   Status res;
 
   const string expected_msg = "ParseException: Syntax error in line 1";
-  res = fixture->ExecuteIgnoreResults("impala", "select 1 /*foo", &query_id);
+  res = fixture->ExecuteIgnoreResults("impala", "select 1 /*foo", TQueryOptions(), false,
+      &query_id);
   EXPECT_EQ(TErrorCode::GENERAL, res.code());
   EXPECT_EQ(expected_msg, res.msg().msg().substr(0, expected_msg.length()));
   EXPECT_EQ(TUniqueId(), query_id);
@@ -456,7 +458,7 @@ TEST(InternalServerTest, TableNotExist) {
       ASSERT_OK(fixture->ExecuteIgnoreResults("impala", StrCat("drop table ",
       db_test.GetTableName(), " purge")));
   res = fixture->ExecuteIgnoreResults("impala", StrCat("select * from ",
-      db_test.GetTableName()), &query_id);
+      db_test.GetTableName()), TQueryOptions(), false, &query_id);
   EXPECT_EQ(TErrorCode::GENERAL, res.code());
   EXPECT_EQ(expected_msg, res.msg().msg().substr(0, expected_msg.length()));
   EXPECT_EQ(TUniqueId(), query_id);

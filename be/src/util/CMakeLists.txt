@@ -191,6 +191,7 @@ add_library(UtilTests STATIC
   lru-multi-cache-test.cc
   metrics-test.cc
   min-max-filter-test.cc
+  network-util-test.cc
   openssl-util-test.cc
   os-info-test.cc
   os-util-test.cc
@@ -208,6 +209,7 @@ add_library(UtilTests STATIC
   simple-logger-test.cc
   string-parser-test.cc
   string-util-test.cc
+  summary-util-test.cc
   symbols-util-test.cc
   sys-info-test.cc
   system-state-info-test.cc
@@ -250,6 +252,7 @@ ADD_UNIFIED_BE_LSAN_TEST(metrics-test "MetricsTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(min-max-filter-test "MinMaxFilterTest.*")
 # minidump-test is flaky when the jvm pause monitor is running. So it can't be unified.
 ADD_BE_LSAN_TEST(minidump-test)
+ADD_UNIFIED_BE_LSAN_TEST(network-util-test "NetworkUtil.*")
 ADD_UNIFIED_BE_LSAN_TEST(openssl-util-test "OpenSSLUtilTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(os-info-test "OsInfo.*")
 ADD_UNIFIED_BE_LSAN_TEST(os-util-test "OsUtil.*")
@@ -267,7 +270,8 @@ ADD_UNIFIED_BE_LSAN_TEST(rle-test "BitArray.*:RleTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(runtime-profile-test "CountersTest.*:TimerCounterTest.*:TimeSeriesCounterTest.*:VariousNumbers/TimeSeriesCounterResampleTest.*:ToThrift.*:ToJson.*")
 ADD_UNIFIED_BE_LSAN_TEST(simple-logger-test "SimpleLoggerTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(string-parser-test "StringToInt.*:StringToIntWithBase.*:StringToFloat.*:StringToBool.*:StringToDate.*")
-ADD_UNIFIED_BE_LSAN_TEST(string-util-test "TruncateDownTest.*:TruncateUpTest.*:CommaSeparatedContainsTest.*:FindUtf8PosForwardTest.*:FindUtf8PosBackwardTest.*:RandomFindUtf8PosTest.*")
+ADD_UNIFIED_BE_LSAN_TEST(string-util-test "TruncateDownTest.*:TruncateUpTest.*:CommaSeparatedContainsTest.*:FindUtf8PosForwardTest.*:FindUtf8PosBackwardTest.*:RandomFindUtf8PosTest.*:ToSnakeCaseTest.*:StringStreamPopTest.*")
+ADD_UNIFIED_BE_LSAN_TEST(summary-util-test "PrintTableTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(symbols-util-test "SymbolsUtil.*")
 ADD_UNIFIED_BE_LSAN_TEST(system-state-info-test "SystemStateInfoTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(sys-info-test "CpuInfoTest.*:DiskInfoTest.*")

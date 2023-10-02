@@ -18,6 +18,7 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <unordered_map>
 #include <boost/random/random_device.hpp>
@@ -34,6 +35,7 @@
 #include "gen-cpp/ImpalaHiveServer2Service.h"
 #include "gen-cpp/ImpalaService.h"
 #include "gen-cpp/control_service.pb.h"
+#include "gen-cpp/Query_types.h"
 #include "kudu/util/random.h"
 #include "rpc/thrift-server.h"
 #include "runtime/types.h"
@@ -42,10 +44,12 @@
 #include "statestore/statestore-subscriber.h"
 #include "util/condition-variable.h"
 #include "util/container-util.h"
+#include "util/network-util.h"
 #include "util/runtime-profile.h"
 #include "util/sharded-query-map-util.h"
 #include "util/simple-logger.h"
 #include "util/thread-pool.h"
+#include "util/ticker.h"
 #include "util/time.h"
 
 namespace kudu {
@@ -80,6 +84,8 @@ class SimpleLogger;
 class UpdateFilterParamsPB;
 class UpdateFilterResultPB;
 class TQueryExecRequest;
+struct QueryStateRecord;
+struct QueryStateExpanded;
 
 /// An ImpalaServer contains both frontend and backend functionality;
 /// it implements ImpalaService (Beeswax), ImpalaHiveServer2Service (HiveServer2)
@@ -405,15 +411,18 @@ class ImpalaServer : public ImpalaServiceIf,
       const TQueryOptions& query_opts = TQueryOptions());
   virtual bool CloseSession(const impala::TUniqueId& session_id);
   virtual Status ExecuteIgnoreResults(const std::string& user_name,
-      const std::string& sql, TUniqueId* query_id = nullptr);
+      const std::string& sql, const TQueryOptions& query_opts = TQueryOptions(),
+      const bool persist_in_db = true, TUniqueId* query_id = nullptr);
   virtual Status ExecuteAndFetchAllText(const std::string& user_name,
       const std::string& sql, query_results& results, results_columns* columns = nullptr,
       TUniqueId* query_id = nullptr);
   virtual Status SubmitAndWait(const std::string& user_name, const std::string& sql,
-      TUniqueId& new_session_id, TUniqueId& new_query_id);
+      TUniqueId& new_session_id, TUniqueId& new_query_id,
+      const TQueryOptions& query_opts = TQueryOptions(),
+      const bool persist_in_db = true);
   virtual Status WaitForResults(TUniqueId& query_id);
   virtual Status SubmitQuery(const std::string& sql, const impala::TUniqueId& session_id,
-      TUniqueId& new_query_id);
+      TUniqueId& new_query_id, const bool persist_in_db = true);
   virtual Status FetchAllRows(const TUniqueId& query_id, query_results& results,
       results_columns* columns = nullptr);
   virtual void CloseQuery(const TUniqueId& query_id);
@@ -737,8 +746,8 @@ class ImpalaServer : public ImpalaServiceIf,
   /// external_exec_request is a statement that was prepared by an external frontend using
   /// Impala PlanNodes or null if the external frontend isn't being used.
   Status Execute(TQueryCtx* query_ctx, std::shared_ptr<SessionState> session_state,
-      QueryHandle* query_handle,
-      const TExecRequest* external_exec_request) WARN_UNUSED_RESULT;
+      QueryHandle* query_handle, const TExecRequest* external_exec_request,
+      const bool include_in_query_log = true) WARN_UNUSED_RESULT;
 
   /// Implements Execute() logic, but doesn't unregister query on error.
   Status ExecuteInternal(const TQueryCtx& query_ctx,
@@ -941,142 +950,15 @@ class ImpalaServer : public ImpalaServiceIf,
   /// which are returned as strings (see IMPALA-11041).
   std::string ColumnTypeToBeeswaxTypeString(const TColumnType& type);
 
-  /// Snapshot of a query's state, archived in the query log. Not mutated after
-  /// construction.
-  struct QueryStateRecord {
-    /// Compressed representation of profile returned by RuntimeProfile::Compress().
-    /// Must be initialised to a valid value if this is a completed query.
-    /// Empty if this was initialised from a running query.
-    const std::vector<uint8_t> compressed_profile;
+  /// Places a completed query into the in-memory queue of completed queries.
+  /// (implemented in workload-management.cc)
+  void EnqueueCompletedQuery(const QueryHandle& query_handle,
+      const std::shared_ptr<QueryStateRecord> qs_rec);
 
-    /// Query id
-    TUniqueId id;
-
-    /// Queries are run and authorized on behalf of the effective_user.
-    /// If there is no delegated user, this will be the connected user. Otherwise, it
-    /// will be set to the delegated user.
-    std::string effective_user;
-
-    /// If true, effective_user has access to the runtime profile and execution
-    /// summary.
-    bool user_has_profile_access;
-
-    /// default db for this query
-    std::string default_db;
-
-    /// SQL statement text
-    std::string stmt;
-
-    /// Text representation of plan
-    std::string plan;
-
-    /// DDL, DML etc.
-    TStmtType::type stmt_type;
-
-    /// True if the query required a coordinator fragment
-    bool has_coord;
-
-    /// The number of scan ranges that have completed.
-    int64_t num_completed_scan_ranges;
-
-    /// The total number of scan ranges.
-    int64_t total_scan_ranges;
-
-    /// The number of fragment instances that have completed.
-    int64_t num_completed_fragment_instances;
-
-    /// The total number of fragment instances.
-    int64_t total_fragment_instances;
-
-    /// The number of rows fetched by the client
-    int64_t num_rows_fetched;
-
-    /// The state of the query as of this snapshot. The possible values for the
-    /// query_state = union(beeswax::QueryState, ClientRequestState::RetryState). This is
-    /// necessary so that the query_state can accurately reflect if a query has been
-    /// retried or not. This string is not displayed in the runtime profiles, it is only
-    /// displayed on the /queries endpoint of the Web UI when listing out the state of
-    /// each query. This is necessary so that users can clearly see if a query has been
-    /// retried or not.
-    std::string query_state;
-
-    /// The beeswax::QueryState of the query as of this snapshot.
-    beeswax::QueryState::type beeswax_query_state;
-
-    /// Start and end time of the query, in Unix microseconds.
-    /// A query whose end_time_us is 0 indicates that it is an in-flight query.
-    /// These two variables are initialized with the corresponding values from
-    /// ClientRequestState.
-    int64_t start_time_us, end_time_us;
-
-    /// The request waited time in ms for queued.
-    int64_t wait_time_ms;
-
-    /// Total peak memory usage by this query at all backends.
-    int64_t total_peak_mem_usage;
-
-    /// The cluster wide estimated memory usage of this query.
-    int64_t cluster_mem_est;
-
-    /// Total bytes read by this query at all backends.
-    int64_t bytes_read;
-
-    /// The total number of bytes sent (across the network) by this query in exchange
-    /// nodes. Does not include remote reads, data written to disk, or data sent to the
-    /// client.
-    int64_t bytes_sent;
-
-    // Query timeline from summary profile.
-    std::string timeline;
-
-    /// Summary of execution for this query.
-    TExecSummary exec_summary;
-
-    Status query_status;
-
-    /// Timeline of important query events
-    TEventSequence event_sequence;
-
-    /// Save the query plan fragments so that the plan tree can be rendered on the debug
-    /// webpages.
-    vector<TPlanFragment> fragments;
-
-    // If true, this query has no more rows to return
-    bool all_rows_returned;
-
-    // The most recent time this query was actively being processed, in Unix milliseconds.
-    int64_t last_active_time_ms;
-
-    /// Resource pool to which the request was submitted for admission, or an empty
-    /// string if this request doesn't go through admission control.
-    std::string resource_pool;
-
-    /// True if this query was retried, false otherwise.
-    bool was_retried = false;
-
-    /// If this query was retried, the query id of the retried query.
-    std::unique_ptr<const TUniqueId> retried_query_id;
-
-    /// Initialise from 'exec_state' of a completed query. 'compressed_profile' must be
-    /// a runtime profile decompressed with RuntimeProfile::Compress().
-    QueryStateRecord(
-        const ClientRequestState& exec_state, std::vector<uint8_t>&& compressed_profile);
-
-    /// Initialize from 'exec_state' of a running query
-    QueryStateRecord(const ClientRequestState& exec_state);
-
-    /// Default constructor used only when participating in collections
-    QueryStateRecord() { }
-
-   private:
-    // Common initialization for constructors.
-    void Init(const ClientRequestState& exec_state);
-  };
-
-  struct QueryStateRecordLessThan {
-    /// Comparator that sorts by start time.
-    bool operator() (const QueryStateRecord& lhs, const QueryStateRecord& rhs) const;
-  };
+  /// Generates a string that can be used in the VALUES portion of the insert DML SQL
+  /// that writes records to the completed queries table.
+  /// (implemented in workload-management.cc)
+  std::string QueryStateToSql(const QueryStateExpanded* rec) const;
 
   /// Returns the active QueryHandle for this query id. The QueryHandle contains the
   /// active ClientRequestState. Returns an error Status if the query id cannot be found.
@@ -1242,6 +1124,18 @@ class ImpalaServer : public ImpalaServiceIf,
   /// current query ids to the admissiond.
   [[noreturn]] void AdmissionHeartbeatThread();
 
+  /// If workload management is enabled, starts workload management threads.
+  /// (implemented in workload-management.cc)
+  Status InitWorkloadManagement();
+
+  /// Blocks until running workload management threads are shut down.
+  /// (implemented in workload-management.cc)
+  void ShutdownWorkloadManagement();
+
+  /// Periodically writes out completed queries (if configured)
+  /// (implemented in workload-management.cc)
+  void CompletedQueriesThread();
+
   /// Called from ExpireQueries() to check query resource limits for 'crs'. If the query
   /// exceeded a resource limit, returns a non-OK status with information about what
   /// limit was exceeded. Returns OK if the query will continue running and expiration
@@ -1358,6 +1252,9 @@ class ImpalaServer : public ImpalaServiceIf,
   /// Thread that runs AdmissionHeartbeatThread().
   std::unique_ptr<Thread> admission_heartbeat_thread_;
 
+  /// Thread that runs CompletedQueriesThread().
+  std::unique_ptr<Thread> completed_queries_thread_;
+
   /// The QueryDriverMap maps query ids to QueryDrivers. The QueryDrivers are owned by the
   /// ImpalaServer and QueryDriverMap references them using shared_ptr to allow
   /// asynchronous deletion.
@@ -1377,6 +1274,22 @@ class ImpalaServer : public ImpalaServiceIf,
   /// Default query options in the form of TQueryOptions and beeswax::ConfigVariable
   TQueryOptions default_query_options_;
   std::vector<beeswax::ConfigVariable> default_configs_;
+
+  /// Queue of completed queries and the lock to synchronize access to it. The first
+  /// element is the struct that represents one completed query. The second element is a
+  /// count of the number of times the completed query has attempted to be inserted into
+  /// the completed queries table. The count is tracked so that the number of attempts can
+  /// be limited and failing inserts do not retry indefinitely.  The coordinator startup
+  /// flag `query_log_max_insert_attempts` is used to set the max attempts.
+  typedef std::pair<std::shared_ptr<QueryStateExpanded>, uint8_t> completed_query_entry;
+  std::list<completed_query_entry> completed_queries_;
+  std::mutex completed_queries_lock_;
+
+  /// Ticker that wakes up the completed_queried_thread at set intervals to process the
+  /// queued completed queries. Uses the completed_queries_lock_ to synchonize access to
+  /// the completed_queries_ list.
+  std::unique_ptr<TickerSB> completed_queries_ticker_;
+  std::shared_ptr<bool> completed_queries_ready_;
 
   // Container for a secret passed into functions for validation.
   class SecretArg {
@@ -1716,6 +1629,7 @@ class ImpalaServer : public ImpalaServiceIf,
   boost::scoped_ptr<ThriftServer> hs2_server_;
   boost::scoped_ptr<ThriftServer> hs2_http_server_;
   boost::scoped_ptr<ThriftServer> external_fe_server_;
+  std::shared_ptr<InternalServer> internal_server_;
 
   /// Flag that records if backend and/or client services have been started. The flag is
   /// set after all services required for the server have been started.

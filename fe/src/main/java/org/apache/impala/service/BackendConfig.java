@@ -457,4 +457,12 @@ public class BackendConfig {
   public boolean allowCatalogCacheOpFromMaskedUsers() {
     return backendCfg_.allow_catalog_cache_op_from_masked_users;
   }
+
+  public boolean enableWorkloadMgmt() {
+    return backendCfg_.enable_workload_mgmt;
+  }
+
+  public String queryLogTableName() {
+    return backendCfg_.query_log_table_name;
+  }
 }

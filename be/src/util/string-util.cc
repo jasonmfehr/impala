@@ -143,4 +143,55 @@ int FindUtf8PosBackward(const uint8_t* ptr, const int len, int index) {
   DCHECK_EQ(pos, -1);
   return -1;
 }
+
+/// Converts a single character into its corresponding snake case character. If the
+/// provided character is lowercase or a number, it is returned unmodified. Uppercase
+/// characters are returned converted to lowercase. Spaces are converted to underscores.
+/// If any other character (including underscores) is provided as input, then 0 is
+/// returned.
+///
+/// Parameters:
+///   c - constant char reference to transform into snake case
+///
+/// Returns:
+///   char - snake case form of the provided input char
+static inline char ToSnakeCaseChar(const char& c) {
+  if (c == ' ') {
+    return '_';
+  } else if ('A' <= c && c <= 'Z') {
+    return ascii_tolower(c);
+  } else if (('a' <= c && c <= 'z')) {
+    return c;
+  }
+
+  return 0;
+}
+
+void ToSnakeCase(const std::string& in, std::stringstream* out) {
+  DCHECK(out != nullptr);
+
+  char prev = ' ';
+  for (auto iter = in.cbegin(); iter != in.cend(); iter++) {
+    const char converted = ToSnakeCaseChar(*iter);
+    if (converted != 0 && (prev != '_' || converted != '_')) {
+      *out << converted;
+      prev = converted;
+    }
+  }
+}
+
+std::string ToSnakeCase(const std::string& str) {
+  std::stringstream out;
+
+  ToSnakeCase(str, &out);
+
+  return out.str();
+}
+
+void StringStreamPop::move_back() {
+  if (tellp() > 0) {
+    seekp(-1, std::ios_base::cur);
+  }
+}
+
 }
