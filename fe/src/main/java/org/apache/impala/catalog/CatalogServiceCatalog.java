@@ -28,6 +28,7 @@ import static org.apache.impala.thrift.TCatalogObjectType.TABLE;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -408,11 +409,18 @@ public class CatalogServiceCatalog extends Catalog {
             initialHmsCnxnTimeoutSec));
   }
 
+  private static final List<String> impalaSysTables = Arrays.asList(
+      BackendConfig.INSTANCE.queryLogTableName());
+
   /**
    * Check whether the database is in blacklist
    */
   public boolean isBlacklistedDb(String dbName) {
     Preconditions.checkNotNull(dbName);
+    if (BackendConfig.INSTANCE.enableWorkloadMgmt() && dbName.equalsIgnoreCase("sys")) {
+      // Override 'sys' for Impala system tables.
+      return false;
+    }
     return blacklistedDbs_.contains(dbName.toLowerCase());
   }
 
@@ -421,6 +429,10 @@ public class CatalogServiceCatalog extends Catalog {
    */
   public boolean isBlacklistedTable(TableName table) {
     Preconditions.checkNotNull(table);
+    if (table.getDb().equalsIgnoreCase("sys") && blacklistedDbs_.contains("sys")) {
+      // If we've overridden the database blacklist, only allow Impala system tables.
+      return !impalaSysTables.contains(table.getTbl());
+    }
     return blacklistedTables_.contains(table);
   }
 

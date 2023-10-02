@@ -35,5 +35,28 @@ TEST(UidUtil, FragmentInstanceId) {
   }
 }
 
+TEST(UidUtil, UuidNotEmpty) {
+  TUniqueId fixture = GenerateUUID();
+  EXPECT_FALSE(UUIDEmpty(fixture));
+}
+
+TEST(UidUtil, UuidHalfEmpty1) {
+  TUniqueId fixture;
+  fixture.hi = 0;
+  fixture.lo = 1;
+  EXPECT_TRUE(UUIDEmpty(fixture));
+}
+
+TEST(UidUtil, UuidHalfEmpty2) {
+  TUniqueId fixture;
+  fixture.hi = 1;
+  fixture.lo = 0;
+  EXPECT_TRUE(UUIDEmpty(fixture));
+}
+
+TEST(UidUtil, UuidEmpty) {
+  EXPECT_TRUE(UUIDEmpty(TUniqueId()));
+}
+
 }
 

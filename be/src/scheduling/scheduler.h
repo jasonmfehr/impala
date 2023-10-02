@@ -60,6 +60,9 @@ class SchedulerWrapper;
 ///           configuration.
 class Scheduler {
  public:
+   // Profile info strings
+  static const std::string PROFILE_INFO_COMPUTE_SCAN_RANGE_ASSIGNMENT;
+
   Scheduler(MetricGroup* metrics, RequestPoolService* request_pool_service);
 
   /// Current snapshot of executors to be used for scheduling a scan.

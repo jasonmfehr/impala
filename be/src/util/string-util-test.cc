@@ -269,5 +269,72 @@ TEST(RandomFindUtf8PosTest, Basic) {
   }
 }
 
+TEST(ToSnakeCaseTest, BasicStream) {
+  std::string orig = " This Is  a tESt ";
+  std::stringstream actual;
+  ToSnakeCase(orig, &actual);
+  EXPECT_EQ("_this_is_a_test_", actual.str());
+}
+
+TEST(ToSnakeCaseTest, EmptyStream) {
+  std::string orig = "";
+  std::stringstream actual;
+  ToSnakeCase(orig, &actual);
+  EXPECT_EQ("", actual.str());
+}
+
+TEST(ToSnakeCaseTest, BasicString) {
+  EXPECT_EQ("_this_is_a_test_", ToSnakeCase(" This Is  a tESt  "));
+  EXPECT_EQ("_foo_bar_baz_", ToSnakeCase(" 1fOo ( bar ) BAz 38  "));
+  EXPECT_EQ("foo_bar_baz", ToSnakeCase("1f62Oo ( bar ) BAz8"));
+}
+
+TEST(ToSnakeCaseTest, EmptySting) {
+  EXPECT_EQ("", ToSnakeCase(""));
+}
+
+TEST(ToSnakeCaseTest, StringWithNewlines) {
+  EXPECT_EQ("_foo_bar_", ToSnakeCase(" fOo \n BaR "));
+}
+
+TEST(StringStreamPopTest, NotEmptyPopOnce) {
+  StringStreamPop fixture;
+  fixture << "this is a tes,";
+  fixture.move_back();
+  fixture << "t";
+  EXPECT_EQ("this is a test", fixture.str());
+}
+
+TEST(StringStreamPopTest, OneCharPop) {
+  StringStreamPop fixture;
+  fixture << "t";
+  fixture.move_back();
+  fixture << "t";
+  EXPECT_EQ("t", fixture.str());
+}
+
+TEST(StringStreamPopTest, NotEmptyPopTwice) {
+  StringStreamPop fixture;
+  fixture << "this is a second te,,";
+  fixture.move_back();
+  fixture.move_back();
+  fixture << "st";
+  EXPECT_EQ("this is a second test", fixture.str());
+}
+
+TEST(StringStreamPopTest, EmptyPopOnce) {
+  StringStreamPop fixture;
+  fixture.move_back();
+  EXPECT_TRUE(fixture.str().empty());
+}
+
+TEST(StringStreamPopTest, EmptyPopTwice) {
+  StringStreamPop fixture;
+  fixture.move_back();
+  fixture.move_back();
+  fixture.flush();
+  EXPECT_TRUE(fixture.str().empty());
+}
+
 }
 

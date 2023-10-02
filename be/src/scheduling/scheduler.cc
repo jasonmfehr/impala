@@ -77,6 +77,10 @@ static const vector<TPlanNodeType::type> SCAN_NODE_TYPES{TPlanNodeType::HDFS_SCA
 // candidates. See GetRemoteExecutorCandidates() for a deeper description.
 static const int MAX_ITERATIONS_PER_EXECUTOR_CANDIDATE = 8;
 
+// Profile Info Strings
+const string Scheduler::PROFILE_INFO_COMPUTE_SCAN_RANGE_ASSIGNMENT =
+    "ComputeScanRangeAssignmentTimer";
+
 Scheduler::Scheduler(MetricGroup* metrics, RequestPoolService* request_pool_service)
   : metrics_(metrics->GetOrCreateChildGroup("scheduler")),
     request_pool_service_(request_pool_service) {
@@ -171,7 +175,7 @@ Status Scheduler::GenerateScanRanges(const vector<TFileSplitGeneratorSpec>& spec
 Status Scheduler::ComputeScanRangeAssignment(
     const ExecutorConfig& executor_config, ScheduleState* state) {
   RuntimeProfile::Counter* total_assignment_timer =
-      ADD_TIMER(state->summary_profile(), "ComputeScanRangeAssignmentTimer");
+      ADD_TIMER(state->summary_profile(), PROFILE_INFO_COMPUTE_SCAN_RANGE_ASSIGNMENT);
   const TQueryExecRequest& exec_request = state->request();
   for (const TPlanExecInfo& plan_exec_info : exec_request.plan_exec_info) {
     for (const auto& entry : plan_exec_info.per_node_scan_ranges) {

@@ -21,6 +21,7 @@
 #include <string>
 
 #include "common/status.h"
+#include "gutil/strings/ascii_ctype.h"
 
 namespace impala {
 
@@ -93,6 +94,39 @@ int FindUtf8PosBackward(const uint8_t* str_ptr, const int str_len, const int ind
 inline int FindUtf8PosBackward(const char* str_ptr, const int str_len, const int index) {
   return FindUtf8PosBackward(reinterpret_cast<const uint8_t*>(str_ptr), str_len, index);
 }
-}
 
+/// Iterates through a string converting each character to an underscore (if the character
+/// is a space) or to the lower case of the character and writes the converted character
+/// to a stringstream.
+///
+/// Parameters:
+///   in  - const std::string that is read and will be transformed
+///   out - std::stringstream* that will be written
+void ToSnakeCase(const std::string& in, std::stringstream* out);
+
+/// Iterates through a string converting each character to an underscore (if the character
+/// is a space) or to the lower case of the character and writes the converted character
+/// to a stringstream.
+///
+/// Parameters:
+///   str - const std::string that is read and will be transformed
+///
+/// Returns:
+///   std::string - copy of the provided input that has been transformed to snake case
+std::string ToSnakeCase(const std::string& str);
+
+/// Subclass of std::stringstream that adds functionality to allow overwriting the very
+/// last character of the stream. The purpose of this additional functionality is to
+/// enable comma delimeted string building where the last instance of the comma needs to
+/// be removed (for example when building a list of columns in a sql statement).
+class StringStreamPop : public std::basic_stringstream<char> {
+public:
+  /// Directly modifies the underlying stream buffer seeking it backwards 1 position.
+  /// Then, when additional characters are written, the character at the end of the stream
+  /// is overwritten. Thus, to truly remove the character at the end of the stream
+  /// requires writing at least one character to the stream after this function is called.
+  void move_back();
+};
+
+}
 #endif
