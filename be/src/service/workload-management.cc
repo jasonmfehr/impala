@@ -196,12 +196,11 @@ static mutex completed_queries_threadstate_mu_;
 /// Struct defining the context for generating the sql DML that inserts records into the
 /// completed queries table.
 struct WMFieldParserContext {
-  const ImpalaServer* impala_server;
   const QueryStateExpanded* record;
   StringStreamPop& sql;
 
-  WMFieldParserContext(const ImpalaServer* impl_srvr, const QueryStateExpanded* rec,
-      StringStreamPop& s) : impala_server(impl_srvr), record(rec), sql(s) {}
+  WMFieldParserContext(const QueryStateExpanded* rec,
+      StringStreamPop& s) : record(rec), sql(s) {}
 }; // struct WMFieldParserContext
 
 using WMFieldParser = void (*)(WMFieldParserContext&);
@@ -289,7 +288,7 @@ static void _defaultDb(WMFieldParserContext& ctx) {
 /// Impala Coordinator
 static void _impalaCoordinator(WMFieldParserContext& ctx) {
   ctx.sql << "'" <<TNetworkAddressToString(
-      ctx.impala_server->GetExecEnv()->configured_backend_address()) << "'";
+      ExecEnv::GetInstance()->configured_backend_address()) << "'";
 }
 
 /// Query Status
@@ -925,7 +924,7 @@ void ImpalaServer::CompletedQueriesThread() {
 string ImpalaServer::QueryStateToSql(const QueryStateExpanded* rec) const {
   DCHECK(rec != nullptr);
   StringStreamPop sql;
-  WMFieldParserContext ctx(this, rec, sql);
+  WMFieldParserContext ctx(rec, sql);
 
   sql << "(";
 

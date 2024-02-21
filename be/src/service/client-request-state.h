@@ -282,9 +282,9 @@ class ClientRequestState {
   const TUniqueId& query_id() const { return query_ctx_.query_id; }
 
   /// Return values from counters. See explanation on declaration of
-  /// num_rows_fetched_counter_ and num_rows_fetched_from_cache_counter_ for details.
+  /// num_rows_fetched_counter_, row_materialization_rate_, and row_materialization_rate_
+  /// for details.
   int64_t num_rows_fetched_counter() const;
-  int64_t num_rows_fetched_from_cache() const;
   int64_t row_materialization_rate() const;
   int64_t row_materialization_timer() const;
 

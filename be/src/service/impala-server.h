@@ -562,9 +562,6 @@ class ImpalaServer : public ImpalaServiceIf,
   // Mapping between query option names and levels
   QueryOptionLevels query_option_levels_;
 
-  /// Access to the ExecEnv instance.
-  const ExecEnv* GetExecEnv() const { return exec_env_; }
-
   /// The default executor group name for executors that do not explicitly belong to a
   /// specific executor group.
   static const std::string DEFAULT_EXECUTOR_GROUP_NAME;

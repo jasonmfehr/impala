@@ -2375,14 +2375,6 @@ int64_t ClientRequestState::num_rows_fetched_counter() const {
   return 0;
 }
 
-int64_t ClientRequestState::num_rows_fetched_from_cache() const {
-  if (LIKELY(num_rows_fetched_from_cache_counter_ != nullptr)) {
-    return num_rows_fetched_from_cache_counter_->value();
-  }
-
-  return 0;
-}
-
 int64_t ClientRequestState::row_materialization_rate() const {
   if (LIKELY(row_materialization_rate_ != nullptr)) {
     return row_materialization_rate_->value();
