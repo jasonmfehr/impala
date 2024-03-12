@@ -54,6 +54,7 @@ class TestWorkloadManagementInit(TestWorkloadManagementInitBase):
      coordinator is known as the lead coordinator. The other coordinators wait until the
      lead coordinator signals that it has finished workload management initialization
      before continuing with their own much shorter initialization process.
+
      The init process also handles creating and updating the workload management db
      tables. If no action is necessary, then no DDLs are executed."""
 
@@ -179,7 +180,12 @@ class TestWorkloadManagementTableSchema(TestWorkloadManagementInitBase):
     self.assert_impalad_log_contains("INFO", r"Target workload management schema version "
         r"is '{}'".format(target_schema_ver))
 
-    # Query Log Table
+    upgrade_expect_count = 0
+    if actual_schema_ver != target_schema_ver and actual_schema_ver != "":
+      upgrade_expect_count = 1
+
+    # Query Log Table - This table is always created on version 1.0.0 if it does not exist
+    # and upgraded only if the schema versions have changed.
     create_expect_count = 0
     if actual_schema_ver != target_schema_ver and actual_schema_ver != "1.0.0":
       create_expect_count = 1
@@ -188,8 +194,12 @@ class TestWorkloadManagementTableSchema(TestWorkloadManagementInitBase):
         .format(self.QUERY_TBL_LOG, actual_schema_ver))
     self.assert_impalad_log_contains("INFO", r"Creating workload management table '{}' "
         r"on schema version '1.0.0'".format(self.QUERY_TBL_LOG), create_expect_count)
+    self.assert_impalad_log_contains("INFO", r"Upgrading workload management table '{}' "
+        r"from schema version '{}' to '{}'".format(self.QUERY_TBL_LOG, actual_schema_ver,
+        target_schema_ver), upgrade_expect_count)
 
-    # Query Live Table
+    # Query Live Table - This table is never upgraded and always created on the target
+    # schema version.
     create_expect_count = 0
     if actual_schema_ver != target_schema_ver: create_expect_count = 1
     self.assert_impalad_log_contains("INFO", r"Actual current workload management schema "
@@ -198,6 +208,8 @@ class TestWorkloadManagementTableSchema(TestWorkloadManagementInitBase):
     self.assert_impalad_log_contains("INFO", r"Creating workload management table '{}' "
         r"on schema version '{}'".format(self.QUERY_TBL_LIVE, target_schema_ver),
         create_expect_count)
+    self.assert_impalad_log_contains("INFO", r"Upgrading workload management table '{}'"
+        .format(self.QUERY_TBL_LIVE), 0)
 
   @CustomClusterTestSuite.with_args(
       impalad_args="--enable_workload_mgmt --cluster_id=test_wm_init_4 -v=2",
@@ -221,17 +233,56 @@ class TestWorkloadManagementTableSchema(TestWorkloadManagementInitBase):
     self.assert_logs(actual_schema_ver="1.0.0", target_schema_ver="1.0.0")
 
   @CustomClusterTestSuite.with_args(
-      impalad_args="--enable_workload_mgmt --cluster_id=test_wm_init_9 -v=2",
+      impalad_args="--enable_workload_mgmt --cluster_id=test_wm_init_6 -v=2",
+      catalogd_args="--enable_workload_mgmt",
+      cluster_size=1)
+  def test_version_2_tables_not_exist(self):
+    """Asserts that workload management tables are created at schema version 1.1.0 and not
+       upgraded or altered."""
+    self.restart_cluster(cluster_id="test_wm_init_6", schema_version="1.1.0")
+    self.assert_logs(actual_schema_ver="", target_schema_ver="1.1.0")
+
+  @CustomClusterTestSuite.with_args(
+      impalad_args="--enable_workload_mgmt --cluster_id=test_wm_init_7 -v=2",
+      catalogd_args="--enable_workload_mgmt",
+      cluster_size=1)
+  def test_version_2_upgrade(self):
+    """Asserts that the workload management tables already at schema version 1.0.0 are
+       upgraded to schema version 1.1.0."""
+    self.restart_cluster(cluster_id="test_wm_init_7", schema_version="1.0.0")
+    self.assert_logs(actual_schema_ver="", target_schema_ver="1.0.0")
+
+    self.restart_cluster(cluster_id="test_wm_init_7", schema_version="1.1.0")
+    self.assert_logs(actual_schema_ver="1.0.0", target_schema_ver="1.1.0")
+
+  @CustomClusterTestSuite.with_args(
+      impalad_args="--enable_workload_mgmt --cluster_id=test_wm_init_8 -v=2",
+      catalogd_args="--enable_workload_mgmt",
+      cluster_size=1)
+  def test_version_2_tables_not_upgrade(self):
+    """Asserts that the workload management tables already at schema version 1.1.0 are not
+       altered at cluster startup."""
+    self.restart_cluster(cluster_id="test_wm_init_8", schema_version="1.1.0")
+    self.assert_logs(actual_schema_ver="", target_schema_ver="1.1.0")
+
+    self.restart_cluster(cluster_id="test_wm_init_9", schema_version="1.1.0")
+    self.assert_logs(actual_schema_ver="1.1.0", target_schema_ver="1.1.0")
+
+  @CustomClusterTestSuite.with_args(
+      impalad_args="--enable_workload_mgmt --cluster_id=test_wm_init_9 -v=2 ",
       catalogd_args="--enable_workload_mgmt", cluster_size=1)
   def test_start_cluster_slow_statestore(self):
     """Asserts that workload management properly initializes even if the lead coordinator
        negotiation takes several minutes. Queries should queue up in memory until the init
        process completes then write out to the completed queries table. The live queries
        table should be queryable while the init process is running."""
+    self.restart_cluster(cluster_id="test_wm_init_9", schema_version="1.1.0")
+    self.assert_logs(actual_schema_ver="", target_schema_ver="1.1.0")
+
     def res_cluster():
-      self.restart_cluster(cluster_id="test_wm_init_9", schema_version="1.0.0",
+      self.restart_cluster(cluster_id="test_wm_init_9", schema_version="1.1.0",
           debug_actions="WORKLOAD_MGMT_INIT:SLEEP@30000", wait_for_init_complete=False,
-          cluster_size=3, additional_options="--query_log_write_interval_s=1 -v=2")
+          cluster_size=3, additional_options="--query_log_write_interval_s=1")
 
     restart_thread = Thread(target=res_cluster)
     restart_thread.start()
@@ -239,8 +290,9 @@ class TestWorkloadManagementTableSchema(TestWorkloadManagementInitBase):
     # Give the new daemons some time to start up and change the log file softlinks
     sleep(10)
 
-    # Wait for the Beeswax server to start so that a client connection can be opened.
-    self.assert_impalad_log_contains("INFO", r"Impala Beeswax Service listening")
+    # Wait for the local catalog to populate so the cluster can run queries.
+    self.assert_all_impalad_log_contains("INFO",
+        r'Target workload management schema version', timeout_s=30)
 
     client = self.create_impala_client()
 

@@ -49,6 +49,7 @@ struct FieldParserContext {
 
 /// Constants for all possible schema versions.
 const kudu::Version VERSION_1_0_0 = constructVersion(1, 0, 0);
+const kudu::Version VERSION_1_1_0 = constructVersion(1, 1, 0);
 
 /// Type of a function that retrieves one piece of information from the context and writes
 /// it to the SQL statement that inserts rows into the completed queries table.
@@ -100,7 +101,7 @@ struct FieldDefinition {
 }; // struct FieldDefinition
 
 /// Number of query table columns
-constexpr size_t NumQueryTableColumns = TQueryTableColumn::TABLES_QUERIED + 1;
+constexpr size_t NumQueryTableColumns = TQueryTableColumn::ORDERBY_COLUMNS + 1;
 
 /// This list is the main data structure for workload management. Each list entry
 /// contains the name of a column in the completed queries table, the type of that column,

@@ -3234,6 +3234,7 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
     internal_server_ = shared_from_this();
     wm_init_cv_.notify_all();
   }
+
   LOG(INFO) << "Initialized coordinator/executor Impala server on "
             << TNetworkAddressToString(exec_env_->configured_backend_address());
 

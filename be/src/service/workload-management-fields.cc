@@ -34,6 +34,7 @@
 
 #include "common/compiler-util.h"
 #include "gen-cpp/Types_types.h"
+#include "kudu/util/version_util.h"
 #include "runtime/exec-env.h"
 #include "service/query-options.h"
 #include "service/query-state-record.h"
@@ -46,6 +47,7 @@ DECLARE_int32(query_log_max_plan_length);
 
 using namespace std;
 using strings::Substitute;
+using kudu::Version;
 
 namespace impala {
 
@@ -444,7 +446,42 @@ const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{{
           ctx.sql << "'" << PrintTableList(ctx.record->tables) << "'";
         }, VERSION_1_0_0),
 
-    }}; // FIELDS_PARSERS const array
+    // Select Columns
+    FieldDefinition(TQueryTableColumn::SELECT_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->select_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // Where Columns
+    FieldDefinition(TQueryTableColumn::WHERE_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->where_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // Join Columns
+    FieldDefinition(TQueryTableColumn::JOIN_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->join_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // Aggregate Columns
+    FieldDefinition(TQueryTableColumn::AGGREGATE_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->aggregate_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // OrderBy Columns
+    FieldDefinition(TQueryTableColumn::ORDERBY_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->orderby_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    }}; // FIELD_DEFINITIONS constant list
 
 } //namespace workload_management
 
