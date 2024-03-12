@@ -34,7 +34,6 @@
 #include "common/compiler-util.h"
 #include "common/logging.h"
 #include "common/status.h"
-#include "gen-cpp/CatalogObjects_constants.h"
 #include "gen-cpp/Frontend_types.h"
 #include "gen-cpp/Query_types.h"
 #include "gen-cpp/SystemTables_types.h"
@@ -59,10 +58,7 @@ using namespace impala::workload_management;
 using namespace std;
 
 DECLARE_bool(enable_workload_mgmt);
-DECLARE_string(query_log_table_name);
-DECLARE_string(query_log_table_location);
 DECLARE_int32(query_log_write_interval_s);
-DECLARE_int32(query_log_write_timeout_s);
 DECLARE_int32(query_log_max_queued);
 DECLARE_string(workload_mgmt_user);
 DECLARE_int32(query_log_max_sql_length);
@@ -70,18 +66,8 @@ DECLARE_int32(query_log_max_plan_length);
 DECLARE_int32(query_log_shutdown_timeout_s);
 DECLARE_string(cluster_id);
 DECLARE_int32(query_log_max_insert_attempts);
-DECLARE_string(query_log_request_pool);
-DECLARE_string(query_log_table_props);
 
 namespace impala {
-
-/// Name of the database where all workload management tables will be stored.
-static const string DB = "sys";
-
-/// Default query options that will be provided on all queries that insert rows into the
-/// completed queries table. See the initialization code in the
-/// ImpalaServer::CompletedQueriesThread function for details on which options are set.
-static InternalServer::QueryOptionMap insert_query_opts;
 
 /// Non-values portion of the sql DML to insert records into the completed queries table.
 /// Generates the first portion of the DML that inserts records into the completed queries
@@ -98,78 +84,6 @@ static string _insert_dml;
 static inline bool MaxRecordsExceeded(size_t record_count) noexcept {
   return FLAGS_query_log_max_queued > 0 && record_count > FLAGS_query_log_max_queued;
 } // function MaxRecordsExceeded
-
-/// Sets up the sys database generating and executing the necessary DML statements.
-static const Status SetupDb(InternalServer* server) {
-  insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "true";
-  RETURN_IF_ERROR(server->ExecuteIgnoreResults(FLAGS_workload_mgmt_user,
-      StrCat("CREATE DATABASE IF NOT EXISTS ", DB, " COMMENT "
-      "'System database for Impala introspection'"), insert_query_opts, false));
-  insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "false";
-  return Status::OK();
-} // function SetupDb
-
-/// Returns column name as lower-case to match common SQL style.
-static string GetColumnName(const FieldDefinition& field) {
-  std::string column_name = to_string(field.db_column);
-  boost::algorithm::to_lower(column_name);
-  return column_name;
-}
-
-/// Sets up the query table by generating and executing the necessary DML statements.
-static const Status SetupTable(InternalServer* server, const string& table_name,
-    bool is_system_table = false) {
-  insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "true";
-
-  StringStreamPop create_table_sql;
-  create_table_sql << "CREATE ";
-  // System tables do not have anything to purge, and must not be managed tables.
-  if (is_system_table) create_table_sql << "EXTERNAL ";
-  create_table_sql << "TABLE IF NOT EXISTS " << table_name << "(";
-
-  for (const auto& field : FIELD_DEFINITIONS) {
-    create_table_sql << GetColumnName(field) << " " << field.db_column_type;
-
-    if (field.db_column_type == TPrimitiveType::DECIMAL) {
-      create_table_sql << "(" << field.precision << "," << field.scale << ")";
-    }
-
-    create_table_sql << ",";
-  }
-  create_table_sql.move_back();
-
-  create_table_sql << ") ";
-
-  if (!is_system_table) {
-    create_table_sql << "PARTITIONED BY SPEC(identity(cluster_id), HOUR(start_time_utc)) "
-        << "STORED AS iceberg ";
-
-    if (!FLAGS_query_log_table_location.empty()) {
-      create_table_sql << "LOCATION '" << FLAGS_query_log_table_location << "' ";
-    }
-  }
-
-  create_table_sql << "TBLPROPERTIES ('schema_version'='1.0.0','format-version'='2'";
-
-  if (is_system_table) {
-    create_table_sql << ",'"
-                     << g_CatalogObjects_constants.TBL_PROP_SYSTEM_TABLE <<"'='true'";
-  } else if (!FLAGS_query_log_table_props.empty()) {
-    create_table_sql << "," << FLAGS_query_log_table_props;
-  }
-
-  create_table_sql << ")";
-
-  RETURN_IF_ERROR(server->ExecuteIgnoreResults(FLAGS_workload_mgmt_user,
-      create_table_sql.str(), insert_query_opts, false));
-
-  insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "false";
-
-  LOG(INFO) << "Completed " << table_name << " initialization. write_interval=\"" <<
-      FLAGS_query_log_write_interval_s << "s\"";
-
-  return Status::OK();
-} // function SetupTable
 
 /// Iterates through the list of field in `FIELDS_PARSERS` executing each parser for the
 /// given `QueryStateExpanded` object. This function builds the `FieldParserContext`
@@ -205,23 +119,6 @@ size_t ImpalaServer::NumLiveQueries() {
   std::lock_guard<std::mutex> l(completed_queries_lock_);
   return live_queries + completed_queries_.size();
 }
-
-Status ImpalaServer::InitWorkloadManagement() {
-  // Verify FIELD_DEFINITIONS includes all QueryTableColumns.
-  DCHECK_EQ(_TQueryTableColumn_VALUES_TO_NAMES.size(), FIELD_DEFINITIONS.size());
-  for (const auto& field : FIELD_DEFINITIONS) {
-    // Verify all fields match their column position.
-    DCHECK_EQ(FIELD_DEFINITIONS[field.db_column].db_column, field.db_column);
-  }
-
-  if (FLAGS_enable_workload_mgmt) {
-    return Thread::Create("impala-server", "completed-queries",
-      bind<void>(&ImpalaServer::CompletedQueriesThread, this),
-      &completed_queries_thread_);
-  }
-
-  return Status::OK();
-} // ImpalaServer::InitWorkloadManagement
 
 void ImpalaServer::ShutdownWorkloadManagement() {
   unique_lock<mutex> l(completed_queries_threadstate_mu_);
@@ -312,42 +209,15 @@ static string get_insert_prefix(const string& table_name) {
   StringStreamPop fields;
   fields << "INSERT INTO " << table_name << "(";
   for (const auto& field : FIELD_DEFINITIONS) {
-    fields << GetColumnName(field) << ",";
+    fields << field.FormattedColName() << ",";
   }
   fields.move_back();
   fields << ") VALUES ";
   return fields.str();
 }
 
-void ImpalaServer::CompletedQueriesThread() {
-  {
-    lock_guard<mutex> l(completed_queries_threadstate_mu_);
-    completed_queries_thread_state_ = INITIALIZING;
-  }
-
-  // Setup default query options.
-  insert_query_opts[TImpalaQueryOptions::TIMEZONE] = "UTC";
-  insert_query_opts[TImpalaQueryOptions::QUERY_TIMEOUT_S] = std::to_string(
-      FLAGS_query_log_write_timeout_s < 1 ?
-      FLAGS_query_log_write_interval_s : FLAGS_query_log_write_timeout_s);
-  if (!FLAGS_query_log_request_pool.empty()) {
-    insert_query_opts[TImpalaQueryOptions::REQUEST_POOL] = FLAGS_query_log_request_pool;
-  }
-
-  // Fully qualified table name based on startup flags.
-  const string log_table_name = StrCat(DB, ".", FLAGS_query_log_table_name);
-
-  // Non-values portion of the completed queries insert dml. Does not change across
-  // queries.
-  _insert_dml = get_insert_prefix(log_table_name);
-
-  // The initialization code only works when run in a separate thread for reasons unknown.
-  ABORT_IF_ERROR(SetupDb(internal_server_.get()));
-  ABORT_IF_ERROR(SetupTable(internal_server_.get(), log_table_name));
-  std::string live_table_name = to_string(TSystemTableName::IMPALA_QUERY_LIVE);
-  boost::algorithm::to_lower(live_table_name);
-  ABORT_IF_ERROR(SetupTable(internal_server_.get(),
-      StrCat(DB, ".", live_table_name), true));
+void ImpalaServer::WorkloadManagementWorker(
+    InternalServer::QueryOptionMap& insert_query_opts, const string log_table_name) {
 
   {
     lock_guard<mutex> l(completed_queries_threadstate_mu_);
@@ -364,6 +234,10 @@ void ImpalaServer::CompletedQueriesThread() {
     ABORT_IF_ERROR(completed_queries_ticker_->Start("impala-server",
         "completed-queries-ticker"));
   }
+
+  // Non-values portion of the completed queries insert dml. Does not change across
+  // queries.
+  _insert_dml = get_insert_prefix(log_table_name);
 
   while (true) {
     // Exit this thread if a shutdown was initiated.
@@ -504,7 +378,7 @@ void ImpalaServer::CompletedQueriesThread() {
       completed_queries_lock_.unlock();
     }
   }
-} // ImpalaServer::CompletedQueriesThread
+} // ImpalaServer::WorkloadManagementWorker
 
 vector<shared_ptr<QueryStateExpanded>> ImpalaServer::GetCompletedQueries() {
   lock_guard<mutex> l(completed_queries_lock_);

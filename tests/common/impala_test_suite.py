@@ -1287,6 +1287,19 @@ class ImpalaTestSuite(BaseTestSuite):
     return self.assert_log_contains(
         "impalad", level, line_regex, expected_count, timeout_s, dry_run)
 
+  def assert_all_impalad_log_contains(self, level, line_regex, expected_count=1,
+      timeout_s=6, dry_run=False):
+    """
+    Convenience wrapper around assert_log_contains for impalad logs on all daemons.
+    """
+    for i in range(0, len(self.cluster.impalads)):
+      daemon_name = "impalad_node{}".format(i)
+      if i == 0:
+        daemon_name = "impalad"
+
+      self.assert_log_contains(
+        daemon_name, level, line_regex, expected_count, timeout_s, dry_run)
+
   def assert_catalogd_log_contains(self, level, line_regex, expected_count=1,
       timeout_s=6, dry_run=False):
     """
