@@ -29,7 +29,6 @@ import org.apache.impala.catalog.StructField;
 import org.apache.impala.catalog.StructType;
 import org.apache.impala.catalog.Type;
 import org.apache.impala.catalog.VirtualColumn;
-import org.apache.impala.catalog.VirtualTable;
 import org.apache.impala.catalog.iceberg.IcebergMetadataTable;
 import org.apache.impala.thrift.TVirtualColumnType;
 import org.apache.impala.util.AcidUtils;
@@ -440,20 +439,36 @@ public class Path {
     return null;
   }
 
-  public List<String> getFullyQualifiedRawPath() {
+  /**
+   * Builds a {@link List} containing the individual parts of this path.
+   *
+   * @param preferAlias {@code boolean} specifying if a path that represents an alias
+   *                    should use that alias in the return or if the alias should be
+   *                    resolved to its actual db, table, and column.
+   *
+   * @return {@link List} of {@link String}s with each element of the list containing an
+   *         individual piece of the path. Element {@code 0} contains the database,
+   *         element {@code 1} contains the table, and all elements after contain the
+   *         remaining pieces of the path.
+   */
+  public List<String> getFullyQualifiedRawPath(boolean preferAlias) {
     Preconditions.checkState(rootTable_ != null || rootDesc_ != null);
     List<String> result = Lists.newArrayListWithCapacity(rawPath_.size() + 2);
-    if (rootDesc_ != null) {
+    if (rootDesc_ != null && (preferAlias || rootTable_ == null)) {
       result.addAll(Lists.newArrayList(rootDesc_.getAlias().split("\\.")));
     } else {
       result.add(rootTable_.getDb().getName());
       result.add(rootTable_.getName());
-      if (rootTable_ instanceof VirtualTable) {
+      if (rootTable_ instanceof IcebergMetadataTable) {
         result.add(((IcebergMetadataTable)rootTable_).getMetadataTableName());
       }
     }
     result.addAll(rawPath_);
     return result;
+  }
+
+  public List<String> getFullyQualifiedRawPath() {
+    return getFullyQualifiedRawPath(true);
   }
 
   /**
