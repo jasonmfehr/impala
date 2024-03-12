@@ -29,7 +29,6 @@ import org.apache.impala.catalog.StructField;
 import org.apache.impala.catalog.StructType;
 import org.apache.impala.catalog.Type;
 import org.apache.impala.catalog.VirtualColumn;
-import org.apache.impala.catalog.VirtualTable;
 import org.apache.impala.catalog.iceberg.IcebergMetadataTable;
 import org.apache.impala.thrift.TVirtualColumnType;
 import org.apache.impala.util.AcidUtils;
@@ -440,20 +439,24 @@ public class Path {
     return null;
   }
 
-  public List<String> getFullyQualifiedRawPath() {
+  public List<String> getFullyQualifiedRawPath(boolean preferAlias) {
     Preconditions.checkState(rootTable_ != null || rootDesc_ != null);
     List<String> result = Lists.newArrayListWithCapacity(rawPath_.size() + 2);
-    if (rootDesc_ != null) {
+    if (rootDesc_ != null && (preferAlias || rootTable_ == null)) {
       result.addAll(Lists.newArrayList(rootDesc_.getAlias().split("\\.")));
     } else {
       result.add(rootTable_.getDb().getName());
       result.add(rootTable_.getName());
-      if (rootTable_ instanceof VirtualTable) {
+      if (rootTable_ instanceof IcebergMetadataTable) {
         result.add(((IcebergMetadataTable)rootTable_).getMetadataTableName());
       }
     }
     result.addAll(rawPath_);
     return result;
+  }
+
+  public List<String> getFullyQualifiedRawPath() {
+    return getFullyQualifiedRawPath(true);
   }
 
   /**

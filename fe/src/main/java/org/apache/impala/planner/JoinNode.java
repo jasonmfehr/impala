@@ -252,6 +252,12 @@ public abstract class JoinNode extends PlanNode {
     assignedConjuncts_ = analyzer.getAssignedConjuncts();
     otherJoinConjuncts_ = Expr.substituteList(otherJoinConjuncts_,
         getCombinedChildSmap(), analyzer, false);
+
+    List<SlotRef> slotRefs = new ArrayList<>();
+    for (Expr e : getConjuncts()) { e.collect(SlotRef.class, slotRefs); }
+    for (Expr e : getOtherJoinConjuncts()) { e.collect(SlotRef.class, slotRefs); }
+    for (Expr e : getEqJoinConjuncts()) { e.collect(SlotRef.class, slotRefs); }
+    analyzer.addJoinColumns(slotRefs.stream().map(SlotRef::getResolvedPath));
   }
 
   /**

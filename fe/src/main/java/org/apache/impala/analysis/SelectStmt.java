@@ -373,6 +373,39 @@ public class SelectStmt extends QueryStmt {
 
       buildColumnLineageGraph();
       analyzer_.setSimpleLimitStatus(checkSimpleLimitStmt());
+      registerReferencedColumns();
+    }
+
+    private void registerReferencedColumns() {
+      // Register all columns referenced in this statement, starting with select clause.
+      // Joins will be added during planning.
+      List<SlotRef> slotRefs = new ArrayList<>();
+      Stream<SelectListItem> nonStarItems =
+          selectList_.getItems().stream().filter(elem -> !elem.isStar());
+      nonStarItems.forEach(item -> item.getExpr().collect(SlotRef.class, slotRefs));
+      analyzer_.addSelectColumns(Stream.concat(
+          slotRefs.stream().map(this::slotRefToResolvedPath).filter(path -> path != null),
+          starExpandedPaths()));
+      slotRefs.clear();
+      // Collect where clause.
+      analyzer_.addWhereColumns(whereClause_);
+      // Collect aggregates.
+      if (havingClause_ != null) {
+        havingClause_.collect(SlotRef.class, slotRefs);
+      }
+      if (groupingExprs_ != null) {
+        groupingExprs_.stream().forEach(expr -> expr.collect(SlotRef.class, slotRefs));
+      }
+      analyzer_.addAggregateColumns(slotRefs.stream()
+          .map(this::slotRefToResolvedPath).filter(path -> path != null));
+      slotRefs.clear();
+      // Collect order by clauses.
+      if (orderByElements_ != null) {
+        orderByElements_.forEach(obe -> obe.getExpr().collect(SlotRef.class, slotRefs));
+        analyzer_.addOrderByColumns(slotRefs.stream()
+            .map(this::slotRefToResolvedPath).filter(path -> path != null));
+        slotRefs.clear();
+      }
     }
 
     /** Ensure that embedded (struct member) expressions share the tuple memory of their
@@ -389,14 +422,7 @@ public class SelectStmt extends QueryStmt {
      * necessary and simply registering struct paths before other paths is not enough.
      */
     private void registerStructSlotRefPathsWithAnalyzer() throws AnalysisException {
-      Stream<Path> nonStarPaths = collectNonStarPaths();
-      Stream<Path> starExpandedPaths = starExpandedPaths_.values().stream()
-          // Get a flat list of paths (and booleans) belonging to all star items.
-          .flatMap(pathList -> pathList.stream())
-          // Discard the booleans and keep only the actual paths.
-          .map((StarExpandedPathInfo pathInfo)  -> pathInfo.getExpandedPath());
-
-      Stream<Path> allPaths = Stream.concat(nonStarPaths, starExpandedPaths);
+      Stream<Path> allPaths = Stream.concat(collectNonStarPaths(), starExpandedPaths());
       List<Path> structPaths = allPaths
           .filter(path -> path.destType().isStructType())
           .collect(Collectors.toList());
@@ -408,6 +434,14 @@ public class SelectStmt extends QueryStmt {
       for (Path p : structPaths) {
         analyzer_.registerSlotRef(p);
       }
+    }
+
+    private Stream<Path> starExpandedPaths() {
+      return starExpandedPaths_.values().stream()
+          // Get a flat list of paths (and booleans) belonging to all star items.
+          .flatMap(pathList -> pathList.stream())
+          // Discard the booleans and keep only the actual paths.
+          .map((StarExpandedPathInfo pathInfo)  -> pathInfo.getExpandedPath());
     }
 
     private Stream<Path> collectNonStarPaths() {

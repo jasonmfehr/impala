@@ -35,7 +35,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.impala.analysis.Path.PathType;
@@ -551,6 +553,21 @@ public class Analyzer {
     // accesses to catalog objects
     // TODO: This can be inferred from privilegeReqs. They should be coalesced.
     public Set<TAccessEvent> accessEvents = new HashSet<>();
+
+    // Set of columns used in a select list.
+    private final Set<String> selectColumns = new TreeSet<>();
+
+    // Set of columns used in a where predicate.
+    private final Set<String> whereColumns = new TreeSet<>();
+
+    // Set of columns used in a join clause.
+    private final Set<String> joinColumns = new TreeSet<>();
+
+    // Set of columns used in aggregation, group by and/or having clauses.
+    private final Set<String> aggregateColumns = new TreeSet<>();
+
+    // Set of columns used in an order by clause.
+    private final Set<String> orderByColumns = new TreeSet<>();
 
     // Tracks all warnings (e.g. non-fatal errors) that were generated during analysis.
     // These are passed to the backend and eventually propagated to the shell. Maps from
@@ -4534,6 +4551,57 @@ public class Analyzer {
       processedTblRefs.add(tableRef);
     }
     return isSimplified;
+  }
+
+  private void addColumnsTo(Set<String> dest, Stream<Path> paths) {
+    paths.forEach(p -> dest.add(String.join(".", p.getFullyQualifiedRawPath(false))));
+  }
+
+  public void addSelectColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.selectColumns, paths);
+  }
+
+  public Set<String> selectColumns() {
+    return globalState_.selectColumns;
+  }
+
+  public void addWhereColumns(Expr where) {
+    if (where == null) {
+      return;
+    }
+
+    List<SlotRef> slotRefs = new ArrayList<>();
+    where.collectAll(Predicates.instanceOf(SlotRef.class), slotRefs);
+    addColumnsTo(globalState_.whereColumns,
+        slotRefs.stream().map(SlotRef::getResolvedPath));
+  }
+
+  public Set<String> whereColumns() {
+    return globalState_.whereColumns;
+  }
+
+  public void addJoinColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.joinColumns, paths);
+  }
+
+  public Set<String> joinColumns() {
+    return globalState_.joinColumns;
+  }
+
+  public void addAggregateColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.aggregateColumns, paths);
+  }
+
+  public Set<String> aggregateColumns() {
+    return globalState_.aggregateColumns;
+  }
+
+  public void addOrderByColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.orderByColumns, paths);
+  }
+
+  public Set<String> orderByColumns() {
+    return globalState_.orderByColumns;
   }
 
    /**
