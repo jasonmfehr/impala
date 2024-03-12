@@ -239,6 +239,8 @@ class Statestore : public CacheLineAligned {
   static const char* IMPALA_MEMBERSHIP_TOPIC;
   /// Topic tracking the state of admission control on all coordinators.
   static const char* IMPALA_REQUEST_QUEUE_TOPIC;
+  /// Topic coordinating the initialization of workload management on all coordinators.
+  static const char* IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
 
   int32_t port() { return thrift_server_->port(); }
 

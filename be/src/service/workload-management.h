@@ -22,12 +22,15 @@
 #include <string>
 #include <utility>
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include <gflags/gflags.h>
 
 #include "gen-cpp/SystemTables_types.h"
 #include "gen-cpp/Types_types.h"
+#include "kudu/util/version_util.h"
 #include "service/query-state-record.h"
 #include "util/string-util.h"
+#include "util/version-util.h"
 
 namespace impala {
 
@@ -44,6 +47,10 @@ struct FieldParserContext {
       StringStreamPop& s) : record(rec), cluster_id(cluster_id), sql(s) {}
 }; // struct FieldParserContext
 
+/// Constants for all possible schema versions.
+const kudu::Version VERSION_1_0_0 = constructVersion(1, 0, 0);
+const kudu::Version VERSION_1_1_0 = constructVersion(1, 1, 0);
+
 /// Type of a function that retrieves one piece of information from the context and writes
 /// it to the SQL statement that inserts rows into the completed queries table.
 using FieldParser = void (*)(FieldParserContext&);
@@ -51,21 +58,50 @@ using FieldParser = void (*)(FieldParserContext&);
 /// Contains all necessary information for the definition and parsing of a single field
 /// in workload management.
 struct FieldDefinition {
-  const TQueryTableColumn::type db_column;
-  const TPrimitiveType::type db_column_type;
-  const FieldParser parser;
-  const int16_t precision;
-  const int16_t scale;
+  public:
+    // Name of the database column.
+    const TQueryTableColumn::type db_column;
 
-  FieldDefinition(const TQueryTableColumn::type db_col,
-      const TPrimitiveType::type db_col_type, const FieldParser fp,
-      const int16_t precision = 0, const int16_t scale = 0) :
-      db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
-      parser(std::move(fp)), precision(precision), scale(scale) {}
+    // Type of the database column.
+    const TPrimitiveType::type db_column_type;
+
+    // Function that will extract the column value from the provided FieldParseContext and
+    // will write that value into a sql statement,
+    const FieldParser parser;
+
+    // Specifies the first schema version where the column appears.
+    const kudu::Version schema_version;
+
+    // When column type is decimal, specifies the precision and scale for the column.
+    const int16_t precision;
+    const int16_t scale;
+
+    FieldDefinition(const TQueryTableColumn::type db_col,
+        const TPrimitiveType::type db_col_type, const FieldParser fp,
+        const kudu::Version schema_ver, const int16_t precision = 0,
+        const int16_t scale = 0) :
+        db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
+        parser(std::move(fp)), schema_version(std::move(schema_ver)),
+        precision(precision), scale(scale) {
+      SetFormattedColName();
+    }
+
+    const std::string& FormattedColName() const {
+      return formatted_col_name;
+    }
+
+  private:
+    std::string formatted_col_name;
+
+    void SetFormattedColName() {
+      std::string column_name = to_string(db_column);
+      boost::algorithm::to_lower(column_name);
+      formatted_col_name = std::move(column_name);
+    }
 }; // struct FieldDefinition
 
 /// Number of query table columns
-constexpr size_t NumQueryTableColumns = TQueryTableColumn::TABLES_QUERIED + 1;
+constexpr size_t NumQueryTableColumns = TQueryTableColumn::ORDERBY_COLUMNS + 1;
 
 /// This list is the main data structure for workload management. Each list entry
 /// contains the name of a column in the completed queries table, the type of that column,

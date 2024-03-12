@@ -46,6 +46,10 @@ bool Version::operator==(const Version& other) const {
          this->extra == other.extra;
 }
 
+bool Version::operator!=(const Version& other) const {
+  return !(*this == other);
+}
+
 string Version::ToString() const {
   return extra.empty()
       ? Substitute("$0.$1.$2", major, minor, maintenance)

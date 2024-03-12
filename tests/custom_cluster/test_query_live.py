@@ -37,16 +37,12 @@ class TestQueryLive(CustomClusterTestSuite):
 
   def setup_method(self, method):
     super(TestQueryLive, self).setup_method(method)
-    create_match = self.assert_impalad_log_contains("INFO", r'\]\s+(\w+:\w+)\]\s+'
-        r'Analyzing query: CREATE EXTERNAL TABLE IF NOT EXISTS sys.impala_query_live',
-        timeout_s=60)
-    self.assert_impalad_log_contains("INFO", r'Query successfully unregistered: '
-        r'query_id={}'.format(create_match.group(1)),
-        timeout_s=60)
+    self.assert_impalad_log_contains("INFO",
+        r'Completed workload management initialization', timeout_s=120)
 
   def assert_describe_extended(self):
     describe_ext_result = self.execute_query('describe extended sys.impala_query_live')
-    assert len(describe_ext_result.data) == 80
+    assert len(describe_ext_result.data) == 85
     system_table_re = re.compile(r'__IMPALA_SYSTEM_TABLE\s+true')
     assert list(filter(system_table_re.search, describe_ext_result.data))
     external_re = re.compile(r'EXTERNAL\s+TRUE')
@@ -142,7 +138,7 @@ class TestQueryLive(CustomClusterTestSuite):
 
     # describe query
     describe_result = self.execute_query('describe sys.impala_query_live')
-    assert len(describe_result.data) == 49
+    assert len(describe_result.data) == 54
     self.assert_describe_extended()
 
     # show create table

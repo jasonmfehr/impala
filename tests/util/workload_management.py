@@ -19,11 +19,13 @@ from __future__ import absolute_import, division, print_function
 
 import re
 import requests
+import os
 
 from datetime import datetime
+
+from SystemTables.ttypes import TQueryTableColumn
 from tests.util.assert_time import assert_time_str, convert_to_milliseconds
 from tests.util.memory import assert_byte_str, convert_to_bytes
-from SystemTables.ttypes import TQueryTableColumn
 
 DEDICATED_COORD_SAFETY_BUFFER_BYTES = 104857600
 
@@ -71,7 +73,6 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert len(sql_results.data) == 1, "did not find query in completed queries table"
 
   # Assert the expected columns were included.
-  assert len(sql_results.data) == 1
   assert len(sql_results.column_labels) == len(TQueryTableColumn._VALUES_TO_NAMES)
   data = sql_results.data[0].split("\t")
   assert len(data) == len(sql_results.column_labels)
@@ -572,6 +573,46 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
     assert tables is not None
     assert value == tables.group(1)
 
+  # Select Columns
+  value = column_val(TQueryTableColumn.SELECT_COLUMNS)
+  columns = re.search(r'\n\s+Select Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # Where Columns
+  value = column_val(TQueryTableColumn.WHERE_COLUMNS)
+  columns = re.search(r'\n\s+Where Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # Join Columns
+  value = column_val(TQueryTableColumn.JOIN_COLUMNS)
+  columns = re.search(r'\n\s+Join Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # Aggregate Columns
+  value = column_val(TQueryTableColumn.AGGREGATE_COLUMNS)
+  columns = re.search(r'\n\s+Aggregate Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # OrderBy Columns
+  value = column_val(TQueryTableColumn.ORDERBY_COLUMNS)
+  columns = re.search(r'\n\s+OrderBy Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
   # Assert all entries have been tested and added to ret_data
   for i in range(len(TQueryTableColumn._VALUES_TO_NAMES)):
     assert TQueryTableColumn._VALUES_TO_NAMES[i] in ret_data
@@ -612,3 +653,41 @@ def assert_scan_node_metrics(re_metric, profile_lines):
 
   return metrics
 # function assert_scan_node_metrics
+
+
+def assert_csv_col(client, query_tbl, col, query_id, expected_list, db="tpcds"):
+  """Asserts that a single column that contains a string of comma separated values
+     matches a list of expected values. Order of elements does not matter."""
+
+  print("Query Id: {0}".format(query_id))
+
+  # Force Impala to process the inserts to the completed queries table.
+  if query_tbl != 'sys.impala_query_live':
+    client.execute("refresh " + query_tbl)
+
+  # Assert the query was written correctly to the query log table.
+  sql_results = client.execute("select * from {0} where query_id='{1}'".format(
+      query_tbl, query_id))
+  assert sql_results.success
+  assert len(sql_results.data) == 1, "did not find query '{}' in completed queries " \
+      "table".format(query_id)
+
+  data = sql_results.data[0].split("\t")
+  actual = []
+  if len(data[col]) > 0:
+    actual = data[col].split(",")
+
+  # Prepend the database to the beginning of each item in the expected_list.
+  if db is not None:
+    expected_list = list(map(lambda item: "{}.{}".format(db, item), expected_list))
+
+  assert len(actual) == len(expected_list), "Column '{}' for query '{}' had different "\
+      "lengths between the actual and expected lists:\n  actual   (length {}): {}\n  " \
+      "expected (length {}): {}".format(TQueryTableColumn._VALUES_TO_NAMES[col], query_id,
+      len(actual), sorted(actual), len(expected_list), sorted(expected_list))
+
+  for expected in expected_list:
+    assert expected in actual, "Column '{}' for query '{}' was missing expected value " \
+        "'{}'\n  actual   (length {}): {}\n  expected (length {}): {}" \
+        .format(TQueryTableColumn._VALUES_TO_NAMES[col], query_id, expected, len(actual),
+        sorted(actual), len(expected_list), sorted(expected_list))

@@ -21,6 +21,7 @@
 #include "common/status.h"
 #include "gen-cpp/ErrorCodes_types.h"
 #include "gen-cpp/Query_types.h"
+#include "gen-cpp/TCLIService_types.h"
 #include "gen-cpp/Types_types.h"
 #include "rpc/thrift-server.h"
 #include "runtime/query-driver.h"
@@ -30,6 +31,7 @@
 #include "util/uid-util.h"
 
 using namespace std;
+using namespace apache::hive::service::cli::thrift;
 
 namespace impala {
 
@@ -146,6 +148,29 @@ Status ImpalaServer::ExecuteAndFetchAllText(const std::string& user_name,
   return result;
 } // ImpalaServer::ExecuteAndFetchAllText
 
+Status ImpalaServer::ExecuteAndFetchAllHS2(const std::string& user_name,
+    const std::string& sql, vector<TRow>& results, const QueryOptionMap& query_opts,
+    const bool persist_in_db, results_columns* columns) {
+  TUniqueId session_id;
+  TUniqueId internal_query_id;
+  Status result;
+
+  result = SubmitAndWait(user_name, sql, session_id, internal_query_id, query_opts,
+      persist_in_db);
+
+  if (result.ok()) {
+    result = FetchAllRowsHS2(internal_query_id, results, columns);
+  }
+
+  if (!UUIDEmpty(internal_query_id)) {
+    CloseQuery(internal_query_id);
+  }
+
+  CloseSession(session_id);
+
+  return result;
+} // ImpalaServer::ExecuteAndFetchAllHS2
+
 Status ImpalaServer::SubmitAndWait(const string& user_name, const string& sql,
     TUniqueId& new_session_id, TUniqueId& new_query_id, const QueryOptionMap& query_opts,
     const bool persist_in_db) {
@@ -257,6 +282,57 @@ Status ImpalaServer::FetchAllRows(const TUniqueId& query_id, query_results& resu
 
   return Status::OK();
 } // ImpalaServer::FetchAllRows
+
+Status ImpalaServer::FetchAllRowsHS2(const TUniqueId& query_id,
+    vector<TRow>& query_results, results_columns* columns) {
+  const TResultSetMetadata* results_metadata;
+
+  QueryHandle query_handle;
+  RETURN_IF_ERROR(GetActiveQueryHandle(query_id, &query_handle));
+
+  {
+    lock_guard<mutex> l1(*query_handle->fetch_rows_lock());
+    lock_guard<mutex> l2(*query_handle->lock());
+
+    if (query_handle->num_rows_fetched() == 0) {
+      query_handle->set_fetched_rows();
+    }
+
+    results_metadata = query_handle->result_metadata();
+
+    // populate column vector if provided by the user
+    if (columns != nullptr) {
+      for (int i = 0; i < results_metadata->columns.size(); i++) {
+        // TODO: As of today, the ODBC driver does not support boolean and timestamp data
+        // type but it should. This is tracked by ODBC-189. We should verify that our
+        // boolean and timestamp type are correctly recognized when ODBC-189 is closed.
+        // TODO: Handle complex types.
+        const TColumnType& type = results_metadata->columns[i].columnType;
+        columns->emplace_back(make_pair(results_metadata->columns[i].columnName,
+            ColumnTypeToBeeswaxTypeString(type)));
+      }
+    }
+  }
+
+  int64_t block_wait_time = 30000000;
+  while (!query_handle->eos()) {
+    lock_guard<mutex> l1(*query_handle->fetch_rows_lock());
+    lock_guard<mutex> l2(*query_handle->lock());
+
+    QueryResultSet* result_set;
+    TRowSet row_set;
+
+    result_set = QueryResultSet::CreateHS2ResultSet(
+        TProtocolVersion::HIVE_CLI_SERVICE_PROTOCOL_V1, *results_metadata, &row_set,
+        false, 0);
+
+    RETURN_IF_ERROR(query_handle->FetchRows(10, result_set, block_wait_time));
+    query_results.insert(query_results.cend(), row_set.rows.cbegin(),
+        row_set.rows.cend());
+  }
+
+  return Status::OK();
+} // ImpalaServer::FetchAllRowsHS2
 
 void ImpalaServer::CloseQuery(const TUniqueId& query_id) {
   QueryHandle query_handle;

@@ -369,6 +369,32 @@ Status QueryScanner::MaterializeNextTuple(
           RETURN_IF_ERROR(WriteStringSlot(PrintTableList(query.tables), pool, slot));
         }
         break;
+      case TQueryTableColumn::SELECT_COLUMNS:
+        if (!query.select_columns.empty()) {
+          RETURN_IF_ERROR(WriteStringSlot(join(query.select_columns, ","), pool, slot));
+        }
+        break;
+      case TQueryTableColumn::WHERE_COLUMNS:
+        if (!query.where_columns.empty()) {
+          RETURN_IF_ERROR(WriteStringSlot(join(query.where_columns, ","), pool, slot));
+        }
+        break;
+      case TQueryTableColumn::JOIN_COLUMNS:
+        if (!query.join_columns.empty()) {
+          RETURN_IF_ERROR(WriteStringSlot(join(query.join_columns, ","), pool, slot));
+        }
+        break;
+      case TQueryTableColumn::AGGREGATE_COLUMNS:
+        if (!query.aggregate_columns.empty()) {
+          RETURN_IF_ERROR(
+              WriteStringSlot(join(query.aggregate_columns, ","), pool, slot));
+        }
+        break;
+      case TQueryTableColumn::ORDERBY_COLUMNS:
+        if (!query.orderby_columns.empty()) {
+          RETURN_IF_ERROR(WriteStringSlot(join(query.orderby_columns, ","), pool, slot));
+        }
+        break;
       default:
         DCHECK(false) << "Unknown column position " << slot_desc->col_pos();
     }

@@ -35,7 +35,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.impala.analysis.Path.PathType;
@@ -551,6 +553,21 @@ public class Analyzer {
     // accesses to catalog objects
     // TODO: This can be inferred from privilegeReqs. They should be coalesced.
     public Set<TAccessEvent> accessEvents = new HashSet<>();
+
+    // Set of columns used in a select list.
+    private final Set<String> selectColumns = new TreeSet<>();
+
+    // Set of columns used in a where predicate.
+    private final Set<String> whereColumns = new TreeSet<>();
+
+    // Set of columns used in a join clause.
+    private final Set<String> joinColumns = new TreeSet<>();
+
+    // Set of columns used in aggregation, group by and/or having clauses.
+    private final Set<String> aggregateColumns = new TreeSet<>();
+
+    // Set of columns used in an order by clause.
+    private final Set<String> orderByColumns = new TreeSet<>();
 
     // Tracks all warnings (e.g. non-fatal errors) that were generated during analysis.
     // These are passed to the backend and eventually propagated to the shell. Maps from
@@ -4534,6 +4551,139 @@ public class Analyzer {
       processedTblRefs.add(tableRef);
     }
     return isSimplified;
+  }
+
+  /**
+   * Converts a {@link Path} to a dot delimited string while ignoring paths that represent
+   * an alias instead of an actual column. Dot delimited strings are added to the
+   * {@code dest} set if they represent an acutal column.
+   *
+   * @param dest  {@link Set} where the column will be added.
+   * @param paths {@link Stream} of paths that will be processed one-by-one into dot
+   *              delimited strings while skipping over columns that represent aliases.
+   */
+  private void addColumnsTo(Set<String> dest, Stream<Path> paths) {
+    paths.forEach(p -> {
+      if (p != null) {
+        List<String> pathParts = p.getFullyQualifiedRawPath(false);
+
+        // Ignore paths containing less than 3 elements since they point to an alias
+        // instead of an actual column.
+        if (pathParts.size() > 2) {
+          dest.add(String.join(".", pathParts));
+        }
+      }
+    });
+  }
+
+  /**
+   * Adds a {@link List} of {@link SlotRef}s to the specified destination set of columns.
+   * {@code slotRefs} will be resolved to their actual path and not the alias if they
+   * represent an alias.
+   *
+   * @param dest     {@link Set} containing a list of fully qualified columns. The
+   *                 specified {@code slotRefs} will be added to this set.
+   * @param slotRefs {@link List} of {@link SlotRef}s representing columns to add to the
+   *                 specified set.
+   */
+  private void addColumnsTo(Set<String> dest, List<SlotRef> slotRefs) {
+    slotRefs.forEach(slotRef -> {
+      if(slotRef.getDesc().getSourceExprs().isEmpty()) {
+        // Source expressions are empty, this SlotRef represents an actual column.
+        Path p = slotRef.getResolvedPath();
+        if (p != null) {
+            dest.add(String.join(".", p.getFullyQualifiedRawPath(false)));
+        }
+      } else {
+        // Source expressions are not empty, this SlotRef represents an alias that must be
+        // resolved to its actual path.
+        resolveActualPath(dest, slotRef);
+      }
+    });
+  }
+
+  /**
+   * Resolves an alias stored in a {@link SlotRef} to its actual path, and adds that
+   * actual path to the specified {@link Set}.
+   *
+   * @param columnsList {@link Set} containing a list of fully qualified columns. The
+   *                    resolved {@code slotRefs} will be added to this set.
+   * @param slotRef     {@link SlotRef} to resolve to its actual path.
+   */
+  private void resolveActualPath(Set<String> columnsList, SlotRef slotRef) {
+    slotRef.getDesc().getSourceExprs().stream().forEach(sourceExpr -> {
+      // Only certain types are applicable to columns. Only those types should be
+      // processed with other types being ignored should they be passed to this function.
+      if (sourceExpr instanceof SlotRef) {
+        SlotRef sourceSlotRef = (SlotRef)sourceExpr;
+        if (sourceSlotRef.getDesc().getSourceExprs().size() == 0) {
+          columnsList.add(String.join(".", sourceSlotRef.getResolvedPath().getCanonicalPath()));
+        } else {
+          resolveActualPath(columnsList, sourceSlotRef);
+        }
+      } else if (sourceExpr instanceof FunctionCallExpr
+          || sourceExpr instanceof CaseExpr
+          || sourceExpr instanceof ArithmeticExpr
+          || sourceExpr instanceof CastExpr) {
+        List<SlotRef> childSlotRefs = new ArrayList<>();
+        sourceExpr.collect(Predicates.instanceOf(SlotRef.class), childSlotRefs);
+        addColumnsTo(columnsList, childSlotRefs);
+      }
+    });
+  }
+
+  public void addSelectColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.selectColumns, paths);
+  }
+
+  public Set<String> selectColumns() {
+    return globalState_.selectColumns;
+  }
+
+  public void addWhereColumns(Expr where) {
+    if (where == null) {
+      return;
+    }
+
+    List<SlotRef> slotRefs = new ArrayList<>();
+    where.collectAll(Predicates.instanceOf(SlotRef.class), slotRefs);
+    addColumnsTo(globalState_.whereColumns, slotRefs);
+  }
+
+  public Set<String> whereColumns() {
+    return globalState_.whereColumns;
+  }
+
+  public void addJoinColumns(List<SlotRef> slotRefs) {
+    addColumnsTo(globalState_.joinColumns, slotRefs);
+  }
+
+  public Set<String> joinColumns() {
+    return globalState_.joinColumns;
+  }
+
+  public void addAggregateColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.aggregateColumns, paths);
+  }
+
+  public void addAggregateColumns(List<SlotRef> slotRefs) {
+    addColumnsTo(globalState_.aggregateColumns, slotRefs);
+  }
+
+  public Set<String> aggregateColumns() {
+    return globalState_.aggregateColumns;
+  }
+
+  public void addOrderByColumns(Stream<Path> paths) {
+    addColumnsTo(globalState_.orderByColumns, paths);
+  }
+
+  public void addOrderByColumns(List<SlotRef> slotRefs) {
+    addColumnsTo(globalState_.orderByColumns, slotRefs);
+  }
+
+  public Set<String> orderByColumns() {
+    return globalState_.orderByColumns;
   }
 
    /**
