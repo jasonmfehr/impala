@@ -129,6 +129,10 @@ class CatalogServer {
     return protocol_version_;
   }
 
+  // Initializes workload management by creating or upgrading the necessary database and
+  // tables.
+  Status InitWorkloadManagement();
+
  private:
   friend class CatalogServiceThriftIf;
 

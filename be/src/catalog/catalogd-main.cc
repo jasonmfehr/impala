@@ -101,6 +101,9 @@ int CatalogdMain(int argc, char** argv) {
   ABORT_IF_ERROR(server->Start());
   catalog_server.MarkServiceAsStarted();
   LOG(INFO) << "CatalogService started on port: " << FLAGS_catalog_service_port;
+
+  ABORT_IF_ERROR(catalog_server.InitWorkloadManagement());
+
   server->Join();
 
   return 0;
