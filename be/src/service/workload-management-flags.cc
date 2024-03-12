@@ -171,9 +171,5 @@ DEFINE_string_hidden(query_log_table_props, "", "Comma separated list of additio
     "query log table. Only applies when the table is being created. After table "
     "creation, this property does nothing");
 
-DEFINE_string_hidden(workload_mgmt_schema_version, "1.0.0", "Schema version of the "
-    "workload management table.");
-
-DEFINE_validator(workload_mgmt_schema_version, [](const char* name, const string& val) {
-  return !val.empty();
-});
+DEFINE_string_hidden(workload_mgmt_schema_version, "", "Schema version of the workload "
+    "management table. Empty value indicates the latest schema version should be used.");

@@ -50,17 +50,12 @@ class TestQueryLogTableBase(CustomClusterTestSuite):
   @classmethod
   def add_test_dimensions(cls):
     super(TestQueryLogTableBase, cls).add_test_dimensions()
-    cls.ImpalaTestMatrix.add_dimension(create_single_exec_option_dimension())
     cls.ImpalaTestMatrix.add_dimension(ImpalaTestDimension('protocol',
         cls.PROTOCOL_BEESWAX, cls.PROTOCOL_HS2))
 
   def setup_method(self, method):
     super(TestQueryLogTableBase, self).setup_method(method)
-    # These tests run very quickly and can actually complete before Impala has finished
-    # creating the completed queries table. Thus, to make these tests more robust, this
-    # code checks to make sure the table create has finished before returning.
-    self.assert_impalad_log_contains("INFO", r'Completed workload management '
-        r'initialization', timeout_s=120)
+    self.wait_for_wm_init_complete()
 
   def get_client(self, protocol):
     """Retrieves the default Impala client for the specified protocol. This client is

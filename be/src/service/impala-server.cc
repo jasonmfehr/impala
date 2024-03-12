@@ -3216,21 +3216,19 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
       hs2_http_server_->SetConnectionHandler(this);
     }
 
-    internal_server_ = shared_from_this();
-
     // Initialize workload management (if enabled).
     {
-      lock_guard<mutex> l(workload_mgmt_threadstate_mu_);
+      lock_guard<mutex> l(workload_mgmt_state_mu_);
 
       // Skip starting workload management if workload management is not enabled or the
       // coordinator shutdown has run before this code runs.
-      if (FLAGS_enable_workload_mgmt && workload_mgmt_thread_state_ == NOT_STARTED) {
-
+      if (FLAGS_enable_workload_mgmt
+          && workload_mgmt_state_ == WorkloadMgmtState::NOT_STARTED) {
         ABORT_IF_ERROR(Thread::Create("impala-server", "completed-queries",
           bind<void>(&ImpalaServer::InitWorkloadManagement, this),
         &workload_management_thread_));
 
-        workload_mgmt_thread_state_ = STARTED;
+        workload_mgmt_state_ = WorkloadMgmtState::INITIALIZING;
       }
     }
   }
@@ -3457,9 +3455,7 @@ void ImpalaServer::GetAllConnectionContexts(
     external_fe_server_->GetConnectionContextList(connection_contexts);
   }
   // Get the connection contexts of the internal server
-  if (internal_server_.get()) {
-    internal_server_->GetConnectionContextList(connection_contexts);
-  }
+  GetConnectionContextList(connection_contexts);
 }
 
 TUniqueId ImpalaServer::RandomUniqueID() {

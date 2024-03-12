@@ -247,6 +247,12 @@ class CustomClusterTestSuite(ImpalaTestSuite):
     else:
       super(CustomClusterTestSuite, self).teardown_class()
 
+  def wait_for_wm_init_complete(self, timeout_s=120):
+    """Waits for the workload management initialization process to complete on all
+        impalad coordinator instances."""
+    self.assert_all_coords_log_contains("INFO", r'Completed workload management '
+        r'initialization', timeout_s=timeout_s)
+
   @classmethod
   def _stop_impala_cluster(cls):
     # TODO: Figure out a better way to handle case where processes are just starting
@@ -316,7 +322,8 @@ class CustomClusterTestSuite(ImpalaTestSuite):
                             default_query_options=None,
                             statestored_timeout_s=60,
                             impalad_timeout_s=60,
-                            ignore_pid_on_log_rotation=False):
+                            ignore_pid_on_log_rotation=False,
+                            wait_for_backends=True):
     cls.impala_log_dir = impala_log_dir
     # We ignore TEST_START_CLUSTER_ARGS here. Custom cluster tests specifically test that
     # certain custom startup arguments work and we want to keep them independent of dev
@@ -378,8 +385,9 @@ class CustomClusterTestSuite(ImpalaTestSuite):
       if "--enable_catalogd_ha" in options:
         expected_subscribers += 1
 
-    statestored.service.wait_for_live_subscribers(expected_subscribers,
-                                                  timeout=statestored_timeout_s)
-    for impalad in cls.cluster.impalads:
-      impalad.service.wait_for_num_known_live_backends(expected_num_impalads,
-                                                       timeout=impalad_timeout_s)
+    if wait_for_backends:
+      statestored.service.wait_for_live_subscribers(expected_subscribers,
+                                                    timeout=statestored_timeout_s)
+      for impalad in cls.cluster.impalads:
+        impalad.service.wait_for_num_known_live_backends(expected_num_impalads,
+                                                         timeout=impalad_timeout_s)

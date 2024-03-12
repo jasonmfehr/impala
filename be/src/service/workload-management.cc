@@ -35,6 +35,7 @@
 #include "gen-cpp/Frontend_types.h"
 #include "gen-cpp/SystemTables_types.h"
 #include "gen-cpp/Types_types.h"
+#include "kudu/util/version_util.h"
 #include "runtime/query-driver.h"
 #include "service/client-request-state.h"
 #include "service/impala-server.h"
@@ -50,6 +51,7 @@
 
 using namespace impala;
 using namespace std;
+using kudu::Version;
 
 DECLARE_bool(enable_workload_mgmt);
 DECLARE_int32(query_log_write_interval_s);
@@ -62,6 +64,16 @@ DECLARE_string(cluster_id);
 
 namespace impala {
 
+/// Queue of completed queries and the lock to synchronize access to it.
+static list<CompletedQuery> _completed_queries;
+static mutex _completed_queries_lock;
+
+/// Coordinate periodic execution of the completed queries queue processing thread.
+static condition_variable _completed_queries_cv;
+
+/// Coordinate shutdown of the completed queries queue processing thread.
+static condition_variable _completed_queries_shutdown_cv;
+
 /// Determine if the maximum number of queued completed queries has been exceeded.
 ///
 /// Return:
@@ -69,9 +81,9 @@ namespace impala {
 ///           limit has been exceeded.
 ///   `false` Either there is no max number of queued completed queries or there is a
 ///           limit that has not been exceeded.
-static inline bool MaxRecordsExceeded(size_t record_count) noexcept {
+static inline bool _maxRecordsExceeded(size_t record_count) noexcept {
   return FLAGS_query_log_max_queued > 0 && record_count > FLAGS_query_log_max_queued;
-} // function MaxRecordsExceeded
+} // function _maxRecordsExceeded
 
 /// Iterates through the list of field in `FIELDS_PARSERS` executing each parser for the
 /// given `QueryStateExpanded` object. This function builds the `FieldParserContext`
@@ -84,37 +96,40 @@ static inline bool MaxRecordsExceeded(size_t record_count) noexcept {
 ///
 /// Return:
 ///   `string` - Contains the insert sql statement.
-static const string QueryStateToSql(const QueryStateExpanded* rec) noexcept {
+static const string _queryStateToSql(const QueryStateExpanded* rec,
+    const Version target_schema_version) noexcept {
   DCHECK(rec != nullptr);
   StringStreamPop sql;
-  FieldParserContext ctx(rec, FLAGS_cluster_id, sql);
+  FieldParserContext ctx(rec, FLAGS_cluster_id, target_schema_version, sql);
 
   sql << "(";
 
   for (const auto& field : FIELD_DEFINITIONS) {
-    field.parser(ctx);
-    sql << ",";
+    if (field.Include(target_schema_version)) {
+      field.parser(ctx);
+      sql << ",";
+    }
   }
 
   sql.move_back();
   sql << ")";
 
   return sql.str();
-} // function QueryStateToSql
+} // function _queryStateToSql
 
 size_t ImpalaServer::NumLiveQueries() {
   size_t live_queries = query_driver_map_.Count();
-  std::lock_guard<std::mutex> l(completed_queries_lock_);
-  return live_queries + completed_queries_.size();
+  lock_guard<mutex> l(_completed_queries_lock);
+  return live_queries + _completed_queries.size();
 }
 
 void ImpalaServer::ShutdownWorkloadManagement() {
-  unique_lock<mutex> l(workload_mgmt_threadstate_mu_);
+  unique_lock<mutex> l(workload_mgmt_state_mu_);
 
   // Handle the situation where this function runs before the workload management process
   // has been started and thus workload_management_thread_ holds a nullptr.
-  if (workload_mgmt_thread_state_ == NOT_STARTED) {
-    workload_mgmt_thread_state_ = SHUTDOWN;
+  if (workload_mgmt_state_ == WorkloadMgmtState::NOT_STARTED) {
+    workload_mgmt_state_ = WorkloadMgmtState::SHUTDOWN;
     return;
   }
 
@@ -122,16 +137,16 @@ void ImpalaServer::ShutdownWorkloadManagement() {
 
   // If the completed queries thread is not yet running, then we don't need to give it a
   // chance to flush the in-memory queue to the completed queries table.
-  if (workload_mgmt_thread_state_ == RUNNING) {
-    workload_mgmt_thread_state_ = SHUTTING_DOWN;
-    completed_queries_cv_.notify_all();
-    completed_queries_shutdown_cv_.wait_for(l,
+  if (workload_mgmt_state_ == WorkloadMgmtState::RUNNING) {
+    workload_mgmt_state_ = WorkloadMgmtState::SHUTTING_DOWN;
+    _completed_queries_cv.notify_all();
+    _completed_queries_shutdown_cv.wait_for(l,
         chrono::seconds(FLAGS_query_log_shutdown_timeout_s),
-        [this]{ return workload_mgmt_thread_state_ == SHUTDOWN; });
+        [this]{ return workload_mgmt_state_ == WorkloadMgmtState::SHUTDOWN; });
   }
 
-  switch (workload_mgmt_thread_state_) {
-    case SHUTDOWN:
+  switch (workload_mgmt_state_) {
+    case WorkloadMgmtState::SHUTDOWN:
       // Safe to join the thread here because the workload managmenent processing loop
       // sets the thread state to ThreadState::SHUTDOWN immediately before it returns.
       LOG(INFO) << "Workload management shutdown successful";
@@ -145,7 +160,7 @@ void ImpalaServer::ShutdownWorkloadManagement() {
       workload_management_thread_->Detach();
       break;
   }
-} // ImpalaServer::ShutdownWorkloadManagement
+} // function ImpalaServer::ShutdownWorkloadManagement
 
 void ImpalaServer::EnqueueCompletedQuery(const QueryHandle& query_handle,
     const shared_ptr<QueryStateRecord> qs_rec) {
@@ -206,12 +221,12 @@ void ImpalaServer::EnqueueCompletedQuery(const QueryHandle& query_handle,
       move(qs_rec));
 
   {
-    lock_guard<mutex> l(completed_queries_lock_);
-    completed_queries_.emplace_back(CompletedQuery(move(exp_rec)));
+    lock_guard<mutex> l(_completed_queries_lock);
+    _completed_queries.emplace_back(CompletedQuery(move(exp_rec)));
     ImpaladMetrics::COMPLETED_QUERIES_QUEUED->Increment(1L);
 
-    if (MaxRecordsExceeded(completed_queries_.size())) {
-      completed_queries_cv_.notify_all();
+    if (_maxRecordsExceeded(_completed_queries.size())) {
+      _completed_queries_cv.notify_all();
     }
   }
 
@@ -219,75 +234,86 @@ void ImpalaServer::EnqueueCompletedQuery(const QueryHandle& query_handle,
       PrintId(query_handle->query_id()) << "'";
 } // ImpalaServer::EnqueueCompletedQuery
 
-static string get_insert_prefix(const string& table_name) {
+static string _dmlPrefix(const string& table_name, const Version target_schema_version) {
   StringStreamPop fields;
   fields << "INSERT INTO " << table_name << "(";
   for (const auto& field : FIELD_DEFINITIONS) {
-    fields << field.db_column << ",";
+    if (field.Include(target_schema_version)) {
+      fields << field.db_column << ",";
+    }
   }
   fields.move_back();
   fields << ") VALUES ";
   return fields.str();
-}
+} // function _dmlPrefix
 
 void ImpalaServer::WorkloadManagementWorker(
-    InternalServer::QueryOptionMap& insert_query_opts, const string log_table_name) {
+    InternalServer::QueryOptionMap& insert_query_opts, const string log_table_name,
+    const Version target_schema_version) {
+
+  /// Ticker that wakes up at set intervals to process the queued completed queries. Uses
+  /// the _completed_queries_lock to synchonize access to the _completed_queries list.
+  unique_ptr<TickerSecondsBool> completed_queries_ticker;
 
   {
-    lock_guard<mutex> l(workload_mgmt_threadstate_mu_);
+    lock_guard<mutex> l(workload_mgmt_state_mu_);
     // This condition will evaluate to false only if a clean shutdown was initiated while
     // the previous function was running.
-    if (LIKELY(workload_mgmt_thread_state_ == INITIALIZING)) {
-      workload_mgmt_thread_state_ = RUNNING;
+    if (LIKELY(workload_mgmt_state_ == WorkloadMgmtState::INITIALIZED)) {
+      workload_mgmt_state_ = WorkloadMgmtState::RUNNING;
     } else {
+      LOG(INFO) << "Not starting workload management processing thread because "
+          << "coordinator shutdown was initiated.";
       return; // Note: early return
     }
 
-    completed_queries_ticker_ = make_unique<TickerSecondsBool>(
-        FLAGS_query_log_write_interval_s, completed_queries_cv_, completed_queries_lock_);
-    ABORT_IF_ERROR(completed_queries_ticker_->Start("impala-server",
+    completed_queries_ticker = make_unique<TickerSecondsBool>(
+        FLAGS_query_log_write_interval_s, _completed_queries_cv, _completed_queries_lock);
+    ABORT_IF_ERROR(completed_queries_ticker->Start("impala-server",
         "completed-queries-ticker"));
   }
 
   // Non-values portion of the sql DML to insert records into the completed queries
   // tables. This portion of the statement is constant and thus is only generated once.
-  const string insert_dml_prefix = get_insert_prefix(log_table_name);
+  const string insert_dml_prefix = _dmlPrefix(log_table_name, target_schema_version);
+  VLOG(2) << "Workload Management insert sql prefix: " << insert_dml_prefix;
 
   while (true) {
     // Exit this thread if a shutdown was initiated.
     {
-      lock_guard<mutex> l(workload_mgmt_threadstate_mu_);
+      unique_lock<mutex> l(workload_mgmt_state_mu_);
 
-      DCHECK(workload_mgmt_thread_state_ != SHUTDOWN);
+      DCHECK(workload_mgmt_state_ != WorkloadMgmtState::SHUTDOWN);
 
-      if (UNLIKELY(workload_mgmt_thread_state_ == SHUTTING_DOWN)) {
-        workload_mgmt_thread_state_ = SHUTDOWN;
-        completed_queries_shutdown_cv_.notify_all();
+      if (UNLIKELY(workload_mgmt_state_ == WorkloadMgmtState::SHUTTING_DOWN)) {
+        workload_mgmt_state_ = WorkloadMgmtState::SHUTDOWN;
+        l.unlock();
+        _completed_queries_shutdown_cv.notify_all();
         return; // Note: early return
       }
     }
 
     // Sleep this thread until it is time to process queued completed queries. During the
-    // wait, the completed_queries_lock_ is only locked while calling the lambda function
-    // predicate. After waking up, the completed_queries_lock_ will be locked.
-    unique_lock<mutex> l(completed_queries_lock_);
-    completed_queries_cv_.wait(l,
-        [this]{
-          lock_guard<mutex> l2(workload_mgmt_threadstate_mu_);
+    // wait, the _completed_queries_lock is only locked while calling the lambda function
+    // predicate. After waking up, the _completed_queries_lock will be locked.
+    unique_lock<mutex> l(_completed_queries_lock);
+    _completed_queries_cv.wait(l,
+        [this, &completed_queries_ticker]{
+          lock_guard<mutex> l2(workload_mgmt_state_mu_);
           // To guard against spurious wakeups, this predicate ensures there are completed
           // queries queued up before waking up the thread.
-          return (completed_queries_ticker_->WakeupGuard()()
-              && !completed_queries_.empty())
-              || MaxRecordsExceeded(completed_queries_.size())
-              || UNLIKELY(workload_mgmt_thread_state_ == SHUTTING_DOWN);
+          return (completed_queries_ticker->WakeupGuard()()
+              && !_completed_queries.empty())
+              || _maxRecordsExceeded(_completed_queries.size())
+              || UNLIKELY(workload_mgmt_state_ == WorkloadMgmtState::SHUTTING_DOWN);
         });
-    completed_queries_ticker_->ResetWakeupGuard();
+    completed_queries_ticker->ResetWakeupGuard();
 
     DebugActionNoFail(FLAGS_debug_actions, "WM_SHUTDOWN_DELAY");
 
-    if (completed_queries_.empty()) continue;
+    if (_completed_queries.empty()) continue;
 
-    if (MaxRecordsExceeded(completed_queries_.size())) {
+    if (_maxRecordsExceeded(_completed_queries.size())) {
       ImpaladMetrics::COMPLETED_QUERIES_MAX_RECORDS_WRITES->Increment(1L);
     } else {
       ImpaladMetrics::COMPLETED_QUERIES_SCHEDULED_WRITES->Increment(1L);
@@ -300,8 +326,8 @@ void ImpalaServer::WorkloadManagementWorker(
     // completed_queries list are not blocked while generating and running an insert
     // SQL statement for the completed queries.
     list<CompletedQuery> queries_to_insert;
-    queries_to_insert.splice(queries_to_insert.cend(), completed_queries_);
-    completed_queries_lock_.unlock();
+    queries_to_insert.splice(queries_to_insert.cend(), _completed_queries);
+    _completed_queries_lock.unlock();
 
     string sql;
     uint32_t max_row_size = 0;
@@ -320,12 +346,14 @@ void ImpalaServer::WorkloadManagementWorker(
       // queries table.
       iter->insert_attempts_count += 1;
 
-      const string row = QueryStateToSql(iter->query.get());
+      const string row = _queryStateToSql(iter->query.get(), target_schema_version);
       if (row.size() > max_row_size) {
         max_row_size = row.size();
       }
 
       StrAppend(&sql, move(row), ",");
+      VLOG(2) << "added query '" << iter->query->base_state->id << "' to insert sql. "
+          "Insert attempt '" << iter->insert_attempts_count << "'.";
     }
 
     DCHECK(ImpaladMetrics::COMPLETED_QUERIES_QUEUED->GetValue() >=
@@ -362,7 +390,7 @@ void ImpalaServer::WorkloadManagementWorker(
     opts[TImpalaQueryOptions::MAX_ROW_SIZE] = std::to_string(max_row_size);
 
     // Execute the insert dml.
-    const Status ret_status = internal_server_->ExecuteIgnoreResults(
+    const Status ret_status = ExecuteIgnoreResults(
         FLAGS_workload_mgmt_user, StrCat(insert_dml_prefix, sql), opts, false,
         &tmp_query_id);
 
@@ -388,19 +416,19 @@ void ImpalaServer::WorkloadManagementWorker(
           "exec_time=" << PrettyPrinter::Print(exec_time, TUnit::TIME_NS);
       LOG(WARNING) << ret_status.GetDetail();
       ImpaladMetrics::COMPLETED_QUERIES_FAIL->Increment(queries_to_insert.size());
-      completed_queries_lock_.lock();
-      completed_queries_.splice(
-          completed_queries_.cend(), queries_to_insert);
-      completed_queries_lock_.unlock();
+      _completed_queries_lock.lock();
+      _completed_queries.splice(
+          _completed_queries.cend(), queries_to_insert);
+      _completed_queries_lock.unlock();
     }
   }
-} // ImpalaServer::WorkloadManagementWorker
+} // function ImpalaServer::WorkloadManagementWorker
 
 vector<shared_ptr<QueryStateExpanded>> ImpalaServer::GetCompletedQueries() {
-  lock_guard<mutex> l(completed_queries_lock_);
+  lock_guard<mutex> l(_completed_queries_lock);
   vector<shared_ptr<QueryStateExpanded>> results;
-  results.reserve(completed_queries_.size());
-  for (const auto& r : completed_queries_) {
+  results.reserve(_completed_queries.size());
+  for (const auto& r : _completed_queries) {
     results.emplace_back(r.query);
   }
   return results;

@@ -1294,6 +1294,37 @@ class ImpalaTestSuite(BaseTestSuite):
     return self.assert_log_contains(
         "impalad", level, line_regex, expected_count, timeout_s, dry_run)
 
+  def assert_all_coords_log_contains(self, level, line_regex, expected_count=1,
+      timeout_s=6, dry_run=False):
+    """Convenience wrapper around assert_log_contains for impalad logs on only
+       coordinator daemons."""
+
+    for i in range(0, len(self.cluster.impalads)):
+      if self.cluster.impalads[i].is_coordinator():
+        daemon_name = "impalad_node{}".format(i)
+        if i == 0:
+          daemon_name = "impalad"
+
+        self.assert_log_contains(
+          daemon_name, level, line_regex, expected_count, timeout_s, dry_run)
+
+  def assert_one_coord_log_contains(self, level, line_regex, timeout_s=6):
+    """Asserts that one and only one coordinator log contains the specified regex."""
+
+    coord_match_count = 0
+    for i in range(0, len(self.cluster.impalads)):
+      if self.cluster.impalads[i].is_coordinator():
+        daemon_name = "impalad_node{}".format(i)
+        if i == 0:
+          daemon_name = "impalad"
+
+        if self.assert_log_contains(daemon_name, level, line_regex, 1, timeout_s, True):
+          coord_match_count += 1
+
+    assert coord_match_count == 1, "Expected one coordinator '{0}' log to have a line " \
+        "matching regex '{2}' but found '{1}' coordinators '{0}' log with that line." \
+        .format(level, coord_match_count, line_regex)
+
   def assert_catalogd_log_contains(self, level, line_regex, expected_count=1,
       timeout_s=6, dry_run=False):
     """

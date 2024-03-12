@@ -226,7 +226,7 @@ class ImpalaCluster(object):
       impalad.service.wait_for_num_known_live_backends(expected_num_ready_impalads,
           timeout=CLUSTER_WAIT_TIMEOUT_IN_SECONDS, interval=2,
           early_abort_fn=check_processes_still_running)
-      if (impalad._get_arg_value("is_coordinator", default="true") == "true"
+      if (impalad.is_coordinator()
          and impalad._get_arg_value("stress_catalog_init_delay_ms", default=0) == 0):
         impalad.wait_for_catalog()
 
@@ -577,6 +577,11 @@ class ImpaladProcess(BaseImpalaProcess):
 
   def __get_hs2_http_port(self):
     return int(self._get_port('hs2_http_port', DEFAULT_HS2_HTTP_PORT))
+
+  def is_coordinator(self):
+    """Returns boolean True or False depending on whether or not the current process is
+       a coordinator. Both exclusive and non-exclusive coordinators will return true."""
+    return self._get_arg_value("is_coordinator", "true") == "true"
 
   def start(self, wait_until_ready=True, timeout=30):
     """Starts the impalad and waits until the service is ready to accept connections.

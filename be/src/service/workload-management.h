@@ -19,6 +19,7 @@
 
 #include <array>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -35,15 +36,19 @@ namespace impala {
 struct FieldParserContext {
   const QueryStateExpanded* record;
   const std::string cluster_id;
+  const kudu::Version target_schema_version;
   StringStreamPop& sql;
 
   FieldParserContext(const QueryStateExpanded* rec, const std::string& cluster_id,
-      StringStreamPop& s) : record(rec), cluster_id(cluster_id), sql(s) {}
+      kudu::Version target_schema_version, StringStreamPop& s) : record(rec),
+      cluster_id(cluster_id), target_schema_version(target_schema_version), sql(s) {}
 }; // struct FieldParserContext
 
 /// Constants for all possible schema versions.
 const kudu::Version NO_TABLE_EXISTS = constructVersion(0, 0, 0);
 const kudu::Version VERSION_1_0_0 = constructVersion(1, 0, 0);
+const kudu::Version VERSION_1_1_0 = constructVersion(1, 1, 0);
+const std::set<kudu::Version> KNOWN_VERSIONS = {VERSION_1_0_0, VERSION_1_1_0};
 
 /// Type of a function that retrieves one piece of information from the context and writes
 /// it to the SQL statement that inserts rows into the completed queries table.
@@ -58,7 +63,6 @@ struct FieldDefinition {
 
     // Type of the database column.
     const TPrimitiveType::type db_column_type;
-
     // Function that will extract the column value from the provided FieldParseContext and
     // will write that value into a sql statement,
     const FieldParser parser;
@@ -77,10 +81,18 @@ struct FieldDefinition {
         db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
         parser(std::move(fp)), schema_version(std::move(schema_ver)),
         precision(precision), scale(scale) { }
+
+    // Indicates if the schema version where this field was introduced is less than or
+    // equal to the specified target schema version. If returning is true, this field
+    // should be included in the workload management table DMLs. If returning false, this
+    // field is too new and must be ignored.
+    bool Include(const kudu::Version target_schema_version) const {
+      return schema_version <= target_schema_version;
+    }
 }; // struct FieldDefinition
 
 /// Number of query table columns
-constexpr size_t NumQueryTableColumns = TQueryTableColumn::TABLES_QUERIED + 1;
+constexpr size_t NumQueryTableColumns = TQueryTableColumn::ORDERBY_COLUMNS + 1;
 
 /// This list is the main data structure for workload management. Each list entry
 /// contains the name of a column in the completed queries table, the type of that column,
@@ -91,16 +103,16 @@ extern const std::array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS
 /// Track the state of the thread that processes the completed queries queue. Access to
 /// the ThreadState variable must only happen after taking a lock on the associated mutex.
 /// Can be used to track the lifecycle of a thread.
-enum ThreadState {
+enum class WorkloadMgmtState {
   // Workload management has not started.
   NOT_STARTED,
 
   // Thread has started and initial checks in ImpalaServer::InitWorkloadManagement(),
   // implemented in workload-management-init.cc, are running.
-  STARTED,
-
-  // Initial checks have passed, workload management initial setup can run.
   INITIALIZING,
+
+  // Workload management initialization is complete.
+  INITIALIZED,
 
   // Initial setup of the workload management db tables is done, completed queries queue
   // is now being processed.

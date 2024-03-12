@@ -224,6 +224,7 @@ add_library(UtilTests STATIC
   runtime-profile-test.cc
   simple-logger-test.cc
   sql-util-test.cc
+  string-join-test.cc
   string-parser-test.cc
   string-util-test.cc
   summary-util-test.cc
@@ -290,6 +291,7 @@ ADD_UNIFIED_BE_LSAN_TEST(roaring-bitmap-test "RoaringBitmap64Test.*")
 ADD_UNIFIED_BE_LSAN_TEST(runtime-profile-test "CountersTest.*:TimerCounterTest.*:TimeSeriesCounterTest.*:VariousNumbers/TimeSeriesCounterResampleTest.*:ToThrift.*:ToJson.*")
 ADD_UNIFIED_BE_LSAN_TEST(simple-logger-test "SimpleLoggerTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(sql-util-test "SqlUtilTest.*")
+ADD_UNIFIED_BE_LSAN_TEST(string-join-test "JoinToStringTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(string-parser-test "StringToInt.*:StringToIntWithBase.*:StringToFloat.*:StringToBool.*:StringToDate.*")
 ADD_UNIFIED_BE_LSAN_TEST(string-util-test "TruncateDownTest.*:TruncateUpTest.*:CommaSeparatedContainsTest.*:FindUtf8PosForwardTest.*:FindUtf8PosBackwardTest.*:RandomFindUtf8PosTest.*:StringStreamPopTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(summary-util-test "PrintTableTest.*")

@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <string>
 
+#include <boost/algorithm/string.hpp>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <gutil/strings/substitute.h>
@@ -440,6 +441,41 @@ const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{{
           ctx.sql << "'" << PrintTableList(ctx.record->tables) << "'";
         }, VERSION_1_0_0),
 
-    }}; // FIELDS_PARSERS const array
+    // Select Columns
+    FieldDefinition(TQueryTableColumn::SELECT_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->select_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // Where Columns
+    FieldDefinition(TQueryTableColumn::WHERE_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->where_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // Join Columns
+    FieldDefinition(TQueryTableColumn::JOIN_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->join_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // Aggregate Columns
+    FieldDefinition(TQueryTableColumn::AGGREGATE_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->aggregate_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    // OrderBy Columns
+    FieldDefinition(TQueryTableColumn::ORDERBY_COLUMNS, TPrimitiveType::STRING,
+        [](FieldParserContext& ctx){
+          ctx.sql << "'"
+              << boost::algorithm::join(ctx.record->orderby_columns, ",") << "'";
+        }, VERSION_1_1_0),
+
+    }}; // FIELD_DEFINITIONS constant list
 
 } // namespace impala

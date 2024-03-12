@@ -38,6 +38,7 @@
 #include "gen-cpp/Query_types.h"
 #include "gen-cpp/TCLIService_types.h"
 #include "kudu/util/random.h"
+#include "kudu/util/version_util.h"
 #include "rpc/thrift-server.h"
 #include "runtime/types.h"
 #include "service/internal-server.h"
@@ -1160,7 +1161,7 @@ class ImpalaServer : public ImpalaServiceIf,
   /// Periodically writes out completed queries (if configured)
   /// (implemented in workload-management.cc)
   void WorkloadManagementWorker(InternalServer::QueryOptionMap& insert_query_opts,
-      const std::string log_table_name);
+      const std::string log_table_name, const kudu::Version target_schema_version);
 
   /// Returns a list of completed queries that have not yet been written to storage.
   /// Acquires completed_queries_lock_ to make a copy of completed_queries_ state.
@@ -1477,14 +1478,6 @@ class ImpalaServer : public ImpalaServiceIf,
   typedef boost::unordered_map<TUniqueId, std::set<TUniqueId>> ConnectionToSessionMap;
   ConnectionToSessionMap connection_to_sessions_map_;
 
-  /// Map storing connections opened by the InternalServer functions. Key is the session
-  /// id, value is a shared pointer holding the connection's ConnectionContext. Use the
-  /// `internal_server_connections_lock_` mutex whenever accessing this map
-  typedef std::map<TUniqueId, std::shared_ptr<ThriftServer::ConnectionContext>>
-      SessionToConnectionContext;
-  SessionToConnectionContext internal_server_connections_;
-  std::mutex internal_server_connections_lock_;
-
   /// Returns session state for given session_id.
   /// If not found or validation of 'secret' against the stored secret in the
   /// SessionState fails, session_state will be NULL and an error status will be returned.
@@ -1667,7 +1660,17 @@ class ImpalaServer : public ImpalaServiceIf,
   boost::scoped_ptr<ThriftServer> hs2_server_;
   boost::scoped_ptr<ThriftServer> hs2_http_server_;
   boost::scoped_ptr<ThriftServer> external_fe_server_;
-  std::shared_ptr<InternalServer> internal_server_;
+
+  /// Internal server that can be leveraged to submit queries to ourself.
+  InternalServer* internal_server_;
+
+  /// Map storing connections opened by the internal_server_. Key is the session id, value
+  /// is a shared pointer holding the connection's ConnectionContext. Use the
+  /// `internal_server_connections_lock_` mutex whenever accessing this map
+  typedef std::map<TUniqueId, std::shared_ptr<ThriftServer::ConnectionContext>>
+      SessionToConnectionContext;
+  SessionToConnectionContext internal_server_connections_;
+  std::mutex internal_server_connections_lock_;
 
   /// Flag that records if backend and/or client services have been started. The flag is
   /// set after all services required for the server have been started.
@@ -1687,28 +1690,12 @@ class ImpalaServer : public ImpalaServiceIf,
   int64_t admission_heartbeat_version_ = 0;
 
   /// Workload Management Related Declarations.
-  /// Coordinate periodic execution of the completed queries queue processing thread.
-  std::condition_variable completed_queries_cv_;
-
-  /// Coordinate shutdown of the completed queries queue processing thread.
-  std::condition_variable completed_queries_shutdown_cv_;
-
-  /// Tracks the state of the thread that drains the completed queries queue to the table.
-  /// The associated lock must be held before reading/modifying this variable.
-  ThreadState workload_mgmt_thread_state_ = NOT_STARTED;
-  std::mutex workload_mgmt_threadstate_mu_;
+  /// Tracks the state of workload management processing.
+  std::mutex workload_mgmt_state_mu_;
+  WorkloadMgmtState workload_mgmt_state_ = WorkloadMgmtState::NOT_STARTED;
 
   /// Thread that runs Workload Management.
   std::unique_ptr<Thread> workload_management_thread_;
-
-  /// Ticker that wakes up the completed_queried_thread at set intervals to process the
-  /// queued completed queries. Uses the completed_queries_lock_ to synchonize access to
-  /// the completed_queries_ list.
-  std::unique_ptr<TickerSecondsBool> completed_queries_ticker_;
-
-  /// Queue of completed queries and the lock to synchronize access to it.
-  std::list<CompletedQuery> completed_queries_;
-  std::mutex completed_queries_lock_;
 
 };
 }

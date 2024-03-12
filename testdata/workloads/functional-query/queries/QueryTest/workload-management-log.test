@@ -51,6 +51,11 @@ describe sys.impala_query_log
 'sql','string','','true'
 'plan','string','','true'
 'tables_queried','string','','true'
+'select_columns','string','','true'
+'where_columns','string','','true'
+'join_columns','string','','true'
+'aggregate_columns','string','','true'
+'orderby_columns','string','','true'
 ---- TYPES
 string,string,string,string
 ====

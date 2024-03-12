@@ -54,6 +54,16 @@ static void _assertCol(const string& expected_name,
   EXPECT_EQ(expected_version, actual.schema_version.ToString()) << _eMsg(expected_name);
 }
 
+static void _assertColStr(const string& expected_name, const string& expected_version,
+    const FieldDefinition& actual){
+  _assertCol(expected_name, TPrimitiveType::STRING, expected_version, actual);
+}
+
+static void _assertColBigInt(const string& expected_name, const string& expected_version,
+    const FieldDefinition& actual){
+  _assertCol(expected_name, TPrimitiveType::BIGINT, expected_version, actual);
+}
+
 // Asserts the common fields and the decimal related fields on a FieldDefinition instance.
 static void _assertColDecimal(const string& expected_name,
     const string& expected_version, const FieldDefinition& actual){
@@ -64,47 +74,39 @@ static void _assertColDecimal(const string& expected_name,
 }
 
 TEST(WorkloadManagementTest, CheckColumnNames) {
-  EXPECT_EQ(49, FIELD_DEFINITIONS.size());
+  EXPECT_EQ(54, FIELD_DEFINITIONS.size());
 
-  _assertCol("CLUSTER_ID", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[0]);
-  _assertCol("QUERY_ID", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[1]);
-  _assertCol("SESSION_ID", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[2]);
-  _assertCol("SESSION_TYPE", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[3]);
-  _assertCol("HIVESERVER2_PROTOCOL_VERSION", TPrimitiveType::STRING, "1.0.0",
-      FIELD_DEFINITIONS[4]);
-  _assertCol("DB_USER", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[5]);
-  _assertCol("DB_USER_CONNECTION", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[6]);
-  _assertCol("DB_NAME", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[7]);
-  _assertCol("IMPALA_COORDINATOR", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[8]);
-  _assertCol("QUERY_STATUS", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[9]);
-  _assertCol("QUERY_STATE", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[10]);
-  _assertCol("IMPALA_QUERY_END_STATE", TPrimitiveType::STRING, "1.0.0",
-      FIELD_DEFINITIONS[11]);
-  _assertCol("QUERY_TYPE", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[12]);
-  _assertCol("NETWORK_ADDRESS", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[13]);
+  _assertColStr("CLUSTER_ID", "1.0.0", FIELD_DEFINITIONS[0]);
+  _assertColStr("QUERY_ID", "1.0.0", FIELD_DEFINITIONS[1]);
+  _assertColStr("SESSION_ID", "1.0.0", FIELD_DEFINITIONS[2]);
+  _assertColStr("SESSION_TYPE", "1.0.0", FIELD_DEFINITIONS[3]);
+  _assertColStr("HIVESERVER2_PROTOCOL_VERSION", "1.0.0", FIELD_DEFINITIONS[4]);
+  _assertColStr("DB_USER", "1.0.0", FIELD_DEFINITIONS[5]);
+  _assertColStr("DB_USER_CONNECTION", "1.0.0", FIELD_DEFINITIONS[6]);
+  _assertColStr("DB_NAME", "1.0.0", FIELD_DEFINITIONS[7]);
+  _assertColStr("IMPALA_COORDINATOR", "1.0.0", FIELD_DEFINITIONS[8]);
+  _assertColStr("QUERY_STATUS", "1.0.0", FIELD_DEFINITIONS[9]);
+  _assertColStr("QUERY_STATE", "1.0.0", FIELD_DEFINITIONS[10]);
+  _assertColStr("IMPALA_QUERY_END_STATE", "1.0.0", FIELD_DEFINITIONS[11]);
+  _assertColStr("QUERY_TYPE", "1.0.0", FIELD_DEFINITIONS[12]);
+  _assertColStr("NETWORK_ADDRESS", "1.0.0", FIELD_DEFINITIONS[13]);
   _assertCol("START_TIME_UTC", TPrimitiveType::TIMESTAMP, "1.0.0", FIELD_DEFINITIONS[14]);
   _assertColDecimal("TOTAL_TIME_MS", "1.0.0", FIELD_DEFINITIONS[15]);
-  _assertCol("QUERY_OPTS_CONFIG", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[16]);
-  _assertCol("RESOURCE_POOL", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[17]);
-  _assertCol("PER_HOST_MEM_ESTIMATE", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[18]);
-  _assertCol("DEDICATED_COORD_MEM_ESTIMATE", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[19]);
-  _assertCol("PER_HOST_FRAGMENT_INSTANCES", TPrimitiveType::STRING, "1.0.0",
-      FIELD_DEFINITIONS[20]);
+  _assertColStr("QUERY_OPTS_CONFIG", "1.0.0", FIELD_DEFINITIONS[16]);
+  _assertColStr("RESOURCE_POOL", "1.0.0", FIELD_DEFINITIONS[17]);
+  _assertColBigInt("PER_HOST_MEM_ESTIMATE", "1.0.0", FIELD_DEFINITIONS[18]);
+  _assertColBigInt("DEDICATED_COORD_MEM_ESTIMATE", "1.0.0", FIELD_DEFINITIONS[19]);
+  _assertColStr("PER_HOST_FRAGMENT_INSTANCES", "1.0.0", FIELD_DEFINITIONS[20]);
   _assertCol("BACKENDS_COUNT", TPrimitiveType::INT, "1.0.0", FIELD_DEFINITIONS[21]);
-  _assertCol("ADMISSION_RESULT", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[22]);
-  _assertCol("CLUSTER_MEMORY_ADMITTED", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[23]);
-  _assertCol("EXECUTOR_GROUP", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[24]);
-  _assertCol("EXECUTOR_GROUPS", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[25]);
-  _assertCol("EXEC_SUMMARY", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[26]);
-  _assertCol("NUM_ROWS_FETCHED", TPrimitiveType::BIGINT, "1.0.0", FIELD_DEFINITIONS[27]);
-  _assertCol("ROW_MATERIALIZATION_ROWS_PER_SEC", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[28]);
+  _assertColStr("ADMISSION_RESULT", "1.0.0", FIELD_DEFINITIONS[22]);
+  _assertColBigInt("CLUSTER_MEMORY_ADMITTED", "1.0.0", FIELD_DEFINITIONS[23]);
+  _assertColStr("EXECUTOR_GROUP", "1.0.0", FIELD_DEFINITIONS[24]);
+  _assertColStr("EXECUTOR_GROUPS", "1.0.0", FIELD_DEFINITIONS[25]);
+  _assertColStr("EXEC_SUMMARY", "1.0.0", FIELD_DEFINITIONS[26]);
+  _assertColBigInt("NUM_ROWS_FETCHED", "1.0.0", FIELD_DEFINITIONS[27]);
+  _assertColBigInt("ROW_MATERIALIZATION_ROWS_PER_SEC", "1.0.0", FIELD_DEFINITIONS[28]);
   _assertColDecimal("ROW_MATERIALIZATION_TIME_MS", "1.0.0", FIELD_DEFINITIONS[29]);
-  _assertCol("COMPRESSED_BYTES_SPILLED", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[30]);
+  _assertColBigInt("COMPRESSED_BYTES_SPILLED", "1.0.0", FIELD_DEFINITIONS[30]);
   _assertColDecimal("EVENT_PLANNING_FINISHED", "1.0.0", FIELD_DEFINITIONS[31]);
   _assertColDecimal("EVENT_SUBMIT_FOR_ADMISSION", "1.0.0", FIELD_DEFINITIONS[32]);
   _assertColDecimal("EVENT_COMPLETED_ADMISSION", "1.0.0", FIELD_DEFINITIONS[33]);
@@ -115,18 +117,19 @@ TEST(WorkloadManagementTest, CheckColumnNames) {
   _assertColDecimal("EVENT_UNREGISTER_QUERY", "1.0.0", FIELD_DEFINITIONS[38]);
   _assertColDecimal("READ_IO_WAIT_TOTAL_MS", "1.0.0", FIELD_DEFINITIONS[39]);
   _assertColDecimal("READ_IO_WAIT_MEAN_MS", "1.0.0", FIELD_DEFINITIONS[40]);
-  _assertCol("BYTES_READ_CACHE_TOTAL", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[41]);
-  _assertCol("BYTES_READ_TOTAL", TPrimitiveType::BIGINT, "1.0.0", FIELD_DEFINITIONS[42]);
-  _assertCol("PERNODE_PEAK_MEM_MIN", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[43]);
-  _assertCol("PERNODE_PEAK_MEM_MAX", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[44]);
-  _assertCol("PERNODE_PEAK_MEM_MEAN", TPrimitiveType::BIGINT, "1.0.0",
-      FIELD_DEFINITIONS[45]);
-  _assertCol("SQL", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[46]);
-  _assertCol("PLAN", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[47]);
-  _assertCol("TABLES_QUERIED", TPrimitiveType::STRING, "1.0.0", FIELD_DEFINITIONS[48]);
+  _assertColBigInt("BYTES_READ_CACHE_TOTAL", "1.0.0", FIELD_DEFINITIONS[41]);
+  _assertColBigInt("BYTES_READ_TOTAL", "1.0.0", FIELD_DEFINITIONS[42]);
+  _assertColBigInt("PERNODE_PEAK_MEM_MIN", "1.0.0", FIELD_DEFINITIONS[43]);
+  _assertColBigInt("PERNODE_PEAK_MEM_MAX", "1.0.0", FIELD_DEFINITIONS[44]);
+  _assertColBigInt("PERNODE_PEAK_MEM_MEAN", "1.0.0", FIELD_DEFINITIONS[45]);
+  _assertColStr("SQL", "1.0.0", FIELD_DEFINITIONS[46]);
+  _assertColStr("PLAN", "1.0.0", FIELD_DEFINITIONS[47]);
+  _assertColStr("TABLES_QUERIED", "1.0.0", FIELD_DEFINITIONS[48]);
+  _assertColStr("SELECT_COLUMNS", "1.1.0", FIELD_DEFINITIONS[49]);
+  _assertColStr("WHERE_COLUMNS", "1.1.0", FIELD_DEFINITIONS[50]);
+  _assertColStr("JOIN_COLUMNS", "1.1.0", FIELD_DEFINITIONS[51]);
+  _assertColStr("AGGREGATE_COLUMNS", "1.1.0", FIELD_DEFINITIONS[52]);
+  _assertColStr("ORDERBY_COLUMNS", "1.1.0", FIELD_DEFINITIONS[53]);
 }
 
 } // namespace impala
