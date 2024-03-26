@@ -1940,7 +1940,6 @@ static StringVal prettyPrint(FunctionContext* context, const T& prim_val,
 template <typename T>
 static StringVal prettyPrint(FunctionContext* context, const T& prim_val,
     const TUnit::type& unit) {
-
   const string& fmt_str = PrettyPrinter::Print(prim_val, unit);
 
   StringVal result(context, fmt_str.size());
@@ -1958,23 +1957,40 @@ static StringVal prettyPrint(FunctionContext* context, const T& prim_val,
     return StringVal::null(); \
   }
 
+// Return null if the provided value is null.
 #define RETURN_NULL_IF_NULL(val) if(UNLIKELY(val.is_null)) { return StringVal::null(); }
 
-#define PRETTY_PRINT_DURATION_FUNCTION(type) \
-  StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context, \
-      const type& duration, const StringVal& units) { \
-    RETURN_NULL_IF_NULL(duration); \
-    RETURN_NULL_IF_NULL(units); \
-    ERROR_IF_LT_ZERO(duration.val); \
-    return prettyPrint(context, duration.val, units); \
-  }
+StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
+    const IntVal& duration, const StringVal& units) {
+  RETURN_NULL_IF_NULL(duration);
+  RETURN_NULL_IF_NULL(units);
+  ERROR_IF_LT_ZERO(duration.val);
+  return prettyPrint(context, duration.val, units);
+}
 
-PRETTY_PRINT_DURATION_FUNCTION(BigIntVal);
-PRETTY_PRINT_DURATION_FUNCTION(IntVal);
-PRETTY_PRINT_DURATION_FUNCTION(SmallIntVal);
-PRETTY_PRINT_DURATION_FUNCTION(TinyIntVal);
-PRETTY_PRINT_DURATION_FUNCTION(FloatVal);
-PRETTY_PRINT_DURATION_FUNCTION(DoubleVal);
+StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
+    const SmallIntVal& duration, const StringVal& units) {
+  RETURN_NULL_IF_NULL(duration);
+  RETURN_NULL_IF_NULL(units);
+  ERROR_IF_LT_ZERO(duration.val);
+  return prettyPrint(context, duration.val, units);
+}
+
+StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
+    const TinyIntVal& duration, const StringVal& units) {
+  RETURN_NULL_IF_NULL(duration);
+  RETURN_NULL_IF_NULL(units);
+  ERROR_IF_LT_ZERO(duration.val);
+  return prettyPrint(context, duration.val, units);
+}
+
+StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
+    const BigIntVal& duration, const StringVal& units) {
+  RETURN_NULL_IF_NULL(duration);
+  RETURN_NULL_IF_NULL(units);
+  ERROR_IF_LT_ZERO(duration.val);
+  return prettyPrint(context, static_cast<uint64_t>(duration.val), units);
+}
 
 StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
     const DecimalVal& duration, const StringVal& units) {
@@ -1988,8 +2004,6 @@ StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
       ERROR_IF_LT_ZERO(duration.val8);
       return prettyPrint(context, duration.val8, units);
     case 16:
-      // ERROR_IF_LT_ZERO(duration.val16);
-      // return prettyPrint(context, static_cast<long double>(duration.val16), units);
       context->SetError(ERROR_TOO_LARGE);
       return StringVal::null();
     default:

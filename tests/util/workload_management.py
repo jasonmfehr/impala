@@ -78,6 +78,11 @@ SQL = "SQL"
 PLAN = "PLAN"
 
 
+def round_to_3(val):
+  # The differences between round in Python 2 and Python 3 do not matter here.
+  # pylint: disable=round-builtin
+  return round(val, 3)
+
 def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impalad=None,
     query_id=None, max_mem_for_admission=None, max_row_size=None):
   """Helper function to assert that the values in the completed query log table
@@ -263,10 +268,8 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == TOTAL_TIME_S
   ret_data[TOTAL_TIME_S] = data[index]
   duration = end_time_obj - start_time_obj
-  # The differences between round in Python 2 and Python 3 do not matter here.
-  # pylint: disable=round-builtin
-  min_allowed = round(duration.total_seconds() * 0.999, 3)
-  max_allowed = round(duration.total_seconds() * 1.001, 3)
+  min_allowed = round_to_3(duration.total_seconds() * 0.999)
+  max_allowed = round_to_3(duration.total_seconds() * 1.001)
   assert min_allowed <= float(data[index]) <= max_allowed, "total time incorrect"
 
   # Query Options Set By Configuration
@@ -493,7 +496,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_PLANNING_FINISHED
   ret_data[EVENT_PLANNING_FINISHED] = data[index]
   if query_state_value == "EXCEPTION":
-    assert data[index] == "0", "planning finished event incorrect"
+    assert data[index] == "0.000", "planning finished event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+Planning finished:\s+(\S+)', timeline)
     assert event is not None, "planning finished event missing"
@@ -504,7 +507,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_SUBMIT_FOR_ADMISSION
   ret_data[EVENT_SUBMIT_FOR_ADMISSION] = data[index]
   if query_state_value == "EXCEPTION" or query_type == "DDL":
-    assert data[index] == "0", "submit for admission event incorrect"
+    assert data[index] == "0.000", "submit for admission event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+Submit for admission:\s+(\S+)', timeline)
     assert event is not None, "submit for admission event missing"
@@ -515,7 +518,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_COMPLETED_ADMISSION
   ret_data[EVENT_COMPLETED_ADMISSION] = data[index]
   if query_state_value == "EXCEPTION" or query_type == "DDL":
-    assert data[index] == "0", "completed admission event incorrect"
+    assert data[index] == "0.000", "completed admission event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+Completed admission:\s+(\S+)', timeline)
     assert event is not None, "completed admission event missing"
@@ -526,7 +529,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_ALL_BACKENDS_STARTED
   ret_data[EVENT_ALL_BACKENDS_STARTED] = data[index]
   if query_state_value == "EXCEPTION" or query_type == "DDL":
-    assert data[index] == "0", "all backends started event incorrect"
+    assert data[index] == "0.000", "all backends started event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+All \d+ execution backends \(\d+ fragment instances\)'
         r' started:\s+(\S+)', timeline)
@@ -538,7 +541,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_ROWS_AVAILABLE
   ret_data[EVENT_ROWS_AVAILABLE] = data[index]
   if query_state_value == "EXCEPTION" or query_type == "DML":
-    assert data[index] == "0", "rows available event incorrect"
+    assert data[index] == "0.000", "rows available event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+Rows available:\s+(\S+)', timeline)
     assert event is not None, "rows available event missing"
@@ -549,7 +552,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_FIRST_ROW_FETCHED
   ret_data[EVENT_FIRST_ROW_FETCHED] = data[index]
   if query_state_value == "EXCEPTION" or query_type == "DDL" or query_type == "DML":
-    assert data[index] == "0", "first row fetched event incorrect"
+    assert data[index] == "0.000", "first row fetched event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+First row fetched:\s+(\S+)', timeline)
     assert event is not None, "first row fetched event missing"
@@ -560,7 +563,7 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
   assert sql_results.column_labels[index] == EVENT_LAST_ROW_FETCHED
   ret_data[EVENT_LAST_ROW_FETCHED] = data[index]
   if query_state_value == "EXCEPTION" or query_type == "DDL":
-    assert data[index] == "0", "last row fetched event incorrect"
+    assert data[index] == "0.000", "last row fetched event incorrect"
   else:
     event = re.search(r'\n\s+\-\s+Last row fetched:\s+(\S+)', timeline)
     assert event is not None, "last row fetched event missing"
@@ -590,19 +593,19 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
     assert total_read_wait - tolerance <= float(data[index]) <= \
         total_read_wait + tolerance, "read io wait time total incorrect"
   else:
-    assert data[index] == "0"
+    assert data[index] == "0.000"
 
   # Read IO Wait Average
   index += 1
   assert sql_results.column_labels[index] == READ_IO_WAIT_MEAN_S
   ret_data[READ_IO_WAIT_MEAN_S] = data[index]
   if (query_state_value != "EXCEPTION" and query_type == "QUERY"
-      and len(read_waits) != 0) or data[index] != "0":
-    avg_read_wait = float(total_read_wait / len(read_waits))
+      and len(read_waits) != 0) or data[index] != "0.000":
+    avg_read_wait = round_to_3(float(total_read_wait / len(read_waits)))
     assert avg_read_wait - tolerance <= float(data[index]) <= avg_read_wait + tolerance, \
         "read io wait time average incorrect"
   else:
-    assert data[index] == "0"
+    assert data[index] == "0.000"
 
   # Total Bytes Read From Cache
   index += 1

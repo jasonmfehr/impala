@@ -246,12 +246,8 @@ class StringFunctions {
       const StringVal& units);
   static StringVal PrettyPrintDuration(FunctionContext*, const TinyIntVal& duration,
       const StringVal& units);
-  static StringVal PrettyPrintDuration(FunctionContext*, const FloatVal& duration,
-      const StringVal& units);
-  static StringVal PrettyPrintDuration(FunctionContext*, const DoubleVal& duration,
-      const StringVal& units);
-  static StringVal PrettyPrintDuration(FunctionContext*, const DecimalVal& duration,
-      const StringVal& units);
+  static StringVal PrettyPrintDurationDecimal(FunctionContext*,
+      const DecimalVal& duration, const StringVal& units);
 
   /// Converts bytes stored as an integer value into human readable memory measurements.
   /// For example, 123456789012 bytes is converted to "114.98 GB".

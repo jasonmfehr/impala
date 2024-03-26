@@ -4350,61 +4350,56 @@ TEST_P(ExprTest, StringFunctions) {
   // Test prettyprint_duration
   TestErrorString("prettyprint_duration(1, 'NANOSECONDS')", "Specified unit is invalid. "
       "Only 'MICROSECONDS', 'MILLISECONDS', and 'SECONDS' are allowed.");
-  TestErrorString("prettyprint_duration(-1, 'NANOSECONDS')", "Provided value must be "
-      "greater than or equal to 0");
-  TestErrorString("prettyprint_duration(1, 'NANOSECONDS')", TYPE_STRING);
-  TestStringValue("prettyprint_duration(-1, 'MICROSECONDS')", "-1.000ns");
+  TestErrorString("prettyprint_duration(-0.001, 'MICROSECONDS')", "Provided value must "
+      "be greater than or equal to 0");
   TestStringValue("prettyprint_duration(0, 'MICROSECONDS')", "0.000ns");
-  TestStringValue("prettyprint_duration(1234, 'MICROSECONDS')", "1.234us");
-  TestStringValue("prettyprint_duration(123456789012, 'MICROSECONDS')", "2m3s");
-  TestStringValue("prettyprint_duration(12345678901292, 'MICROSECONDS')", "3h25m");
   TestIsNull("prettyprint_duration(NULL, 'MICROSECONDS')", TYPE_STRING);
   TestIsNull("prettyprint_duration(1, NULL)", TYPE_STRING);
 
   // Test at the type boundaries for tinyint.
-  TestStringValue("prettyprint_duration(127, 'MILLISECONDS')", "127.000ms");
+  TestStringValue("prettyprint_duration(127, 'microseconds')", "127.000us");
+  TestStringValue("prettyprint_duration(128, 'MICROSECONDS')", "128.000us");
+  TestStringValue("prettyprint_duration(127, 'milliseconds')", "127ms");
   TestStringValue("prettyprint_duration(128, 'MILLISECONDS')", "128.000ms");
-  TestStringValue("prettyprint_duration(-128, 'MILLISECONDS')", "-128.000ms");
-  TestStringValue("prettyprint_duration(-129, 'MILLISECONDS')", "-129.000ms");
+  TestStringValue("prettyprint_duration(127, 'seconds')", "2m7s");
+  TestStringValue("prettyprint_duration(128, 'SECONDS')", "2m8s");
 
   // Test at the type boundaries for smallint.
-  TestStringValue("prettyprint_duration(32767, 'SECONDS;)", "32.767s");
-  TestStringValue("prettyprint_duration(32768, 'SECONDS;)", "32.768s");
-  TestStringValue("prettyprint_duration(-32768, 'SECONDS;)", "-32768.000s");
-  TestStringValue("prettyprint_duration(-32769, 'SECONDS;)", "-32769.000s");
+  TestStringValue("prettyprint_duration(32767, 'mICrOSeCoNDS')", "32.767ms");
+  TestStringValue("prettyprint_duration(32768, 'MICROSECONDS')", "32.768ms");
+  TestStringValue("prettyprint_duration(32767, 'mILlISeCoNdS')", "32s767ms");
+  TestStringValue("prettyprint_duration(32768, 'MILLISECONDS')", "32s768ms");
+  TestStringValue("prettyprint_duration(32767, 'seCoNdS')", "9h6m");
+  TestStringValue("prettyprint_duration(32768, 'SECONDS')", "9h6m");
 
   // Test at the type boundaries for int.
-  TestStringValue("prettyprint_duration(2147483647, 'SECONDS')", "2s147ms");
-  TestStringValue("prettyprint_duration(2147483648, 'SECONDS')", "2s147ms");
-  TestStringValue("prettyprint_duration(-2147483648, 'SECONDS')", "-2147483648.000ns");
-  TestStringValue("prettyprint_duration(-2147483649, 'SECONDS')", "-2147483649.000ns");
+  TestStringValue("prettyprint_duration(2147483647, 'MicROseCOnds')", "35m47s");
+  TestErrorString("prettyprint_duration(2147483648, 'MICROSECONDS')", "Type 'BigInt' is "
+      "not supported");
+  TestStringValue("prettyprint_duration(2147483647, 'MillIseCOnds')", "596h31m");
+  TestStringValue("prettyprint_duration(2147483648, 'MILLISECONDS')", "Type 'BigInt' is "
+      "not supported");
+  TestStringValue("prettyprint_duration(2147483647, 'seCOnds')", "596523h14m");
+  TestStringValue("prettyprint_duration(2147483648, 'SECONDS')", "Type 'BigInt' is "
+      "not supported");
 
   // Test at the type boundaries for bigint.
-  TestStringValue("prettyprint_duration(9223372036854775807, 'MILLISECONDS)",
-      "2562047h47m");
-  TestStringValue("prettyprint_duration(-9223372036854775808, 'MILLISECONDS)",
-      "-9223372036854775808.000ns");
+  TestStringValue("prettyprint_duration(9223372036854775807, 'MicROseCOnds')",
+      "5124095h34m");
+  TestErrorString("prettyprint_duration(9223372036854775808, 'MICROSECONDS')",
+      " Decimal values with a precision greater than 18 are not supported.");
+  TestStringValue("prettyprint_duration(9223372036854775807, 'MillIseCOnds')",
+      "2562047788015h12m");
+  TestErrorString("prettyprint_duration(9223372036854775808, 'MILLISECONDS')",
+      " Decimal values with a precision greater than 18 are not supported.");
+  TestStringValue("prettyprint_duration(9223372036854775807, 'seCOnds')",
+      "5124095576030h25m");
+  TestErrorString("prettyprint_duration(9223372036854775808, 'SECONDS')",
+      " Decimal values with a precision greater than 18 are not supported.");
 
-  // Test at the type boundaries for float.
-  TestStringValue("prettyprint_duration(cast(1.40129846432481707e-45 as FLOAT), "
-      "'MICROSECONDS)", "2562047h47m");
-  TestStringValue("prettyprint_duration(cast(1.40129846432481708e-45 as FLOAT), "
-      "'MICROSECONDS)", "2562047h47m");
-  TestStringValue("prettyprint_duration(cast(3.40282346638528860e+38 as FLOAT), "
-      "'MICROSECONDS)", "2562047h47m");
-  TestStringValue("prettyprint_duration(cast(3.40282346638528861e+38 as FLOAT), "
-      "'MICROSECONDS)", "2562047h47m");
-
-  // Test at the type boundaries for double.
-  TestStringValue("prettyprint_duration(cast(4.94065645841246544e-324d as DOUBLE), "
-      "'MICROSECONDS)", "2562047h47m");
-  TestStringValue("prettyprint_duration(cast(4.94065645841246545e-324d as DOUBLE), "
-      "'MICROSECONDS)", "2562047h47m");
-  TestStringValue("prettyprint_duration(cast(1.79769313486231570e+308 as DOUBLE), "
-      "'MICROSECONDS)", "2562047h47m");
-  TestStringValue("prettyprint_duration(cast(1.79769313486231571e+308 as DOUBLE), "
-      "'MICROSECONDS)", "2562047h47m");
-
+  // Test decimal values;
+  TestStringValue("prettyprint_duration(case(9223372036854775807 as decimal(18,17), "
+      "'seCOnds')", "5124095576030h25m");
 
 
   // Test prettyprint_bytes
