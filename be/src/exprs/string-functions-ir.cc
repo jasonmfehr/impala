@@ -51,6 +51,28 @@ namespace impala {
 const char* ERROR_CHARACTER_LIMIT_EXCEEDED =
   "$0 is larger than allowed limit of $1 character data.";
 
+// Error messages for the PrettyPrintDuration functions.
+const char* ERROR_UNKNOWN_UNIT = "Specified unit is invalid. Only 'MICROSECONDS', "
+    "'MILLISECONDS', and 'SECONDS' are allowed.";
+const char* ERROR_LT_ZERO = "Provided value must be greater than or equal to 0";
+const char* ERROR_TOO_LARGE = "Decimal values with a precision greater than 18 are not "
+    "supported.";
+
+// Constants used for intepreting the unit parameter of the PrettyPrintDuration functions.
+const uint8_t MICROSECONDS_UNITS[] = {'m', 'i', 'c', 'r', 'o', 's', 'e', 'c', 'o', 'n',
+    'd', 's'};
+const int8_t MICROSECONDS_UNITS_LEN = sizeof(MICROSECONDS_UNITS) /
+    sizeof(MICROSECONDS_UNITS[0]);
+
+const uint8_t MILLISECONDS_UNITS[] = {'m', 'i', 'l', 'l', 'i', 's', 'e', 'c', 'o', 'n',
+    'd', 's'};
+const int8_t MILLISECONDS_UNITS_LEN = sizeof(MILLISECONDS_UNITS) /
+    sizeof(MILLISECONDS_UNITS[0]);
+
+const uint8_t SECONDS_UNITS[] = {'s', 'e', 'c', 'o', 'n', 'd', 's'};
+const int8_t SECONDS_UNITS_LEN = sizeof(SECONDS_UNITS) /
+    sizeof(SECONDS_UNITS[0]);
+
 uint64_t StringFunctions::re2_mem_limit_ = 8 << 20;
 
 // This behaves identically to the mysql implementation, namely:
@@ -1891,13 +1913,35 @@ IntVal StringFunctions::DamerauLevenshtein(
 }
 
 template <typename T>
-static StringVal prettyPrint(FunctionContext* context, const T& int_val,
-    const TUnit::type& unit) {
-  if (int_val.is_null) {
+static StringVal prettyPrint(FunctionContext* context, const T& prim_val,
+    const StringVal& units) {
+
+  const StringVal lower_units = StringFunctions::LowerAscii(context, units);
+
+  if (UNLIKELY(lower_units.is_null)) {
     return StringVal::null();
   }
 
-  const string& fmt_str = PrettyPrinter::Print(int_val.val, unit);
+  if (lower_units.len == MICROSECONDS_UNITS_LEN
+      && memcmp(lower_units.ptr, MICROSECONDS_UNITS, MICROSECONDS_UNITS_LEN) == 0) {
+    return prettyPrint(context, prim_val, TUnit::TIME_US);
+  } else if (lower_units.len == MILLISECONDS_UNITS_LEN
+      && memcmp(lower_units.ptr, MILLISECONDS_UNITS, MILLISECONDS_UNITS_LEN) == 0) {
+    return prettyPrint(context, prim_val, TUnit::TIME_MS);
+  } else if (lower_units.len == SECONDS_UNITS_LEN
+      && memcmp(lower_units.ptr, SECONDS_UNITS, SECONDS_UNITS_LEN) == 0) {
+    return prettyPrint(context, prim_val, TUnit::TIME_S);
+  } else{
+    context->SetError(ERROR_UNKNOWN_UNIT);
+    return StringVal::null();
+  }
+}
+
+template <typename T>
+static StringVal prettyPrint(FunctionContext* context, const T& prim_val,
+    const TUnit::type& unit) {
+
+  const string& fmt_str = PrettyPrinter::Print(prim_val, unit);
 
   StringVal result(context, fmt_str.size());
   if (UNLIKELY(result.is_null)) return StringVal::null();
@@ -1907,44 +1951,64 @@ static StringVal prettyPrint(FunctionContext* context, const T& int_val,
   return result;
 }
 
-StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
-    const BigIntVal& duration_us) {
-  return prettyPrint(context, duration_us, TUnit::TIME_NS);
-}
+// Returns an error if the provided value is less than 0.
+#define ERROR_IF_LT_ZERO(val) \
+  if (UNLIKELY(val < 0)) { \
+    context->SetError(ERROR_LT_ZERO); \
+    return StringVal::null(); \
+  }
+
+#define RETURN_NULL_IF_NULL(val) if(UNLIKELY(val.is_null)) { return StringVal::null(); }
+
+#define PRETTY_PRINT_DURATION_FUNCTION(type) \
+  StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context, \
+      const type& duration, const StringVal& units) { \
+    RETURN_NULL_IF_NULL(duration); \
+    RETURN_NULL_IF_NULL(units); \
+    ERROR_IF_LT_ZERO(duration.val); \
+    return prettyPrint(context, duration.val, units); \
+  }
+
+PRETTY_PRINT_DURATION_FUNCTION(BigIntVal);
+PRETTY_PRINT_DURATION_FUNCTION(IntVal);
+PRETTY_PRINT_DURATION_FUNCTION(SmallIntVal);
+PRETTY_PRINT_DURATION_FUNCTION(TinyIntVal);
+PRETTY_PRINT_DURATION_FUNCTION(FloatVal);
+PRETTY_PRINT_DURATION_FUNCTION(DoubleVal);
 
 StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
-    const IntVal& duration_us) {
-  return prettyPrint(context, duration_us, TUnit::TIME_NS);
+    const DecimalVal& duration, const StringVal& units) {
+  RETURN_NULL_IF_NULL(duration);
+  RETURN_NULL_IF_NULL(units);
+  switch (context->impl()->GetConstFnAttr(FunctionContextImpl::ARG_TYPE_SIZE, 0)) {
+    case 4:
+      ERROR_IF_LT_ZERO(duration.val4);
+      return prettyPrint(context, duration.val4, units);
+    case 8:
+      ERROR_IF_LT_ZERO(duration.val8);
+      return prettyPrint(context, duration.val8, units);
+    case 16:
+      // ERROR_IF_LT_ZERO(duration.val16);
+      // return prettyPrint(context, static_cast<long double>(duration.val16), units);
+      context->SetError(ERROR_TOO_LARGE);
+      return StringVal::null();
+    default:
+      DCHECK(false);
+      return StringVal::null();
+  }
 }
 
-StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
-    const SmallIntVal& duration_us) {
-  return prettyPrint(context, duration_us, TUnit::TIME_NS);
-}
+#define PRETTY_PRINT_MEMORY_FUNCTION(type) \
+  StringVal StringFunctions::PrettyPrintMemory(FunctionContext* context, \
+      const type& bytes) { \
+    RETURN_NULL_IF_NULL(bytes); \
+    ERROR_IF_LT_ZERO(bytes.val); \
+    return prettyPrint(context, bytes.val, TUnit::BYTES); \
+  }
 
-StringVal StringFunctions::PrettyPrintDuration(FunctionContext* context,
-    const TinyIntVal& duration_us) {
-  return prettyPrint(context, duration_us, TUnit::TIME_NS);
-}
+PRETTY_PRINT_MEMORY_FUNCTION(BigIntVal);
+PRETTY_PRINT_MEMORY_FUNCTION(IntVal);
+PRETTY_PRINT_MEMORY_FUNCTION(SmallIntVal);
+PRETTY_PRINT_MEMORY_FUNCTION(TinyIntVal);
 
-StringVal StringFunctions::PrettyPrintMemory(FunctionContext* context,
-    const BigIntVal& bytes) {
-  return prettyPrint(context, bytes, TUnit::BYTES);
-}
-
-StringVal StringFunctions::PrettyPrintMemory(FunctionContext* context,
-    const IntVal& bytes) {
-  return prettyPrint(context, bytes, TUnit::BYTES);
-}
-
-StringVal StringFunctions::PrettyPrintMemory(FunctionContext* context,
-    const SmallIntVal& bytes) {
-  return prettyPrint(context, bytes, TUnit::BYTES);
-}
-
-StringVal StringFunctions::PrettyPrintMemory(FunctionContext* context,
-    const TinyIntVal& bytes) {
-  return prettyPrint(context, bytes, TUnit::BYTES);
-}
-
-}
+} /* namespace impala */

@@ -238,10 +238,20 @@ class StringFunctions {
 
   /// Converts nanoseconds stored as an integer value into human readable time durations.
   /// For example, 2147483647 nanoseconds is converted to "2s147ms".
-  static StringVal PrettyPrintDuration(FunctionContext*, const BigIntVal& duration_us);
-  static StringVal PrettyPrintDuration(FunctionContext*, const IntVal& duration_us);
-  static StringVal PrettyPrintDuration(FunctionContext*, const SmallIntVal& duration_us);
-  static StringVal PrettyPrintDuration(FunctionContext*, const TinyIntVal& duration_us);
+  static StringVal PrettyPrintDuration(FunctionContext*, const BigIntVal& duration,
+      const StringVal& units);
+  static StringVal PrettyPrintDuration(FunctionContext*, const IntVal& duration,
+      const StringVal& units);
+  static StringVal PrettyPrintDuration(FunctionContext*, const SmallIntVal& duration,
+      const StringVal& units);
+  static StringVal PrettyPrintDuration(FunctionContext*, const TinyIntVal& duration,
+      const StringVal& units);
+  static StringVal PrettyPrintDuration(FunctionContext*, const FloatVal& duration,
+      const StringVal& units);
+  static StringVal PrettyPrintDuration(FunctionContext*, const DoubleVal& duration,
+      const StringVal& units);
+  static StringVal PrettyPrintDuration(FunctionContext*, const DecimalVal& duration,
+      const StringVal& units);
 
   /// Converts bytes stored as an integer value into human readable memory measurements.
   /// For example, 123456789012 bytes is converted to "114.98 GB".

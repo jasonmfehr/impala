@@ -30,9 +30,11 @@
 #include <boost/algorithm/string.hpp>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
+#include <gutil/strings/strcat.h>
 
 #include "common/compiler-util.h"
 #include "gen-cpp/Types_types.h"
+#include "kudu/util/monotime.h"
 #include "runtime/exec-env.h"
 #include "service/query-options.h"
 #include "service/query-state-record.h"
@@ -43,12 +45,34 @@
 DECLARE_int32(query_log_max_sql_length);
 DECLARE_int32(query_log_max_plan_length);
 
+using namespace std;
+
 namespace impala {
 
 namespace workload_management {
 
 /// Helper type for event timeline timestamp functions.
 using _event_compare_pred = std::function<bool(const std::string& comp)>;
+
+// Constant declaring how to convert from micro and nano seconds to seconds.
+static constexpr double US_TO_SECONDS = 1000000;
+static constexpr double NS_TO_SECONDS = 1000000000;
+
+// Constants declaring how durations measured in seconds will be stored in the table.
+static constexpr int8_t SECONDS_DECIMAL_PRECISION = 18;
+static constexpr int8_t SECONDS_DECIMAL_SCALE = 3;
+static const string SECONDS_DECIMAL_TYPE = StrCat("DECIMAL(",SECONDS_DECIMAL_PRECISION,
+    ",", SECONDS_DECIMAL_SCALE, ")");
+
+/// Helper function to write a decimal value to the completed queries sql stream.
+///
+/// Parameters:
+///   `ctx`     The field parse context object.
+///   `val`     A value to write in the completed queries sql stream.
+///   `factor`  The provided val input will be divided by this value.
+static void _write_decimal(FieldParserContext& ctx, int64_t val, double factor) {
+  ctx.sql << "CAST(" << val / factor << " AS " << SECONDS_DECIMAL_TYPE << ")";
+}
 
 /// Helper function to write the timestamp for a single event from the events timeline
 /// into the completed queries sql statement stream.
@@ -61,7 +85,7 @@ using _event_compare_pred = std::function<bool(const std::string& comp)>;
 static void _write_event(FieldParserContext& ctx, QueryEvent target_event) {
   const auto& event = ctx.record->events.find(target_event);
   DCHECK(event != ctx.record->events.end());
-  ctx.sql << event->second;
+  _write_decimal(ctx, event->second, NS_TO_SECONDS);
 }
 
 const std::list<FieldDefinition> FIELD_DEFINITIONS = {
@@ -170,11 +194,11 @@ const std::list<FieldDefinition> FIELD_DEFINITIONS = {
         }),
 
     // Query Duration
-    FieldDefinition("total_time_ns", TPrimitiveType::BIGINT,
+    FieldDefinition("total_time_s", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
-          ctx.sql << (ctx.record->base_state->end_time_us -
-              ctx.record->base_state->start_time_us) * 1000;
-        }),
+          _write_decimal(ctx, (ctx.record->base_state->end_time_us -
+              ctx.record->base_state->start_time_us), US_TO_SECONDS);
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Query Options set by Configuration
     FieldDefinition("query_opts_config", TPrimitiveType::STRING,
@@ -270,10 +294,10 @@ const std::list<FieldDefinition> FIELD_DEFINITIONS = {
         }),
 
     // Row Materialization Time
-    FieldDefinition("row_materialization_time_ns", TPrimitiveType::BIGINT,
+    FieldDefinition("row_materialization_time_s", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
-          ctx.sql << ctx.record->row_materialization_time;
-        }),
+          _write_decimal(ctx, ctx.record->row_materialization_time, NS_TO_SECONDS);
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Compressed Bytes Spilled to Disk
     FieldDefinition("compressed_bytes_spilled", TPrimitiveType::BIGINT,
@@ -282,64 +306,64 @@ const std::list<FieldDefinition> FIELD_DEFINITIONS = {
         }),
 
     // Events Timeline Planning Finished
-    FieldDefinition("event_planning_finished", TPrimitiveType::BIGINT,
+    FieldDefinition("event_planning_finished", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, PLANNING_FINISHED);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline Submit for Admission
-    FieldDefinition("event_submit_for_admission", TPrimitiveType::BIGINT,
+    FieldDefinition("event_submit_for_admission", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, SUBMIT_FOR_ADMISSION);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline Completed Admission
-    FieldDefinition("event_completed_admission", TPrimitiveType::BIGINT,
+    FieldDefinition("event_completed_admission", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, COMPLETED_ADMISSION);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline All Execution Backends Started
-    FieldDefinition("event_all_backends_started", TPrimitiveType::BIGINT,
+    FieldDefinition("event_all_backends_started", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, ALL_BACKENDS_STARTED);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline Rows Available
-    FieldDefinition("event_rows_available", TPrimitiveType::BIGINT,
+    FieldDefinition("event_rows_available", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, ROWS_AVAILABLE);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline First Row Fetched
-    FieldDefinition("event_first_row_fetched", TPrimitiveType::BIGINT,
+    FieldDefinition("event_first_row_fetched", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, FIRST_ROW_FETCHED);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline Last Row Fetched
-    FieldDefinition("event_last_row_fetched", TPrimitiveType::BIGINT,
+    FieldDefinition("event_last_row_fetched", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, LAST_ROW_FETCHED);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Events Timeline Unregister Query
-    FieldDefinition("event_unregister_query", TPrimitiveType::BIGINT,
+    FieldDefinition("event_unregister_query", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
           _write_event(ctx, UNREGISTER_QUERY);
-        }),
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Read IO Wait Time Total
-    FieldDefinition("read_io_wait_total_ns", TPrimitiveType::BIGINT,
+    FieldDefinition("read_io_wait_total_s", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
-          ctx.sql << ctx.record->read_io_wait_time_total;
-        }),
+          _write_decimal(ctx, ctx.record->read_io_wait_time_total, NS_TO_SECONDS);
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Read IO Wait Time Mean
-    FieldDefinition("read_io_wait_mean_ns", TPrimitiveType::BIGINT,
+    FieldDefinition("read_io_wait_mean_s", TPrimitiveType::DECIMAL,
         [](FieldParserContext& ctx){
-          ctx.sql << ctx.record->read_io_wait_time_mean;
-        }),
+          _write_decimal(ctx, ctx.record->read_io_wait_time_mean, NS_TO_SECONDS);
+        }, SECONDS_DECIMAL_PRECISION, SECONDS_DECIMAL_SCALE),
 
     // Bytes Read from the Data Cache Total
     FieldDefinition("bytes_read_cache_total", TPrimitiveType::BIGINT,
