@@ -92,7 +92,7 @@ static void _write_event(FieldParserContext& ctx, QueryEvent target_event) {
 }
 
 /// List of query table columns. Must be kept in-sync with SystemTables.thrift
-const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{
+const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{{
     // Cluster Id
     // Required
     FieldDefinition(TQueryTableColumn::CLUSTER_ID, TPrimitiveType::STRING,
@@ -445,41 +445,41 @@ const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{
         }),
 
     // Select Columns
-    FieldDefinition("select_columns", TPrimitiveType::STRING,
+    FieldDefinition(TQueryTableColumn::SELECT_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->select_columns, ",") << "'";
         }),
 
     // Where Columns
-    FieldDefinition("where_columns", TPrimitiveType::STRING,
+    FieldDefinition(TQueryTableColumn::WHERE_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->where_columns, ",") << "'";
         }),
 
     // Join Columns
-    FieldDefinition("join_columns", TPrimitiveType::STRING,
+    FieldDefinition(TQueryTableColumn::JOIN_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->join_columns, ",") << "'";
         }),
 
     // Aggregate Columns
-    FieldDefinition("aggregate_columns", TPrimitiveType::STRING,
+    FieldDefinition(TQueryTableColumn::AGGREGATE_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->aggregate_columns, ",") << "'";
         }),
 
     // OrderBy Columns
-    FieldDefinition("orderby_columns", TPrimitiveType::STRING,
+    FieldDefinition(TQueryTableColumn::ORDERBY_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->orderby_columns, ",") << "'";
         }),
 
-    }; // FIELDS_PARSERS constant list
+    }}; // FIELD_DEFINITIONS constant list
 
 } //namespace workload_management
 

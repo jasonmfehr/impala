@@ -65,7 +65,7 @@ struct FieldDefinition {
 }; // struct FieldDefinition
 
 /// Number of query table columns
-constexpr size_t NumQueryTableColumns = TQueryTableColumn::TABLES_QUERIED + 1;
+constexpr size_t NumQueryTableColumns = TQueryTableColumn::ORDERBY_COLUMNS + 1;
 
 /// This list is the main data structure for workload management. Each list entry
 /// contains the name of a column in the completed queries table, the type of that column,
