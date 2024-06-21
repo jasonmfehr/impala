@@ -51,6 +51,11 @@ describe sys.impala_query_live
 'sql','string',''
 'plan','string',''
 'tables_queried','string',''
+'select_columns','string',''
+'where_columns','string',''
+'join_columns','string',''
+'aggregate_columns','string',''
+'orderby_columns','string',''
 ---- TYPES
 string,string,string
 ====
