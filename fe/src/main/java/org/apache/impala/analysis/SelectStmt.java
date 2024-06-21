@@ -380,12 +380,11 @@ public class SelectStmt extends QueryStmt {
       // Register all columns referenced in this statement, starting with select clause.
       // Joins will be added during planning.
       List<SlotRef> slotRefs = new ArrayList<>();
-      Stream<SelectListItem> nonStarItems =
-          selectList_.getItems().stream().filter(elem -> !elem.isStar());
-      nonStarItems.forEach(item -> item.getExpr().collect(SlotRef.class, slotRefs));
+      selectList_.getItems().stream().filter(elem -> !elem.isStar())
+          .forEach(item -> item.getExpr().collect(SlotRef.class, slotRefs));
       analyzer_.addSelectColumns(Stream.concat(
-          slotRefs.stream().map(this::slotRefToResolvedPath).filter(path -> path != null),
-          starExpandedPaths()));
+          slotRefs.stream().map(this::slotRefToResolvedPath), starExpandedPaths())
+          .filter(path -> path != null));
       slotRefs.clear();
       // Collect where clause.
       analyzer_.addWhereColumns(whereClause_);
