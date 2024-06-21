@@ -572,59 +572,49 @@ def assert_query(query_tbl, client, expected_cluster_id, raw_profile=None, impal
     assert tables is not None
     assert value == tables.group(1)
 
+  # Select Columns
+  value = column_val(TQueryTableColumn.SELECT_COLUMNS)
+  columns = re.search(r'\n\s+Select Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # Where Columns
+  value = column_val(TQueryTableColumn.WHERE_COLUMNS)
+  columns = re.search(r'\n\s+Where Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # Join Columns
+  value = column_val(TQueryTableColumn.JOIN_COLUMNS)
+  columns = re.search(r'\n\s+Join Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # Aggregate Columns
+  value = column_val(TQueryTableColumn.AGGREGATE_COLUMNS)
+  columns = re.search(r'\n\s+Aggregate Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
+  # OrderBy Columns
+  value = column_val(TQueryTableColumn.ORDERBY_COLUMNS)
+  columns = re.search(r'\n\s+OrderBy Columns:\s+(.*?)\n', profile_text)
+  if columns is not None:
+    assert value == columns.group(1)
+  else:
+    assert value == ""
+
   # Assert all entries have been tested and added to ret_data
   for i in range(len(TQueryTableColumn._VALUES_TO_NAMES)):
     assert TQueryTableColumn._VALUES_TO_NAMES[i] in ret_data
-
-  # Select Columns
-  index += 1
-  assert sql_results.column_labels[index] == SELECT_COLUMNS
-  ret_data[SELECT_COLUMNS] = data[index]
-  columns = re.search(r'\n\s+Select Columns:\s+(.*?)\n', profile_text)
-  if columns is not None:
-    assert data[index] == columns.group(1)
-  else:
-    assert data[index] == ""
-
-  # Where Columns
-  index += 1
-  assert sql_results.column_labels[index] == WHERE_COLUMNS
-  ret_data[WHERE_COLUMNS] = data[index]
-  columns = re.search(r'\n\s+Where Columns:\s+(.*?)\n', profile_text)
-  if columns is not None:
-    assert data[index] == columns.group(1)
-  else:
-    assert data[index] == ""
-
-  # Join Columns
-  index += 1
-  assert sql_results.column_labels[index] == JOIN_COLUMNS
-  ret_data[JOIN_COLUMNS] = data[index]
-  columns = re.search(r'\n\s+Join Columns:\s+(.*?)\n', profile_text)
-  if columns is not None:
-    assert data[index] == columns.group(1)
-  else:
-    assert data[index] == ""
-
-  # Aggregate Columns
-  index += 1
-  assert sql_results.column_labels[index] == AGGREGATE_COLUMNS
-  ret_data[AGGREGATE_COLUMNS] = data[index]
-  columns = re.search(r'\n\s+Aggregate Columns:\s+(.*?)\n', profile_text)
-  if columns is not None:
-    assert data[index] == columns.group(1)
-  else:
-    assert data[index] == ""
-
-  # OrderBy Columns
-  index += 1
-  assert sql_results.column_labels[index] == ORDERBY_COLUMNS
-  ret_data[ORDERBY_COLUMNS] = data[index]
-  columns = re.search(r'\n\s+OrderBy Columns:\s+(.*?)\n', profile_text)
-  if columns is not None:
-    assert data[index] == columns.group(1)
-  else:
-    assert data[index] == ""
 
   return ret_data
 # function assert_query
