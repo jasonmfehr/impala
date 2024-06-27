@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <algorithm>
 #include <exception>
+#include <optional>
 #include <sstream>
 #ifdef CALLONCEHACK
 #include <calloncehack.h>
@@ -646,6 +647,12 @@ Status ImpalaServer::PopulateAuthorizedProxyConfig(
 }
 
 bool ImpalaServer::IsCoordinator() { return is_coordinator_; }
+
+std::optional<bool> ImpalaServer::IsFirstCoordinator() { return is_first_coordinator_; }
+
+void ImpalaServer::SetFirstCoordinator(bool first_coord) {
+  is_first_coordinator_ = first_coord;
+}
 
 bool ImpalaServer::IsExecutor() { return is_executor_; }
 

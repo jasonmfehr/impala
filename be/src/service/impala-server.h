@@ -20,6 +20,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <boost/random/random_device.hpp>
 #include <boost/scoped_ptr.hpp>
@@ -491,6 +492,13 @@ class ImpalaServer : public ImpalaServiceIf,
 
   /// Retuns true if this is a coordinator, false otherwise.
   bool IsCoordinator();
+
+  /// Returns true if this ImpalaServer is a coordinator and is also the first coordinator
+  /// that was registered in the cluster.
+  std::optional<bool> IsFirstCoordinator();
+
+  /// Sets whether or not this ImpalaServer is the first coordinator.
+  void SetFirstCoordinator(bool first_coord);
 
   /// Returns true if this is an executor, false otherwise.
   bool IsExecutor();
@@ -1638,6 +1646,10 @@ class ImpalaServer : public ImpalaServiceIf,
   /// True if this ImpalaServer can accept client connections and coordinate
   /// queries.
   bool is_coordinator_;
+
+  /// True if this ImpalaServer is a coordinator and is also the first coordinator that
+  /// was registered in the cluster.
+  std::optional<bool> is_first_coordinator_;
 
   /// True if this ImpalaServer can execute query fragments.
   bool is_executor_;

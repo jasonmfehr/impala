@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
+#include <google/protobuf/util/message_differencer.h>
 #include <gflags/gflags.h>
 #include <gutil/strings/substitute.h>
 
@@ -589,6 +590,30 @@ void ExecEnv::SetImpalaServer(ImpalaServer* server) {
           }
           server->CancelQueriesOnFailedBackends(current_backend_set);
         });
+
+    cluster_membership_mgr_->RegisterUpdateCallbackFn(
+      [server](ClusterMembershipMgr::SnapshotPtr snapshot) {
+        if (snapshot->GetCoordinators().GetAllExecutorDescriptors().size() > 0){
+          LOG(WARNING) << "COORDINATOR " << snapshot->version << std::endl;
+          for (auto& e : snapshot->GetCoordinators().GetAllExecutorDescriptors()) {
+            LOG(WARNING) << "  " <<  e.address().port() << std::endl;
+          }
+        }
+
+        if (!server->IsFirstCoordinator().has_value()
+            && snapshot->GetCoordinators().GetAllExecutorDescriptors().size() > 0) {
+          if (server->GetLocalBackendDescriptor() != nullptr
+              && google::protobuf::util::MessageDifferencer::Equals(
+                  snapshot->GetCoordinators().GetAllExecutorDescriptors()[0],
+                  *(server->GetLocalBackendDescriptor()))) {
+            server->SetFirstCoordinator(true);
+            LOG(WARNING) << "YAY I'M THE FIRST COORDINATOR" << std::endl;
+          } else {
+            server->SetFirstCoordinator(false);
+            LOG(WARNING) << "BOO I'M NOT THE FIRST COORDINATOR" << std::endl;
+          }
+      }
+    });
   }
   if (FLAGS_is_executor && !TestInfo::is_test()) {
     cluster_membership_mgr_->RegisterUpdateCallbackFn(
