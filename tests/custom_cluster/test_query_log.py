@@ -60,8 +60,8 @@ class TestQueryLogTableBase(CustomClusterTestSuite):
     # creating the completed queries table. Thus, to make these tests more robust, this
     # code checks to make sure the table create has finished before returning.
     create_match = self.assert_impalad_log_contains("INFO", r'\]\s+(\w+:\w+)\]\s+'
-        r'Analyzing query: CREATE TABLE IF NOT EXISTS {}'.format(self.QUERY_TBL),
-        timeout_s=60)
+        r'Analyzing query: ALTER TABLE {} ADD IF NOT EXISTS COLUMNS'
+        .format(self.QUERY_TBL), timeout_s=60)
     self.assert_impalad_log_contains("INFO", r'Query successfully unregistered: '
         r'query_id={}'.format(create_match.group(1)),
         timeout_s=60)

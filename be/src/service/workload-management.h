@@ -56,12 +56,22 @@ struct FieldDefinition {
   const FieldParser parser;
   const int16_t precision;
   const int16_t scale;
+  const bool append_field;
 
   FieldDefinition(const TQueryTableColumn::type db_col,
       const TPrimitiveType::type db_col_type, const FieldParser fp,
-      const int16_t precision = 0, const int16_t scale = 0) :
+      const int16_t precision = 0, const int16_t scale = 0,
+      const bool append_field=false) :
       db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
-      parser(std::move(fp)), precision(precision), scale(scale) {}
+      parser(std::move(fp)), precision(precision), scale(scale),
+      append_field(append_field) {}
+
+  FieldDefinition(const TQueryTableColumn::type db_col,
+      const TPrimitiveType::type db_col_type, const FieldParser fp,
+      const bool append_field) :
+      db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
+      parser(std::move(fp)), precision(0), scale(0),
+      append_field(append_field) {}
 }; // struct FieldDefinition
 
 /// Number of query table columns

@@ -449,35 +449,35 @@ const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{{
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->select_columns, ",") << "'";
-        }),
+        }, true),
 
     // Where Columns
     FieldDefinition(TQueryTableColumn::WHERE_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->where_columns, ",") << "'";
-        }),
+        }, true),
 
     // Join Columns
     FieldDefinition(TQueryTableColumn::JOIN_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->join_columns, ",") << "'";
-        }),
+        }, true),
 
     // Aggregate Columns
     FieldDefinition(TQueryTableColumn::AGGREGATE_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->aggregate_columns, ",") << "'";
-        }),
+        }, true),
 
     // OrderBy Columns
     FieldDefinition(TQueryTableColumn::ORDERBY_COLUMNS, TPrimitiveType::STRING,
         [](FieldParserContext& ctx){
           ctx.sql << "'"
               << boost::algorithm::join(ctx.record->orderby_columns, ",") << "'";
-        }),
+        }, true),
 
     }}; // FIELD_DEFINITIONS constant list
 

@@ -116,6 +116,28 @@ static string GetColumnName(const FieldDefinition& field) {
   return column_name;
 }
 
+/// Appends all relevant fields to a create or alter table sql statement.
+static const void _appendFields(StringStreamPop& stream,
+    std::function<bool(const FieldDefinition& item)> p) {
+  bool match = false;
+
+  for (const auto& field : FIELD_DEFINITIONS) {
+   if (p(field)) {
+    match = true;
+    stream << GetColumnName(field) << " " << field.db_column_type;
+
+      if (field.db_column_type == TPrimitiveType::DECIMAL) {
+        stream << "(" << field.precision << "," << field.scale << ")";
+      }
+
+      stream << ",";
+   }
+  }
+
+  DCHECK_EQ(match, true);
+  stream.move_back();
+} // function _appendFields
+
 /// Sets up the query table by generating and executing the necessary DML statements.
 static const Status SetupTable(InternalServer* server, const string& table_name,
     bool is_system_table = false) {
@@ -127,16 +149,7 @@ static const Status SetupTable(InternalServer* server, const string& table_name,
   if (is_system_table) create_table_sql << "EXTERNAL ";
   create_table_sql << "TABLE IF NOT EXISTS " << table_name << "(";
 
-  for (const auto& field : FIELD_DEFINITIONS) {
-    create_table_sql << GetColumnName(field) << " " << field.db_column_type;
-
-    if (field.db_column_type == TPrimitiveType::DECIMAL) {
-      create_table_sql << "(" << field.precision << "," << field.scale << ")";
-    }
-
-    create_table_sql << ",";
-  }
-  create_table_sql.move_back();
+  _appendFields(create_table_sql, [](const FieldDefinition& f){return !f.append_field;});
 
   create_table_sql << ") ";
 
@@ -170,6 +183,29 @@ static const Status SetupTable(InternalServer* server, const string& table_name,
 
   return Status::OK();
 } // function SetupTable
+
+/// Upgrades a table by running alter table statements.
+static const Status _upgradeTo_2_0_0(InternalServer* server, const string& table_name) {
+  StringStreamPop cols_to_add;
+
+  cols_to_add << "ALTER TABLE " << table_name << " ADD IF NOT EXISTS COLUMNS(";
+  _appendFields(cols_to_add, [](const FieldDefinition& f){ return f.append_field;});
+  cols_to_add << ")";
+
+  insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "true";
+
+  for (const string& sql : array<string, 2>{
+    std::move(cols_to_add.str()),
+    "ALTER TABLE " + table_name + " SET TBLPROPERTIES ('schema_version'='2.0.0')"
+  }) {
+    RETURN_IF_ERROR(server->ExecuteIgnoreResults(FLAGS_workload_mgmt_user,
+        sql, insert_query_opts, false));
+  }
+
+  insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "false";
+
+  return Status::OK();
+} // function _upgradeTable
 
 /// Iterates through the list of field in `FIELDS_PARSERS` executing each parser for the
 /// given `QueryStateExpanded` object. This function builds the `FieldParserContext`
@@ -344,10 +380,13 @@ void ImpalaServer::CompletedQueriesThread() {
   // The initialization code only works when run in a separate thread for reasons unknown.
   ABORT_IF_ERROR(SetupDb(internal_server_.get()));
   ABORT_IF_ERROR(SetupTable(internal_server_.get(), log_table_name));
+  ABORT_IF_ERROR(_upgradeTo_2_0_0(internal_server_.get(), log_table_name));
   std::string live_table_name = to_string(TSystemTableName::IMPALA_QUERY_LIVE);
   boost::algorithm::to_lower(live_table_name);
   ABORT_IF_ERROR(SetupTable(internal_server_.get(),
       StrCat(DB, ".", live_table_name), true));
+  ABORT_IF_ERROR(_upgradeTo_2_0_0(internal_server_.get(),
+      StrCat(DB, ".", live_table_name)));
 
   {
     lock_guard<mutex> l(completed_queries_threadstate_mu_);
