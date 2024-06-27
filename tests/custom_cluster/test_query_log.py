@@ -59,6 +59,7 @@ class TestQueryLogTableBase(CustomClusterTestSuite):
     # These tests run very quickly and can actually complete before Impala has finished
     # creating the completed queries table. Thus, to make these tests more robust, this
     # code checks to make sure the table create has finished before returning.
+    # TODO -- look for a new wm init complete log line
     create_match = self.assert_impalad_log_contains("INFO", r'\]\s+(\w+:\w+)\]\s+'
         r'Analyzing query: ALTER TABLE {} ADD IF NOT EXISTS COLUMNS'
         .format(self.QUERY_TBL), timeout_s=60)

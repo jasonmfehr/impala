@@ -37,6 +37,7 @@ class TestQueryLive(CustomClusterTestSuite):
 
   def setup_method(self, method):
     super(TestQueryLive, self).setup_method(method)
+    # TODO -- look for a new wm init complete log line
     create_match = self.assert_impalad_log_contains("INFO", r'\]\s+(\w+:\w+)\]\s+'
         r'Analyzing query: ALTER TABLE sys.impala_query_live ADD IF NOT EXISTS COLUMNS',
         timeout_s=60)
