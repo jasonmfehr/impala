@@ -134,6 +134,7 @@ DECLARE_string(debug_actions);
 DECLARE_bool(abort_on_config_error);
 DECLARE_bool(disk_spill_encryption);
 DECLARE_bool(enable_ldap_auth);
+DECLARE_bool(enable_workload_mgmt);
 DECLARE_bool(gen_experimental_profile);
 DECLARE_bool(use_local_catalog);
 
@@ -3212,8 +3213,13 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
 
     internal_server_ = shared_from_this();
 
-    RETURN_IF_ERROR(InitWorkloadManagement());
+    if (FLAGS_enable_workload_mgmt) {
+      RETURN_IF_ERROR(Thread::Create("impala-server", "completed-queries",
+        bind<void>(&ImpalaServer::InitWorkloadManagement, this),
+        &completed_queries_thread_));
+    }
   }
+
   LOG(INFO) << "Initialized coordinator/executor Impala server on "
             << TNetworkAddressToString(exec_env_->configured_backend_address());
 

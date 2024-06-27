@@ -45,6 +45,7 @@ add_library(Service
   query-result-set.cc
   query-state-record.cc
   workload-management.cc
+  workload-management-init.cc
   workload-management-fields.cc
   workload-management-flags.cc
 )

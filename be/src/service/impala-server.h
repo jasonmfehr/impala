@@ -1133,9 +1133,9 @@ class ImpalaServer : public ImpalaServiceIf,
   /// current query ids to the admissiond.
   [[noreturn]] void AdmissionHeartbeatThread();
 
-  /// If workload management is enabled, starts workload management threads.
-  /// (implemented in workload-management.cc)
-  Status InitWorkloadManagement();
+  /// Starts workload management without checking if workload management is enabled.
+  /// (implemented in workload-management-init.cc)
+  void InitWorkloadManagement();
 
   /// Blocks until running workload management threads are shut down.
   /// (implemented in workload-management.cc)
@@ -1143,7 +1143,8 @@ class ImpalaServer : public ImpalaServiceIf,
 
   /// Periodically writes out completed queries (if configured)
   /// (implemented in workload-management.cc)
-  void CompletedQueriesThread();
+  void WorkloadManagementWorker(InternalServer::QueryOptionMap insert_query_opts,
+      const std::string log_table_name);
 
   /// Returns a list of completed queries that have not yet been written to storage.
   /// Acquires completed_queries_lock_ to make a copy of completed_queries_ state.

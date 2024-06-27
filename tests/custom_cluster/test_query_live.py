@@ -47,7 +47,7 @@ class TestQueryLive(CustomClusterTestSuite):
 
   def assert_describe_extended(self):
     describe_ext_result = self.execute_query('describe extended sys.impala_query_live')
-    assert len(describe_ext_result.data) == 85
+    assert len(describe_ext_result.data) == 87
     system_table_re = re.compile(r'__IMPALA_SYSTEM_TABLE\s+true')
     assert list(filter(system_table_re.search, describe_ext_result.data))
     external_re = re.compile(r'EXTERNAL\s+TRUE')

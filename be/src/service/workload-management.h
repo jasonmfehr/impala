@@ -22,6 +22,7 @@
 #include <string>
 #include <utility>
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include <gflags/gflags.h>
 
 #include "gen-cpp/SystemTables_types.h"
@@ -51,27 +52,45 @@ using FieldParser = void (*)(FieldParserContext&);
 /// Contains all necessary information for the definition and parsing of a single field
 /// in workload management.
 struct FieldDefinition {
-  const TQueryTableColumn::type db_column;
-  const TPrimitiveType::type db_column_type;
-  const FieldParser parser;
-  const int16_t precision;
-  const int16_t scale;
-  const bool append_field;
+  public:
+    const TQueryTableColumn::type db_column;
+    const TPrimitiveType::type db_column_type;
+    const FieldParser parser;
+    const int16_t precision;
+    const int16_t scale;
+    const bool append_field;
 
-  FieldDefinition(const TQueryTableColumn::type db_col,
-      const TPrimitiveType::type db_col_type, const FieldParser fp,
-      const int16_t precision = 0, const int16_t scale = 0,
-      const bool append_field=false) :
-      db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
-      parser(std::move(fp)), precision(precision), scale(scale),
-      append_field(append_field) {}
+    FieldDefinition(const TQueryTableColumn::type db_col,
+        const TPrimitiveType::type db_col_type, const FieldParser fp,
+        const int16_t precision = 0, const int16_t scale = 0,
+        const bool append_field=false) :
+        db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
+        parser(std::move(fp)), precision(precision), scale(scale),
+        append_field(append_field) {
+      SetFormattedColName();
+    }
 
-  FieldDefinition(const TQueryTableColumn::type db_col,
-      const TPrimitiveType::type db_col_type, const FieldParser fp,
-      const bool append_field) :
-      db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
-      parser(std::move(fp)), precision(0), scale(0),
-      append_field(append_field) {}
+    FieldDefinition(const TQueryTableColumn::type db_col,
+        const TPrimitiveType::type db_col_type, const FieldParser fp,
+        const bool append_field) :
+        db_column(std::move(db_col)), db_column_type(std::move(db_col_type)),
+        parser(std::move(fp)), precision(0), scale(0),
+        append_field(append_field) {
+      SetFormattedColName();
+    }
+
+    const std::string& FormattedColName() const {
+      return formatted_col_name;
+    }
+
+  private:
+    std::string formatted_col_name;
+
+    void SetFormattedColName() {
+      std::string column_name = to_string(db_column);
+      boost::algorithm::to_lower(column_name);
+      formatted_col_name = std::move(column_name);
+    }
 }; // struct FieldDefinition
 
 /// Number of query table columns
