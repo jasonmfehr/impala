@@ -220,6 +220,7 @@ const uint32_t DEADLINE_MISS_THRESHOLD_MS = 2000;
 
 const char* Statestore::IMPALA_MEMBERSHIP_TOPIC = "impala-membership";
 const char* Statestore::IMPALA_REQUEST_QUEUE_TOPIC = "impala-request-queue";
+const char* Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC = "impala-workload-management";
 
 typedef ClientConnection<StatestoreSubscriberClientWrapper> StatestoreSubscriberConn;
 typedef ClientConnection<StatestoreHaServiceClientWrapper> StatestoreHaServiceConn;
@@ -1230,7 +1231,8 @@ Statestore::TopicEntry::Version Statestore::GetMinSubscriberTopicVersion(
 }
 
 bool Statestore::IsPrioritizedTopic(const string& topic) {
-  return topic == IMPALA_MEMBERSHIP_TOPIC || topic == IMPALA_REQUEST_QUEUE_TOPIC;
+  return topic == IMPALA_MEMBERSHIP_TOPIC || topic == IMPALA_REQUEST_QUEUE_TOPIC ||
+      topic == IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
 }
 
 const char* Statestore::GetUpdateKindName(UpdateKind kind) {

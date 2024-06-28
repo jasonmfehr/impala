@@ -17,14 +17,21 @@
 
 #include "service/workload-management.h"
 
+#include <mutex>
+#include <optional>
+
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
 #include <gutil/strings/strcat.h>
 
+#include "common/atomic.h"
 #include "common/logging.h"
 #include "common/status.h"
 #include "gen-cpp/CatalogObjects_constants.h"
+#include "gen-cpp/Types_types.h"
 #include "service/impala-server.h"
+#include "statestore/statestore-subscriber.h"
+#include "util/debug-util.h"
 
 using namespace std;
 using namespace impala::workload_management;
@@ -46,6 +53,10 @@ static const string DB = "sys";
 /// completed queries table. See the initialization code in the
 /// ImpalaServer::WorkloadManagementWorker function for details on which options are set.
 static InternalServer::QueryOptionMap insert_query_opts;
+
+static optional<AtomicBool> is_lead_coord;
+static AtomicBool init_done;
+static mutex init_mutex;
 
 /// Sets up the sys database generating and executing the necessary DML statements.
 static void SetupDb(InternalServer* server) {
@@ -144,14 +155,23 @@ static void _upgradeTo_2_0_0(InternalServer* server, const string& table_name) {
 } // function _upgradeTo_2_0_0
 
 void ImpalaServer::InitWorkloadManagement() {
-  #if DCHECK_IS_ON()
   // Verify FIELD_DEFINITIONS includes all QueryTableColumns.
   DCHECK_EQ(_TQueryTableColumn_VALUES_TO_NAMES.size(), FIELD_DEFINITIONS.size());
   for (const auto& field : FIELD_DEFINITIONS) {
     // Verify all fields match their column position.
     DCHECK_EQ(FIELD_DEFINITIONS[field.db_column].db_column, field.db_column);
   }
-  #endif
+
+  // Wait until the internal server is ready.
+  unique_lock<mutex> l(init_mutex);
+  wm_init_cv_.wait(l, [this] {
+    LOG(WARNING) << "WAIT FOR INTERNAL SERVER PREDICATE" << std::endl;
+    if (!internal_server_.get()) return false;
+
+    if (is_lead_coord.has_value() && is_lead_coord.value().Load()) return true;
+
+    return init_done.Load();
+  });
 
   {
     lock_guard<mutex> l(completed_queries_threadstate_mu_);
@@ -170,18 +190,94 @@ void ImpalaServer::InitWorkloadManagement() {
   // Fully qualified table name based on startup flags.
   const string log_table_name = StrCat(DB, ".", FLAGS_query_log_table_name);
 
-  // The initialization code only works when run in a separate thread for reasons unknown.
-  SetupDb(internal_server_.get());
-  SetupTable(internal_server_.get(), log_table_name);
-  _upgradeTo_2_0_0(internal_server_.get(), log_table_name);
+  if (is_lead_coord.value().Load()) {
+    // The initialization code only works when run in a separate thread for reasons unknown.
+    SetupDb(internal_server_.get());
+    SetupTable(internal_server_.get(), log_table_name);
+    _upgradeTo_2_0_0(internal_server_.get(), log_table_name);
 
-  std::string live_table_name = to_string(TSystemTableName::IMPALA_QUERY_LIVE);
-  boost::algorithm::to_lower(live_table_name);
-  SetupTable(internal_server_.get(), StrCat(DB, ".", live_table_name), true);
-  _upgradeTo_2_0_0(internal_server_.get(), StrCat(DB, ".", live_table_name));
+    std::string live_table_name = to_string(TSystemTableName::IMPALA_QUERY_LIVE);
+    boost::algorithm::to_lower(live_table_name);
+    SetupTable(internal_server_.get(), StrCat(DB, ".", live_table_name), true);
+    _upgradeTo_2_0_0(internal_server_.get(), StrCat(DB, ".", live_table_name));
+
+    LOG(WARNING) << "WORKLOAD MANAGEMENT INIT COMPLETE" << std::endl;
+    init_done.Store(true);
+  } else {
+    LOG(WARNING) << "SKIPPING WORKLOAD MANAGEMENT INIT" << std::endl;
+  }
   
   WorkloadManagementWorker(insert_query_opts, log_table_name);
 } // ImpalaServer::InitWorkloadManagement
 
+static std::mutex update_topic_lock_;
+static optional<string> my_id;
+static optional<string> first_id;
+
+static TTopicDelta build_topic_delta(string key, string value) {
+  TTopicDelta my_delta;
+  my_delta.topic_name = Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
+
+  TTopicItem item;
+  item.key = key;
+  item.value = value;
+
+  my_delta.topic_entries.push_back(item);
+
+  return my_delta;
+}
+void ImpalaServer::WorkloadManagementTopicUpdate(
+    const StatestoreSubscriber::TopicDeltaMap& state,
+    std::vector<TTopicDelta>* topic_updates) {
+
+  lock_guard<mutex> l(update_topic_lock_);
+  // LOG(WARNING) << "STATESTORE HEARTBEAT" << std::endl;
+
+  if (!my_id.has_value()) {
+    my_id = PrintId(RandomUniqueID());
+    LOG(WARNING) << "MY ID: " << my_id.value() << std::endl;
+    topic_updates->push_back(build_topic_delta(my_id.value(), "rand_id"));
+  }
+
+  if(is_lead_coord.has_value() && is_lead_coord.value().Load() && init_done.Load()) {
+    // Notify the rest of the cluster that workload management initialization is done.
+    topic_updates->push_back(build_topic_delta("wm_init_done", "true"));
+  }
+
+  // First look to see if the topic we're interested in has an update.
+  auto topic = state.find(Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC);
+
+  // Ignore spurious messages.
+  if (topic == state.end()) return;
+
+  const TTopicDelta& update = topic->second;
+
+  // If the update transmitted by the statestore is empty, we don't need to process it.
+  if (update.topic_entries.empty()) return;
+
+  if(!first_id.has_value()) {
+    first_id = update.topic_entries[0].key;
+
+    if (first_id.value() == my_id.value()) {
+      LOG(WARNING) << "YAY I'M THE FIRST" << std::endl;
+      is_lead_coord.emplace(true);
+    } else {
+      LOG(WARNING) << "BOO I'M NOT THE FIRST" << std::endl;
+      is_lead_coord.emplace(false);
+    }
+
+    ABORT_IF_ERROR(Thread::Create("impala-server", "completed-queries",
+      bind<void>(&ImpalaServer::InitWorkloadManagement, this),
+      &completed_queries_thread_));
+  } else {
+    for (auto& e : update.topic_entries) {
+      if (e.key == "wm_init_done" && is_lead_coord.has_value()
+          && !is_lead_coord.value().Load() && !init_done.Load()) {
+        init_done.Store(true);
+        wm_init_cv_.notify_all();
+      }
+    }
+  }
+} // ImpalaServer::WorkloadManagementTopicUpdate
 
 } // namespace impala

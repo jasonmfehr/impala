@@ -72,6 +72,7 @@
 #include "service/frontend.h"
 #include "service/impala-http-handler.h"
 #include "service/query-state-record.h"
+#include "statestore/statestore.h"
 #include "util/auth-util.h"
 #include "util/coding-util.h"
 #include "util/common-metrics.h"
@@ -557,6 +558,17 @@ ImpalaServer::ImpalaServer(ExecEnv* exec_env)
         CatalogServer::IMPALA_CATALOG_TOPIC, /* is_transient=*/ true,
         /* populate_min_subscriber_topic_version=*/ true,
         filter_prefix, catalog_cb));
+  }
+
+  if (FLAGS_is_coordinator && FLAGS_enable_workload_mgmt) {
+    ABORT_IF_ERROR(exec_env->subscriber()->AddTopic(
+        Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC, /* is_transient=*/ false,
+        /* populate_min_subscriber_topic_version=*/ false,
+        /* filter_prefix= */ "", [this](const StatestoreSubscriber::TopicDeltaMap& state,
+        vector<TTopicDelta>* topic_updates) {
+          WorkloadManagementTopicUpdate(state, topic_updates);
+        }
+    ));
   }
 
   // Initialise the cancellation thread pool with 5 (by default) threads. The max queue
@@ -3212,12 +3224,8 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
     }
 
     internal_server_ = shared_from_this();
-
-    if (FLAGS_enable_workload_mgmt) {
-      RETURN_IF_ERROR(Thread::Create("impala-server", "completed-queries",
-        bind<void>(&ImpalaServer::InitWorkloadManagement, this),
-        &completed_queries_thread_));
-    }
+    wm_init_cv_.notify_all();
+    LOG(WARNING) << "INTERNAL SERVER INIT" << std::endl;
   }
 
   LOG(INFO) << "Initialized coordinator/executor Impala server on "

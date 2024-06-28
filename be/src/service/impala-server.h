@@ -36,6 +36,7 @@
 #include "gen-cpp/ImpalaService.h"
 #include "gen-cpp/control_service.pb.h"
 #include "gen-cpp/Query_types.h"
+#include "gen-cpp/StatestoreService_types.h"
 #include "kudu/util/random.h"
 #include "rpc/thrift-server.h"
 #include "runtime/types.h"
@@ -1146,6 +1147,9 @@ class ImpalaServer : public ImpalaServiceIf,
   void WorkloadManagementWorker(InternalServer::QueryOptionMap insert_query_opts,
       const std::string log_table_name);
 
+  void WorkloadManagementTopicUpdate(const StatestoreSubscriber::TopicDeltaMap& state,
+      std::vector<TTopicDelta>* topic_updates);
+
   /// Returns a list of completed queries that have not yet been written to storage.
   /// Acquires completed_queries_lock_ to make a copy of completed_queries_ state.
   /// (implemented in workload-management.cc)
@@ -1694,6 +1698,9 @@ class ImpalaServer : public ImpalaServiceIf,
   /// Queue of completed queries and the lock to synchronize access to it.
   std::list<impala::workload_management::CompletedQuery> completed_queries_;
   std::mutex completed_queries_lock_;
+
+  /// Condition variable that controls when the workload management init process starts.
+  std::condition_variable wm_init_cv_;
 
 };
 }
