@@ -36,6 +36,7 @@
 #include "gen-cpp/ImpalaService.h"
 #include "gen-cpp/control_service.pb.h"
 #include "gen-cpp/Query_types.h"
+#include "gen-cpp/StatestoreService_types.h"
 #include "gen-cpp/TCLIService_types.h"
 #include "kudu/util/random.h"
 #include "rpc/thrift-server.h"
@@ -1144,17 +1145,23 @@ class ImpalaServer : public ImpalaServiceIf,
   /// current query ids to the admissiond.
   [[noreturn]] void AdmissionHeartbeatThread();
 
-  /// If workload management is enabled, starts workload management threads.
-  /// (implemented in workload-management.cc)
-  Status InitWorkloadManagement();
+  /// Starts workload management without checking if workload management is enabled.
+  /// (implemented in workload-management-init.cc)
+  void InitWorkloadManagement();
 
   /// Blocks until running workload management threads are shut down.
   /// (implemented in workload-management.cc)
   void ShutdownWorkloadManagement();
 
   /// Periodically writes out completed queries (if configured)
-  /// (implemented in workload-management.cc)
-  void CompletedQueriesThread();
+  /// (implemented in workload-management-init.cc)
+  void WorkloadManagementWorker(InternalServer::QueryOptionMap& insert_query_opts,
+      const std::string log_table_name);
+
+  /// Listener that handles messages for the workload management statestore topic.
+  /// (implemented in workload-management-init.cc)
+  void WorkloadManagementTopicUpdate(const StatestoreSubscriber::TopicDeltaMap& state,
+      std::vector<TTopicDelta>* topic_updates);
 
   /// Returns a list of completed queries that have not yet been written to storage.
   /// Acquires completed_queries_lock_ to make a copy of completed_queries_ state.
@@ -1704,6 +1711,13 @@ class ImpalaServer : public ImpalaServiceIf,
   /// Queue of completed queries and the lock to synchronize access to it.
   std::list<impala::workload_management::CompletedQuery> completed_queries_;
   std::mutex completed_queries_lock_;
+
+  /// Condition variable used to notify the workload management init process when one of
+  /// its preconditions is true.
+  std::condition_variable wm_init_cv_;
+
+  /// Name of the statestore topic used to coordinate workload management init process.
+  std::string wm_topic_name_;
 
 };
 }

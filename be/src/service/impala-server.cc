@@ -72,6 +72,7 @@
 #include "service/frontend.h"
 #include "service/impala-http-handler.h"
 #include "service/query-state-record.h"
+#include "statestore/statestore.h"
 #include "util/auth-util.h"
 #include "util/coding-util.h"
 #include "util/common-metrics.h"
@@ -130,10 +131,12 @@ DECLARE_string(authorized_proxy_user_config);
 DECLARE_string(authorized_proxy_user_config_delimiter);
 DECLARE_string(authorized_proxy_group_config);
 DECLARE_string(authorized_proxy_group_config_delimiter);
+DECLARE_string(cluster_id);
 DECLARE_string(debug_actions);
 DECLARE_bool(abort_on_config_error);
 DECLARE_bool(disk_spill_encryption);
 DECLARE_bool(enable_ldap_auth);
+DECLARE_bool(enable_workload_mgmt);
 DECLARE_bool(gen_experimental_profile);
 DECLARE_bool(use_local_catalog);
 
@@ -557,6 +560,24 @@ ImpalaServer::ImpalaServer(ExecEnv* exec_env)
         CatalogServer::IMPALA_CATALOG_TOPIC, /* is_transient=*/ true,
         /* populate_min_subscriber_topic_version=*/ true,
         filter_prefix, catalog_cb));
+  }
+
+  // Add the workload management initialization statestore topic.
+  if (FLAGS_is_coordinator && FLAGS_enable_workload_mgmt) {
+    if (FLAGS_cluster_id.empty()) {
+      wm_topic_name_ = Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
+    } else {
+      wm_topic_name_ =
+          FLAGS_cluster_id + '-' + Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
+    }
+    ABORT_IF_ERROR(exec_env->subscriber()->AddTopic(
+        wm_topic_name_, /* is_transient=*/ false,
+        /* populate_min_subscriber_topic_version=*/ false,
+        /* filter_prefix= */ "", [this](const StatestoreSubscriber::TopicDeltaMap& state,
+        vector<TTopicDelta>* topic_updates) {
+          WorkloadManagementTopicUpdate(state, topic_updates);
+        }
+    ));
   }
 
   // Initialise the cancellation thread pool with 5 (by default) threads. The max queue
@@ -3211,8 +3232,7 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
     }
 
     internal_server_ = shared_from_this();
-
-    RETURN_IF_ERROR(InitWorkloadManagement());
+    wm_init_cv_.notify_all();
   }
   LOG(INFO) << "Initialized coordinator/executor Impala server on "
             << TNetworkAddressToString(exec_env_->configured_backend_address());
