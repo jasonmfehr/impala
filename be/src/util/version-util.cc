@@ -44,6 +44,10 @@ bool operator>(const Version& lhs, const Version& rhs) {
   return !(lhs <= rhs);
 }
 
+bool operator!=(const Version& lhs, const Version& rhs) {
+  return !(lhs == rhs);
+}
+
 } // namespace kudu
 
 namespace impala {

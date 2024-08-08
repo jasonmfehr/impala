@@ -303,7 +303,7 @@ const array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS{{
     FieldDefinition(TQueryTableColumn::ROW_MATERIALIZATION_TIME_MS,
         TPrimitiveType::DECIMAL, [](FieldParserContext& ctx){
           _write_decimal(ctx, ctx.record->row_materialization_time, NANOS_TO_MILLIS);
-        }, VERSION_1_0_0 , DURATION_DECIMAL_PRECISION, DURATION_DECIMAL_SCALE),
+        }, VERSION_1_0_0, DURATION_DECIMAL_PRECISION, DURATION_DECIMAL_SCALE),
 
     // Compressed Bytes Spilled to Disk
     FieldDefinition(TQueryTableColumn::COMPRESSED_BYTES_SPILLED, TPrimitiveType::BIGINT,

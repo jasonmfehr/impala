@@ -3231,7 +3231,12 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
     }
 
     internal_server_ = shared_from_this();
-    wm_init_cv_.notify_all();
+
+    if (FLAGS_enable_workload_mgmt) {
+      ABORT_IF_ERROR(Thread::Create("impala-server", "completed-queries",
+        bind<void>(&ImpalaServer::InitWorkloadManagement, this),
+        &workload_management_thread_));
+    }
   }
 
   LOG(INFO) << "Initialized coordinator/executor Impala server on "

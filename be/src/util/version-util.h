@@ -21,14 +21,18 @@
 
 namespace kudu {
 
+// Adds additional comparison operators to the kudu::Version class.
+
 // Compare two Version objects. Versions that contain an extra component sort before
-// (less than) versions that do not contain an extra component. No special handling is
-// done of the extra component.  Thus '-SNAPSHOT' sorts as greater than '-RELEASE'.
+// (less than) versions that do not contain an extra component. The extra component is
+// sorted alphabetically without modifying the case. Thus '-SNAPSHOT' sorts as greater
+// than '-RELEASE'.
 // Example sort order (from least to greatest):
-//     1.0.0-RELEASE, 1.0.0-SNAPSHOT, 1.0.0, 1.0.1-SNAPSHOT.
+//   1.0.0-RELEASE, 1.0.0-SNAPSHOT, 1.0.0, 1.0.1-SNAPSHOT.
 bool operator<(const Version& lhs, const Version& rhs);
 bool operator<=(const Version& lhs, const Version& rhs);
 bool operator>(const Version& lhs, const Version& rhs);
+bool operator!=(const Version& lhs, const Version& rhs);
 
 } // namespace kudu
 

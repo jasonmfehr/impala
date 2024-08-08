@@ -111,6 +111,20 @@ TEST(VersionUtilTest, OperatorLessThan) {
   ASSERT_FALSE(lhs < rhs);
   ASSERT_FALSE(lhs <= rhs);
   ASSERT_TRUE(lhs > rhs);
+
+  // Asserts the example provided in the comments in version-util.h.
+  // 1.0.0-RELEASE, 1.0.0-SNAPSHOT, 1.0.0, 1.0.1-SNAPSHOT
+  ASSERT_OK(ParseVersion("1.0.0-RELEASE", &lhs));
+  ASSERT_OK(ParseVersion("1.0.0-SNAPSHOT", &rhs));
+  ASSERT_TRUE(lhs < rhs);
+
+  ASSERT_OK(ParseVersion("1.0.0-SNAPSHOT", &lhs));
+  ASSERT_OK(ParseVersion("1.0.0", &rhs));
+  ASSERT_TRUE(lhs < rhs);
+
+  ASSERT_OK(ParseVersion("1.0.0", &lhs));
+  ASSERT_OK(ParseVersion("1.0.1-SNAPSHOT", &rhs));
+  ASSERT_TRUE(lhs < rhs);
 }
 
 } // namespace impala

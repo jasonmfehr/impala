@@ -36,6 +36,7 @@
 #include "gen-cpp/ImpalaService.h"
 #include "gen-cpp/control_service.pb.h"
 #include "gen-cpp/Query_types.h"
+#include "gen-cpp/StatestoreService_types.h"
 #include "gen-cpp/TCLIService_types.h"
 #include "kudu/util/random.h"
 #include "rpc/thrift-server.h"
@@ -1157,11 +1158,6 @@ class ImpalaServer : public ImpalaServiceIf,
   void WorkloadManagementWorker(InternalServer::QueryOptionMap& insert_query_opts,
       const std::string log_table_name);
 
-  /// Listener that handles messages for the workload management statestore topic.
-  /// (implemented in workload-management-init.cc)
-  void WorkloadManagementTopicUpdate(const StatestoreSubscriber::TopicDeltaMap& state,
-      std::vector<TTopicDelta>* topic_updates);
-
   /// Returns a list of completed queries that have not yet been written to storage.
   /// Acquires completed_queries_lock_ to make a copy of completed_queries_ state.
   /// (implemented in workload-management.cc)
@@ -1695,12 +1691,12 @@ class ImpalaServer : public ImpalaServiceIf,
 
   /// Tracks the state of the thread that drains the completed queries queue to the table.
   /// The associated lock must be held before reading/modifying this variable.
-  impala::workload_management::ThreadState completed_queries_thread_state_ =
+  impala::workload_management::ThreadState workload_mgmt_thread_state_ =
       impala::workload_management::NOT_STARTED;
-  std::mutex completed_queries_threadstate_mu_;
+  std::mutex workload_mgmt_threadstate_mu_;
 
-  /// Thread that runs CompletedQueriesThread().
-  std::unique_ptr<Thread> completed_queries_thread_;
+  /// Thread that runs Workload Management.
+  std::unique_ptr<Thread> workload_management_thread_;
 
   /// Ticker that wakes up the completed_queried_thread at set intervals to process the
   /// queued completed queries. Uses the completed_queries_lock_ to synchonize access to

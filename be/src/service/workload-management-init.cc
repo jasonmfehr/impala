@@ -42,8 +42,6 @@
 /// starting their processing loops.
 
 
-#include "service/workload-management-init.h"
-
 #include <mutex>
 #include <optional>
 
@@ -89,10 +87,6 @@ namespace impala {
 /// Name of the database where all workload management tables will be stored.
 static const string DB = "sys";
 
-/// Tracks the initialization process from start to finish. This pointer is reset to null
-/// after the init process completes.
-static unique_ptr<InitContext> init_ctx = make_unique<InitContext>();
-
 /// Sets up the sys database generating and executing the necessary DML statements.
 static void _setupDb(InternalServer* server,
     InternalServer::QueryOptionMap& insert_query_opts) {
@@ -104,12 +98,12 @@ static void _setupDb(InternalServer* server,
 } // function _setupDb
 
 /// Appends all relevant fields to a create or alter table sql statement.
-static void _appendFields(StringStreamPop& stream,
-    std::function<bool(const FieldDefinition& item)> p) {
+static void _appendCols(StringStreamPop& stream,
+    std::function<bool(const FieldDefinition& item)> shouldIncludeCol) {
   bool match = false;
 
   for (const auto& field : FIELD_DEFINITIONS) {
-   if (p(field)) {
+   if (shouldIncludeCol(field)) {
     match = true;
     stream << field.FormattedColName() << " " << field.db_column_type;
 
@@ -123,7 +117,7 @@ static void _appendFields(StringStreamPop& stream,
 
   DCHECK_EQ(match, true);
   stream.move_back();
-} // function _appendFields
+} // function _appendCols
 
 /// Sets up the query table by generating and executing the necessary DML statements.
 static void _setupTable(InternalServer* server, const string& table_name,
@@ -137,7 +131,7 @@ static void _setupTable(InternalServer* server, const string& table_name,
   if (is_system_table) create_table_sql << "EXTERNAL ";
   create_table_sql << "TABLE IF NOT EXISTS " << table_name << "(";
 
-  _appendFields(create_table_sql, [target_version](const FieldDefinition& f){
+  _appendCols(create_table_sql, [target_version](const FieldDefinition& f){
       return f.schema_version <= target_version;});
 
   create_table_sql << ") ";
@@ -174,6 +168,7 @@ static void _setupTable(InternalServer* server, const string& table_name,
       FLAGS_query_log_write_interval_s << "s\"";
 } // function _setupTable
 
+<<<<<<< HEAD
 /// Upgrades a table by running alter table statements.
 static void _upgradeTable(InternalServer* server, const string& table_name,
     InternalServer::QueryOptionMap& insert_query_opts, const Version& current_version,
@@ -206,6 +201,8 @@ static void _upgradeTable(InternalServer* server, const string& table_name,
   insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "false";
 } // function _upgradeTable
 
+=======
+>>>>>>> af3cf4e760... IMPALA-12737: Limit workload management initialization to one coordinator.
 static string _retrieveSchemaVersion(InternalServer* server, const string table_name,
      const InternalServer::QueryOptionMap& insert_query_opts) {
 
@@ -388,114 +385,5 @@ void ImpalaServer::InitWorkloadManagement() {
   LOG(INFO) << "Completed workload management initialization";
   WorkloadManagementWorker(insert_query_opts, log_table_name);
 } // ImpalaServer::InitWorkloadManagement
-
-static const string INIT_START_MSG = "wm_init_start";
-static const string INIT_DONE_MSG = "wm_init_done";
-
-static TTopicDelta build_topic_delta(string key, string value, string topic_name) {
-  TTopicDelta my_delta;
-  my_delta.topic_name = topic_name;
-
-  TTopicItem item;
-  item.key = key;
-  item.value = value;
-
-  my_delta.topic_entries.push_back(item);
-
-  return my_delta;
-} // build_topic_delta
-
-void ImpalaServer::WorkloadManagementTopicUpdate(
-    const StatestoreSubscriber::TopicDeltaMap& state,
-    std::vector<TTopicDelta>* topic_updates) {
-
-  // Once initialization is done and the init_ctx has been released, there is no need to
-  // process any more messages.
-  if (!init_ctx.get()) {
-    return;
-  }
-
-  DebugActionNoFail(FLAGS_debug_actions, "WORKLOAD_MGMT_INIT");
-
-  unique_lock<mutex> l(init_ctx->guard);
-
-  // When initialization has completed, release resources no longer needed.
-  if (init_ctx->state == DONE) {
-    l.unlock();
-    l.release();
-    init_ctx.reset(nullptr);
-
-    return;
-  }
-
-  // Assign a random id to each daemon when first initialized and start the workload
-  // management thread.
-  if (init_ctx->state == NOT_RUNNING) {
-    init_ctx->id = PrintId(RandomUniqueID());
-    init_ctx->state = DETERMINE_LEADER;
-    topic_updates->push_back(build_topic_delta(init_ctx->id, INIT_START_MSG,
-        wm_topic_name_));
-
-    ABORT_IF_ERROR(Thread::Create("impala-server", "completed-queries",
-        bind<void>(&ImpalaServer::InitWorkloadManagement, this),
-        &completed_queries_thread_));
-  }
-
-  // Lead coordinator notifies the rest of the cluster once it has finished workload
-  // management initialization.
-  if(init_ctx->state == LEADER_INIT_DONE) {
-    topic_updates->push_back(build_topic_delta(init_ctx->id, INIT_DONE_MSG,
-        wm_topic_name_));
-    init_ctx->state = DONE;
-
-    return;
-  }
-
-  // First look to see if the topic we're interested in has an update.
-  auto topic = state.find(wm_topic_name_);
-
-  // Ignore spurious messages.
-  if (topic == state.end()) return;
-
-  const TTopicDelta& update = topic->second;
-
-  for (auto& e : update.topic_entries) {
-    if (e.value == INIT_DONE_MSG) {
-      // The lead coordinator has sent the message indicating it has completed its work
-      // and other non-lead coordinators can continue. If the current daemon is not a lead
-      // coordinator, perform it's limited init and start the completed queries
-      // processing loop.
-      if (init_ctx->state == DETERMINE_LEADER
-          || init_ctx->state == NONLEADER_INIT_WAITING) {
-        // In the case where this coordinator is joining a cluster that has already had
-        // workload management initialized, the state will be DETERMINE_LEADER.
-        init_ctx->state = NONLEADER_INIT_RUNNING;
-
-        // Start the workload management thread on non-lead coordinators.
-        VLOG(2) << "Starting workload management thread without setting up "
-            << "the workload management database tables";
-        l.unlock();
-        wm_init_cv_.notify_all();
-      }
-    } else if (e.value == INIT_START_MSG) {
-      if (init_ctx->state == DETERMINE_LEADER) {
-        if (init_ctx->id == e.key) {
-          VLOG(2) << "Starting workload management initialization that will set up the "
-            << "workload management database tables";
-          init_ctx->state = LEADER_INIT_RUNNING;
-          l.unlock();
-          wm_init_cv_.notify_all();
-        } else {
-          init_ctx->state = NONLEADER_INIT_WAITING;
-          VLOG(2) << "Waiting for another coordinator to finish the workload management "
-            << "database table setup";
-        }
-      }
-    } else {
-      DCHECK(false) << "Unknown statestore message with key='" << e.key << "' and value='"
-          << e.value << "'";
-    }
-  }
-} // ImpalaServer::WorkloadManagementTopicUpdate
 
 } // namespace impala
