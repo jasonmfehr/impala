@@ -1242,14 +1242,16 @@ class ImpalaTestSuite(BaseTestSuite):
     self.client.execute("describe `{0}`.`{1}`".format(db_name, tbl_name))
     return
 
-  def wait_for_table_to_appear(self, db_name, table_name, timeout_s):
+  def wait_for_table_to_appear(self, db_name, table_name, timeout_s, client=None):
     """Wait until the table with 'table_name' in 'db_name' is present in the
     impalad's local catalog. Fail after timeout_s if the doesn't appear."""
+    if client is None:
+      client = self.client
     start_time = time.time()
     while time.time() - start_time < timeout_s:
       try:
         # This will throw an exception if the table is not present.
-        self.client.execute("describe `{db_name}`.`{table_name}`".format(
+        client.execute("describe `{db_name}`.`{table_name}`".format(
                             db_name=db_name, table_name=table_name))
         return
       except Exception as ex:
@@ -1284,6 +1286,19 @@ class ImpalaTestSuite(BaseTestSuite):
     """
     return self.assert_log_contains(
         "impalad", level, line_regex, expected_count, timeout_s, dry_run)
+
+  def assert_all_impalad_log_contains(self, level, line_regex, expected_count=1,
+      timeout_s=6, dry_run=False):
+    """
+    Convenience wrapper around assert_log_contains for impalad logs on all daemons.
+    """
+    for i in range(0, len(self.cluster.impalads)):
+      daemon_name = "impalad_node{}".format(i)
+      if i == 0:
+        daemon_name = "impalad"
+
+      self.assert_log_contains(
+        daemon_name, level, line_regex, expected_count, timeout_s, dry_run)
 
   def assert_catalogd_log_contains(self, level, line_regex, expected_count=1,
       timeout_s=6, dry_run=False):

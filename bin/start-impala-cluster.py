@@ -84,6 +84,12 @@ parser.add_option("--kill", "--kill_only", dest="kill_only", action="store_true"
                   " the running impalads and the statestored.")
 parser.add_option("--force_kill", dest="force_kill", action="store_true", default=False,
                   help="Force kill impalad and statestore processes.")
+parser.add_option("--add_coordinators", dest="add_coordinators",
+                  action="store_true", default=False,
+                  help="Starts additional exclusive coordinators that will join an "
+                  "already running cluster. Specify the --cluster_size argument to "
+                  "determine the final cluster size after adding the additional "
+                  "coordinator(s).")
 parser.add_option("-a", "--add_executors", dest="add_executors",
                   action="store_true", default=False,
                   help="Start additional executors. The executor group name must be"
@@ -474,13 +480,16 @@ def build_admissiond_arg_list():
 
 
 def build_impalad_arg_lists(cluster_size, num_coordinators, use_exclusive_coordinators,
-    remap_ports, start_idx=0, admissiond_host=INTERNAL_LISTEN_HOST):
+    remap_ports, start_idx=0, admissiond_host=INTERNAL_LISTEN_HOST,
+    force_coordinators=False):
   """Build the argument lists for impala daemons in the cluster. Returns a list of
   argument lists, one for each impala daemon in the cluster. Each argument list is
   a list of strings. 'num_coordinators' and 'use_exclusive_coordinators' allow setting
   up the cluster with dedicated coordinators.  If 'remap_ports' is true, the impalad
   ports are changed from their default values to avoid port conflicts. If the admission
-  service is enabled, 'admissiond_host' is the hostname for the admissiond."""
+  service is enabled, 'admissiond_host' is the hostname for the admissiond. The
+  'use_exclusive_coordinators forces the argument list to be built with exclusive
+  coordinators only."""
   # TODO: currently we build a big string blob then split it. It would be better to
   # build up the lists directly.
 
@@ -537,9 +546,9 @@ def build_impalad_arg_lists(cluster_size, num_coordinators, use_exclusive_coordi
           timeout=DISCONNECTED_SESSION_TIMEOUT,
           args=args)
 
-    if i - start_idx >= num_coordinators:
+    if i - start_idx >= num_coordinators and not force_coordinators:
       args = "-is_coordinator=false {args}".format(args=args)
-    elif use_exclusive_coordinators:
+    elif use_exclusive_coordinators or force_coordinators:
       # Coordinator instance that doesn't execute non-coordinator fragments
       args = "-is_executor=false {args}".format(args=args)
 
@@ -789,10 +798,11 @@ class MiniClusterOperations(object):
                          " for more details.")
 
   def start_impalads(self, cluster_size, num_coordinators, use_exclusive_coordinators,
-                     start_idx=0):
+                     start_idx=0, force_coordinators=False):
     """Start 'cluster_size' impalad instances. The first 'num_coordinator' instances will
       act as coordinators. 'use_exclusive_coordinators' specifies whether the coordinators
-      will only execute coordinator fragments."""
+      will only execute coordinator fragments. 'force_coordinators' specifies that only
+      coordinators will be started no matter the value of 'use_exclusive_coordinators'"""
     if cluster_size == 0:
       # No impalad instances should be started.
       return
@@ -803,7 +813,7 @@ class MiniClusterOperations(object):
 
     impalad_arg_lists = build_impalad_arg_lists(
         cluster_size, num_coordinators, use_exclusive_coordinators, remap_ports=True,
-        start_idx=start_idx)
+        start_idx=start_idx, force_coordinators=force_coordinators)
     assert cluster_size == len(impalad_arg_lists)
     for i in range(start_idx, start_idx + cluster_size):
       service_name = impalad_service_name(i)
@@ -1058,11 +1068,12 @@ def validate_options():
   restart_only_count = len([opt for opt in [options.restart_impalad_only,
                                             options.restart_statestored_only,
                                             options.restart_catalogd_only,
-                                            options.add_executors] if opt])
+                                            options.add_executors,
+                                            options.add_coordinators] if opt])
   if restart_only_count > 1:
     LOG.error("--restart_impalad_only, --restart_catalogd_only, "
-              "--restart_statestored_only, and --add_executors options are mutually "
-              "exclusive")
+              "--restart_statestored_only, and the --add_executors, --add_coordinators "
+              "options are mutually exclusive")
     sys.exit(1)
   elif restart_only_count == 1:
     if options.inprocess:
@@ -1093,7 +1104,7 @@ if __name__ == "__main__":
     cluster_ops.kill_all_catalogds(force=options.force_kill)
   elif options.restart_statestored_only:
     cluster_ops.kill_all_statestoreds(force=options.force_kill)
-  elif options.add_executors or options.add_impalads:
+  elif options.add_executors or options.add_impalads or options.add_coordinators:
     pass
   else:
     cluster_ops.kill_all_daemons(force=options.force_kill)
@@ -1119,6 +1130,20 @@ if __name__ == "__main__":
     elif options.restart_impalad_only:
       cluster_ops.start_impalads(options.cluster_size, options.num_coordinators,
                                  options.use_exclusive_coordinators)
+    elif options.add_coordinators:
+      coords_to_add = expected_cluster_size - existing_cluster_size
+      if coords_to_add <= 0:
+        LOG.error("No coordinators would be added. Specify --cluster_size greater than "
+                  "the size of the existing cluster which is '{}'"
+                  .format(existing_cluster_size))
+        sys.exit(1)
+
+      # Start additional coordinators. The value passed to num_coordinators is a hack
+      cluster_ops.start_impalads(cluster_size=coords_to_add,
+                                 num_coordinators=expected_cluster_size,
+                                 use_exclusive_coordinators=True,
+                                 start_idx=existing_cluster_size,
+                                 force_coordinators=True)
     elif options.add_executors:
       num_coordinators = 0
       use_exclusive_coordinators = False
@@ -1158,6 +1183,14 @@ if __name__ == "__main__":
 
   if options.use_exclusive_coordinators == True:
     executors = options.cluster_size - options.num_coordinators
+  elif options.add_coordinators:
+    executors = 0
+    num_coordinators = 0
+    for x in cluster_ops.get_cluster().impalads:
+        if x.is_executor():
+          executors += 1
+        if x.is_coordinator():
+          num_coordinators += 1
   else:
     executors = options.cluster_size
   LOG.info(("Impala Cluster Running with {num_nodes} nodes "
