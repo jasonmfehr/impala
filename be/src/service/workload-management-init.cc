@@ -57,11 +57,13 @@
 #include "gen-cpp/CatalogObjects_constants.h"
 #include "gen-cpp/TCLIService_types.h"
 #include "gen-cpp/Types_types.h"
+#include "kudu/util/random.h"
 #include "kudu/util/version_util.h"
 #include "service/impala-server.h"
 #include "service/workload-management.h"
 #include "statestore/statestore-subscriber.h"
 #include "util/debug-util.h"
+#include "util/time.h"
 
 using namespace std;
 using namespace impala;
@@ -72,6 +74,7 @@ using boost::algorithm::to_lower;
 using kudu::Version;
 using kudu::ParseVersion;
 
+DECLARE_int32(krpc_port);
 DECLARE_int32(query_log_write_interval_s);
 DECLARE_int32(query_log_write_timeout_s);
 DECLARE_string(debug_actions);
@@ -168,7 +171,6 @@ static void _setupTable(InternalServer* server, const string& table_name,
       FLAGS_query_log_write_interval_s << "s\"";
 } // function _setupTable
 
-<<<<<<< HEAD
 /// Upgrades a table by running alter table statements.
 static void _upgradeTable(InternalServer* server, const string& table_name,
     InternalServer::QueryOptionMap& insert_query_opts, const Version& current_version,
@@ -179,7 +181,7 @@ static void _upgradeTable(InternalServer* server, const string& table_name,
   StringStreamPop cols_to_add;
 
   cols_to_add << "ALTER TABLE " << table_name << " ADD IF NOT EXISTS COLUMNS(";
-  _appendFields(cols_to_add, [current_version, target_version](const FieldDefinition& f){
+  _appendCols(cols_to_add, [current_version, target_version](const FieldDefinition& f){
       return f.schema_version > current_version && f.schema_version <= target_version;});
   cols_to_add << ")";
 
@@ -201,8 +203,6 @@ static void _upgradeTable(InternalServer* server, const string& table_name,
   insert_query_opts[TImpalaQueryOptions::SYNC_DDL] = "false";
 } // function _upgradeTable
 
-=======
->>>>>>> af3cf4e760... IMPALA-12737: Limit workload management initialization to one coordinator.
 static string _retrieveSchemaVersion(InternalServer* server, const string table_name,
      const InternalServer::QueryOptionMap& insert_query_opts) {
 
@@ -226,6 +226,20 @@ static string _retrieveSchemaVersion(InternalServer* server, const string table_
 } // _retrieveSchemaVersion
 
 void ImpalaServer::InitWorkloadManagement() {
+  // Add random jitter to startup process to ensure workload management init does not run
+  // concurrently on the coordinators since that has been shown to cause problems where
+  // the catalog is not fully up to date.
+  kudu::Random sleep_rand(FLAGS_krpc_port);
+  int ms_to_sleep = (FLAGS_krpc_port + sleep_rand.Uniform32(60000) + 1) / 10;
+  VLOG(2) << "Workload Management: sleeping for '" << ms_to_sleep << "' ms.";
+  SleepForMs(ms_to_sleep);
+
+  LOG(INFO) << "Starting workload management initialization process";
+  {
+    lock_guard<mutex> l(workload_mgmt_threadstate_mu_);
+    workload_mgmt_thread_state_ = INITIALIZING;
+  }
+
   // Fully qualified table name based on startup flags.
   const string log_table_name = StrCat(DB, ".", FLAGS_query_log_table_name);
 
@@ -263,126 +277,103 @@ void ImpalaServer::InitWorkloadManagement() {
     insert_query_opts[TImpalaQueryOptions::REQUEST_POOL] = FLAGS_query_log_request_pool;
   }
 
-  {
-    unique_lock<mutex> init_lock(init_ctx->guard);
+  string wm_schema_version;
+  Version parsed_actual_schema_version;
 
-    // Wait until all necessary preconditions are met.
-    wm_init_cv_.wait(init_lock, [this, &init_lock] {
-      // Wait until the internal_server is fully initialization since it will be used to
-      // run DML statements.
-      if (!internal_server_.get()) return false;
+  // Create and/or update the completed queries table if needed.
+  wm_schema_version = _retrieveSchemaVersion(internal_server_.get(), log_table_name,
+      insert_query_opts);
+  VLOG(2) << "Actual current workload management schema version of the '"
+      << log_table_name << "' table is '" << wm_schema_version << "'";
 
-      return init_ctx->state == LEADER_INIT_RUNNING
-          || init_ctx->state == NONLEADER_INIT_RUNNING;
-    });
+  if(wm_schema_version != target_schema_version.ToString()) {
+    if (wm_schema_version.empty()) {
+      // First time setting up workload management.
+      // Setup the sys database.
+      _setupDb(internal_server_.get(), insert_query_opts);
 
-    {
-      lock_guard<mutex> l(completed_queries_threadstate_mu_);
-      completed_queries_thread_state_ = INITIALIZING;
+      // Create the query log table and upgrade it to the target schema version.
+      _setupTable(internal_server_.get(), log_table_name, insert_query_opts,
+          VERSION_1_0_0);
+
+      parsed_actual_schema_version = VERSION_1_0_0;
+    } else {
+      if(!ParseVersion(wm_schema_version, &parsed_actual_schema_version).ok()) {
+        ABORT_WITH_ERROR(StrCat("Invalid actual workload management schema version '",
+            wm_schema_version, "'"));
+      }
     }
 
-    if (init_ctx->state == LEADER_INIT_RUNNING) {
-      init_lock.unlock();
+    if (target_schema_version < parsed_actual_schema_version) {
+      ABORT_WITH_ERROR(StrCat("Target schema version '",
+          target_schema_version.ToString(), " of the '", log_table_name, "' table is "
+          "lower than the actual schema version '", wm_schema_version,
+          "'. Downgrades are not supported. the target schema version must be "
+          "greater than or equal to the actual schema version"));
+    }
 
-      string wm_schema_version;
-      Version parsed_actual_schema_version;
-
-      // Create and/or update the completed queries table if needed.
-      wm_schema_version = _retrieveSchemaVersion(internal_server_.get(), log_table_name,
-          insert_query_opts);
-      VLOG(2) << "Actual current workload management schema version of the '"
-          << log_table_name << "' table is '" << wm_schema_version << "'";
-
-      if(wm_schema_version != target_schema_version.ToString()) {
-        if (wm_schema_version.empty()) {
-          // First time setting up workload management.
-          // Setup the sys database.
-          _setupDb(internal_server_.get(), insert_query_opts);
-
-          // Create the query log table and upgrade it to the target schema version.
-          _setupTable(internal_server_.get(), log_table_name, insert_query_opts,
-              VERSION_1_0_0);
-
-          parsed_actual_schema_version = VERSION_1_0_0;
-        } else {
-          if(!ParseVersion(wm_schema_version, &parsed_actual_schema_version).ok()) {
-            ABORT_WITH_ERROR(StrCat("Invalid actual workload management schema version '",
-                wm_schema_version, "'"));
-          }
-        }
-
-        if (target_schema_version < parsed_actual_schema_version) {
-          ABORT_WITH_ERROR(StrCat("Target schema version '",
-              target_schema_version.ToString(), " of the '", log_table_name, "' table is "
-              "lower than the actual schema version '", wm_schema_version,
-              "'. Downgrades are not supported. the target schema version must be "
-              "greater than or equal to the actual schema version"));
-        }
-
-        // Handle the schema upgrade scenario.
-        if (target_schema_version > parsed_actual_schema_version) {
-          // Upgrade the query log table.
-          _upgradeTable(internal_server_.get(), log_table_name, insert_query_opts,
-              parsed_actual_schema_version, target_schema_version);
-        }
-      }
-
-      // Create and/or update the live queries table if needed.
-      // Determine the live queries table name.
-      string live_table_name = StrCat(DB, ".",
-          to_string(TSystemTableName::IMPALA_QUERY_LIVE));
-      to_lower(live_table_name);
-
-      wm_schema_version = _retrieveSchemaVersion(internal_server_.get(), live_table_name,
-          insert_query_opts);
-      VLOG(2) << "Actual current workload management schema version of the '"
-          << live_table_name << "' table is '" << wm_schema_version << "'";
-
-      if (wm_schema_version != target_schema_version.ToString()) {
-        if (wm_schema_version.empty()) {
-          // First time setting up workload management.
-          // Create the query live table on the target schema version.
-          _setupTable(internal_server_.get(), live_table_name, insert_query_opts,
-              target_schema_version, true);
-        } else {
-          if(!ParseVersion(wm_schema_version, &parsed_actual_schema_version).ok()) {
-            ABORT_WITH_ERROR(StrCat("Invalid actual workload management schema version '",
-                wm_schema_version, "'"));
-          }
-
-          if (target_schema_version < parsed_actual_schema_version) {
-            ABORT_WITH_ERROR(StrCat("Target schema version '",
-                target_schema_version.ToString(), " of the '", live_table_name,
-                "' table is lower than the actual schema version '", wm_schema_version,
-                "'. Downgrades are not supported. the target schema version must be "
-                "greater than or equal to the actual schema version"));
-          }
-
-          // Handle the schema upgrade scenario.
-          if (target_schema_version > parsed_actual_schema_version) {
-            // Drop the live query table to re-create it.
-            VLOG(2) << "Dropping '" << live_table_name << "' so it can be upgraded to "
-                << "the latest schema version '" << target_schema_version.ToString()
-                << "'";
-            ABORT_IF_ERROR(internal_server_->ExecuteIgnoreResults(
-                FLAGS_workload_mgmt_user, StrCat("DROP TABLE IF EXISTS ",
-                live_table_name), insert_query_opts, false));
-
-            // Create the live query table on the target schema version.
-            _setupTable(internal_server_.get(), live_table_name, insert_query_opts,
-                target_schema_version, true);
-          }
-        }
-      }
-
-      init_lock.lock();
-      init_ctx->state = LEADER_INIT_DONE;
-    } else {
-      init_ctx->state = DONE;
+    // Handle the schema upgrade scenario.
+    if (target_schema_version > parsed_actual_schema_version) {
+      // Upgrade the query log table.
+      _upgradeTable(internal_server_.get(), log_table_name, insert_query_opts,
+          parsed_actual_schema_version, target_schema_version);
     }
   }
 
+  // Create and/or update the live queries table if needed.
+  // Determine the live queries table name.
+  string live_table_name = StrCat(DB, ".",
+      to_string(TSystemTableName::IMPALA_QUERY_LIVE));
+  to_lower(live_table_name);
+
+  wm_schema_version = _retrieveSchemaVersion(internal_server_.get(), live_table_name,
+      insert_query_opts);
+  VLOG(2) << "Actual current workload management schema version of the '"
+      << live_table_name << "' table is '" << wm_schema_version << "'";
+
+  if (wm_schema_version != target_schema_version.ToString()) {
+    if (wm_schema_version.empty()) {
+      // First time setting up workload management.
+      // Create the query live table on the target schema version.
+      _setupTable(internal_server_.get(), live_table_name, insert_query_opts,
+          target_schema_version, true);
+    } else {
+      if(!ParseVersion(wm_schema_version, &parsed_actual_schema_version).ok()) {
+        ABORT_WITH_ERROR(StrCat("Invalid actual workload management schema version '",
+            wm_schema_version, "'"));
+      }
+
+      if (target_schema_version < parsed_actual_schema_version) {
+        ABORT_WITH_ERROR(StrCat("Target schema version '",
+            target_schema_version.ToString(), " of the '", live_table_name,
+            "' table is lower than the actual schema version '", wm_schema_version,
+            "'. Downgrades are not supported. the target schema version must be "
+            "greater than or equal to the actual schema version"));
+      }
+
+      // Handle the schema upgrade scenario.
+      if (target_schema_version > parsed_actual_schema_version) {
+        // Drop the live query table to re-create it.
+        VLOG(2) << "Dropping '" << live_table_name << "' so it can be upgraded to "
+            << "the latest schema version '" << target_schema_version.ToString()
+            << "'";
+        ABORT_IF_ERROR(internal_server_->ExecuteIgnoreResults(
+            FLAGS_workload_mgmt_user, StrCat("DROP TABLE IF EXISTS ",
+            live_table_name), insert_query_opts, false));
+
+        // Create the live query table on the target schema version.
+        _setupTable(internal_server_.get(), live_table_name, insert_query_opts,
+            target_schema_version, true);
+      }
+    }
+  }
+
+  {
+    lock_guard<mutex> l(workload_mgmt_threadstate_mu_);
+    workload_mgmt_thread_state_ = INITIALIZED;
+  }
   LOG(INFO) << "Completed workload management initialization";
+
   WorkloadManagementWorker(insert_query_opts, log_table_name);
 } // ImpalaServer::InitWorkloadManagement
 

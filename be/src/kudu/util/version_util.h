@@ -37,7 +37,6 @@ namespace kudu {
 // the cluster.
 struct Version {
   bool operator==(const Version& other) const;
-  bool operator!=(const Version& other) const;
 
   // Return 'canonical' version string, i.e. the concatenation of the version
   // components transformed back into the string representation. The parser
@@ -61,9 +60,6 @@ struct Version {
 
   // The extra component. Empty if there was no extra component.
   std::string extra;
-
-  // Default constructor.
-  Version() {}
 };
 
 std::ostream& operator<<(std::ostream& os, const Version& v);

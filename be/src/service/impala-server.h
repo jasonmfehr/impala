@@ -1707,12 +1707,5 @@ class ImpalaServer : public ImpalaServiceIf,
   std::list<impala::workload_management::CompletedQuery> completed_queries_;
   std::mutex completed_queries_lock_;
 
-  /// Condition variable used to notify the workload management init process when one of
-  /// its preconditions is true.
-  std::condition_variable wm_init_cv_;
-
-  /// Name of the statestore topic used to coordinate workload management init process.
-  std::string wm_topic_name_;
-
 };
 }

@@ -585,7 +585,7 @@ class ImpaladProcess(BaseImpalaProcess):
 
   def is_executor(self):
     """Returns boolean True or False depending on whether or not the current process is
-       an cexecutor. Non-exclusive coordinators will return true."""
+       an executor. Non-exclusive coordinators will return true."""
     return self._get_arg_value("is_executor", "true") == "true"
 
   def start(self, wait_until_ready=True, timeout=30):

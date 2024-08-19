@@ -115,6 +115,7 @@ extern const std::array<FieldDefinition, NumQueryTableColumns> FIELD_DEFINITIONS
 enum ThreadState {
   NOT_STARTED,
   INITIALIZING,
+  INITIALIZED,
   RUNNING,
   SHUTTING_DOWN,
   SHUTDOWN

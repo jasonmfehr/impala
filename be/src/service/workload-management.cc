@@ -70,14 +70,6 @@ DECLARE_int32(query_log_max_insert_attempts);
 
 namespace impala {
 
-<<<<<<< HEAD
-/// Non-values portion of the sql DML to insert records into the completed queries table.
-/// Generates the first portion of the DML that inserts records into the completed queries
-/// table. This portion of the statement is constant and thus is only generated once.
-static string _insert_dml;
-
-=======
->>>>>>> af3cf4e760... IMPALA-12737: Limit workload management initialization to one coordinator.
 /// Determine if the maximum number of queued completed queries has been exceeded.
 ///
 /// Return:
@@ -227,7 +219,7 @@ void ImpalaServer::WorkloadManagementWorker(
     lock_guard<mutex> l(workload_mgmt_threadstate_mu_);
     // This condition will evaluate to false only if a clean shutdown was initiated while
     // the previous function was running.
-    if (LIKELY(workload_mgmt_thread_state_ == INITIALIZING)) {
+    if (LIKELY(workload_mgmt_thread_state_ == INITIALIZED)) {
       workload_mgmt_thread_state_ = RUNNING;
     } else {
       return; // Note: early return
@@ -242,6 +234,7 @@ void ImpalaServer::WorkloadManagementWorker(
   // Non-values portion of the sql DML to insert records into the completed queries
   // tables. This portion of the statement is constant and thus is only generated once.
   const string insert_dml_prefix = get_insert_prefix(log_table_name);
+  VLOG(2) << "Workload Management insert sql prefix: " << insert_dml_prefix;
 
   while (true) {
     // Exit this thread if a shutdown was initiated.
@@ -314,6 +307,8 @@ void ImpalaServer::WorkloadManagementWorker(
       }
 
       StrAppend(&sql, move(row), ",");
+      VLOG(2) << "Workload Management: added query '" << iter->query->base_state->id <<
+        "' to insert sql. Insert attempt '" << iter->insert_attempts_count << "'.";
     }
 
     DCHECK(ImpaladMetrics::COMPLETED_QUERIES_QUEUED->GetValue() >=

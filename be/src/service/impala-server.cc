@@ -562,23 +562,6 @@ ImpalaServer::ImpalaServer(ExecEnv* exec_env)
         filter_prefix, catalog_cb));
   }
 
-  if (FLAGS_is_coordinator && FLAGS_enable_workload_mgmt) {
-    if (FLAGS_cluster_id.empty()) {
-      wm_topic_name_ = Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
-    } else {
-      wm_topic_name_ =
-          FLAGS_cluster_id + '-' + Statestore::IMPALA_WORKLOAD_MANAGEMENT_TOPIC;
-    }
-    ABORT_IF_ERROR(exec_env->subscriber()->AddTopic(
-        wm_topic_name_, /* is_transient=*/ false,
-        /* populate_min_subscriber_topic_version=*/ false,
-        /* filter_prefix= */ "", [this](const StatestoreSubscriber::TopicDeltaMap& state,
-        vector<TTopicDelta>* topic_updates) {
-          WorkloadManagementTopicUpdate(state, topic_updates);
-        }
-    ));
-  }
-
   // Initialise the cancellation thread pool with 5 (by default) threads. The max queue
   // size is deliberately set so high that it should never fill; if it does the
   // cancellations will get ignored and retried on the next statestore heartbeat.
