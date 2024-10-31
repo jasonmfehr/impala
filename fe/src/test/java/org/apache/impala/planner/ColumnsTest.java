@@ -299,4 +299,18 @@ public class ColumnsTest extends FrontendTestBase {
             "functional_parquet.iceberg_v2_delete_positional.input__file__name"),
         null, null);
   }
+
+  // TODO: remove me
+  @Test
+  public void testUnnest() {
+    testColumns(
+        "select id, unnest1, unnest2 from (select id, unnest(arr1) as unnest1, " +
+        "unnest(arr2) as unnest2 from default.view_arrays) x where unnest1 < 3",
+        ImmutableList.of("default.view_arrays.arr1", "default.view_arrays.arr2",
+                         "default.view_arrays.id",
+                         "functional_parquet.complextypes_arrays.arr1",
+                         "functional_parquet.complextypes_arrays.arr2",
+                         "functional_parquet.complextypes_arrays.id"),
+        ImmutableList.of("default.view_arrays.arr1"), null, null, null);
+  }
 }
