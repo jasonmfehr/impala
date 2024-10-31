@@ -49,6 +49,7 @@ import org.apache.impala.catalog.HdfsTable;
 import org.apache.impala.catalog.KuduTable;
 import org.apache.impala.catalog.ScalarFunction;
 import org.apache.impala.catalog.ScalarType;
+import org.apache.impala.catalog.SystemTable;
 import org.apache.impala.catalog.Table;
 import org.apache.impala.catalog.Type;
 import org.apache.impala.catalog.View;
@@ -220,6 +221,13 @@ public class FrontendFixture {
       } catch (ImpalaRuntimeException e) {
         e.printStackTrace();
         fail("Failed to add test table:\n" + createTableSql);
+      }
+    } else if (dummyTable instanceof SystemTable) {
+      List<ColumnDef> columnDefs = Lists.newArrayList(createTableStmt.getColumnDefs());
+      for (int i = 0; i < columnDefs.size(); ++i) {
+        ColumnDef colDef = columnDefs.get(i);
+        dummyTable.addColumn(
+            new Column(colDef.getColName(), colDef.getType(), colDef.getComment(), i));
       }
     } else {
       fail("Test table type not supported:\n" + createTableSql);

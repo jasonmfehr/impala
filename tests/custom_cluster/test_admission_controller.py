@@ -1786,6 +1786,46 @@ class TestAdmissionController(TestAdmissionControllerBase, HS2TestSuite):
       for executor_mem_admitted in mem_admitted['executor']:
         assert executor_mem_admitted == 0
 
+  @pytest.mark.execute_serially
+  @CustomClusterTestSuite.with_args(disable_log_buffering=True, cluster_size=1,
+      impalad_args="--enable_workload_mgmt --default_pool_max_requests=1 -v=2",
+      catalogd_args="--enable_workload_mgmt")
+  def test_system_tables_bypass_admission(self):
+    """Asserts queries that only select from sys.impala_query_live bypass admission
+       control and are admitted immediately."""
+    sleep_handle = self.client.execute_async("select sleep(5000)")
+    self.wait_for_profile_change(sleep_handle, "Admission result: Admitted immediately",
+        sleep_time_s=1)
+
+    live_res = self.client.execute("select * from sys.impala_query_live")
+    assert "Admission result: Admitted immediately" in str(live_res.runtime_profile), \
+           str(live_res.runtime_profile)
+
+    self.assert_log_contains(self.get_ac_log_name(), "INFO",
+        "Admitted by system tables only policy: query_id={}".format(live_res.query_id))
+
+  @pytest.mark.execute_serially
+  @CustomClusterTestSuite.with_args(disable_log_buffering=True, cluster_size=1,
+      impalad_args="--enable_workload_mgmt --default_pool_max_requests=1 "
+                   "--default_pool_max_requests=1 "
+                   "--system_tables_bypass_admission_control=false",
+      catalogd_args="--enable_workload_mgmt")
+  def test_system_tables_admission(self):
+    """Asserts queries that only select from sys.impala_query_live go through admission
+       control when the system_tables_bypass_admission_control startup flag is false."""
+    sleep_handle = self.client.execute_async("select sleep(3000)")
+    live_handle = self.client.execute_async("select * from sys.impala_query_live")
+
+    self.wait_for_profile_change(sleep_handle, "Admission result: Admitted immediately")
+    self.impalad_test_service.wait_for_query_state(self.client, sleep_handle,
+        self.client.QUERY_STATES['FINISHED'], timeout=20)
+    self.client.close_query(sleep_handle)
+
+    self.wait_for_profile_change(live_handle, "Admission result: Admitted (queued)")
+    self.impalad_test_service.wait_for_query_state(self.client, live_handle,
+        self.client.QUERY_STATES['FINISHED'], timeout=20)
+    self.assert_impalad_log_contains("INFO", "Admitted by system tables only policy.", 0)
+
 
 class TestAdmissionControllerWithACService(TestAdmissionController):
   """Runs all of the tests from TestAdmissionController but with the second impalad in the
