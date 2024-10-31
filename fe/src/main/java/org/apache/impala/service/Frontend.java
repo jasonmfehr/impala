@@ -157,6 +157,7 @@ import org.apache.impala.planner.HdfsScanNode;
 import org.apache.impala.planner.PlanFragment;
 import org.apache.impala.planner.Planner;
 import org.apache.impala.planner.ScanNode;
+import org.apache.impala.planner.SystemTableScanNode;
 import org.apache.impala.thrift.CatalogLookupStatus;
 import org.apache.impala.thrift.TAlterDbParams;
 import org.apache.impala.thrift.TBackendGflags;
@@ -1925,6 +1926,7 @@ public class Frontend {
     Set<TTableName> tablesMissingStats = Sets.newTreeSet();
     Set<TTableName> tablesWithCorruptStats = Sets.newTreeSet();
     Set<TTableName> tablesWithMissingDiskIds = Sets.newTreeSet();
+    int systemTableCount = 0;
     for (ScanNode scanNode: scanNodes) {
       result.putToPer_node_scan_ranges(
           scanNode.getId().asInt(), scanNode.getScanRangeSpecs());
@@ -1936,7 +1938,13 @@ public class Frontend {
           ((HdfsScanNode) scanNode).hasMissingDiskIds()) {
         tablesWithMissingDiskIds.add(tableName);
       }
+      if (scanNode instanceof SystemTableScanNode) {
+        systemTableCount++;
+      }
     }
+
+    queryCtx.setSystem_tables_only(scanNodes.size() > 0
+        && systemTableCount == scanNodes.size());
 
     // Clear pre-existing lists to avoid adding duplicate entries in FE tests.
     queryCtx.unsetTables_missing_stats();

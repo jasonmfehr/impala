@@ -23,13 +23,13 @@ from time import sleep
 def retry(func, max_attempts=3, sleep_time_s=1, backoff=2, raise_immediately=False):
   """
   Repeatedly executes a provided function until the function either returns True or the
-  maximum number of iterations is it.
+  maximum number of iterations is reached.
 
   Inputs:
     func             - A function to execute, this function must take a single boolean
                        parameter which indicates if the current attempt is the last
                        attempt, the purpose of this parameter is to enable assertions to
-                       run during the lastattempt so that better error messages a
+                       run during the last attempt so that better error messages are
                        provided.
     max_attempts      - The maximum number of times to run the function.
     sleep_time_s      - The number of seconds to sleep before retrying.

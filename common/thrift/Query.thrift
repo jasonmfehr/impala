@@ -936,6 +936,9 @@ struct TQueryCtx {
 
   // 128-bit hash representing query option values that affect query results.
   31: optional TQueryOptionsHash query_options_result_hash
+
+  // Indicates if the query is only selecting from in-memory system tables.
+  32: optional bool system_tables_only = 0
 }
 
 
@@ -1090,4 +1093,3 @@ struct TQueryExecRequest {
   // assignment for the query. Should either be unset or set with positive value.
   18: optional i32 cores_required_unbounded
 }
-
