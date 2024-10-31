@@ -1242,8 +1242,8 @@ bool Scheduler::IsCoordinatorOnlyQuery(const TQueryExecRequest& exec_request) {
   int64_t num_fragments = plan_exec_info.fragments.size();
   DCHECK_GT(num_fragments, 0);
   auto type = plan_exec_info.fragments[0].partition.type;
-  return num_parallel_plans == 1 && num_fragments == 1
-      && type == TPartitionType::UNPARTITIONED;
+  return (num_parallel_plans == 1 && num_fragments == 1
+      && type == TPartitionType::UNPARTITIONED);
 }
 
 void Scheduler::PopulateFilepathToHostsMapping(const FInstanceScheduleState& finst,

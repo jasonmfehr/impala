@@ -18,8 +18,13 @@
 package org.apache.impala.planner;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.mockStatic;
+import static org.hamcrest.core.Is.is;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -33,20 +38,26 @@ import org.apache.impala.catalog.HBaseColumn;
 import org.apache.impala.catalog.Type;
 import org.apache.impala.common.ImpalaException;
 import org.apache.impala.datagenerator.HBaseTestDataRegionAssignment;
+import org.apache.impala.service.BackendConfig;
+import org.apache.impala.service.FeSupport;
 import org.apache.impala.service.Frontend.PlanCtx;
 import org.apache.impala.testutil.TestUtils;
 import org.apache.impala.testutil.TestUtils.IgnoreValueFilter;
 import org.apache.impala.thrift.TRuntimeFilterType;
+import org.apache.impala.thrift.TAddressesList;
+import org.apache.impala.thrift.TBackendGflags;
 import org.apache.impala.thrift.TExecRequest;
 import org.apache.impala.thrift.TExplainLevel;
 import org.apache.impala.thrift.TJoinDistributionMode;
 import org.apache.impala.thrift.TKuduReplicaSelection;
+import org.apache.impala.thrift.TNetworkAddress;
 import org.apache.impala.thrift.TQueryCtx;
 import org.apache.impala.thrift.TQueryOptions;
 import org.apache.impala.thrift.TRuntimeFilterMode;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.mockito.MockedStatic;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Collections2;
@@ -1623,5 +1634,83 @@ public class PlannerTest extends PlannerTestBase {
   @Test
   public void testIcebergMerge() {
     runPlannerTestFile("iceberg-merge");
+  }
+
+  @Test
+  public void testQueryOneSystemTable() throws ImpalaException {
+    // Setup mocks of native function calls.
+    TAddressesList mockCoords = new TAddressesList(
+        Arrays.asList(new TNetworkAddress("localhost", 65534),
+                      new TNetworkAddress("localhost", 65535)));
+    MockedStatic<FeSupport> mockedNative = mockStatic(FeSupport.class);
+    mockedNative.when(FeSupport::GetCoordinators).thenReturn(mockCoords);
+    mockedNative.when(FeSupport::NumLiveQueries).thenReturn(1L);
+
+    TBackendGflags backendCfg = BackendConfig.INSTANCE.getBackendCfg().deepCopy();
+    backendCfg.setEnable_workload_mgmt(true);
+    backendCfg.setBlacklisted_dbs("information_schema");
+    backendCfg.setBlacklisted_tables("");
+    BackendConfig.create(backendCfg);
+
+    addTestDb("sys", "DB for system tables.");
+    addTestTable("create external table sys.impala_query_live (id int) " +
+        "TBLPROPERTIES ('__IMPALA_SYSTEM_TABLE'='true')");
+
+    TQueryCtx queryCtx = TestUtils.createQueryContext(Catalog.DEFAULT_DB,
+        System.getProperty("user.name"));
+    TExecRequest actual = null;
+
+    queryCtx.client_request.setStmt("select * from sys.impala_query_live");
+    PlanCtx planCtx = new PlanCtx(queryCtx);
+    planCtx.disableDescTblSerialization();
+    frontend_.createExecRequest(planCtx);
+
+    actual = frontend_.createExecRequest(planCtx);
+
+    assertNotNull(actual);
+    assertNotNull(actual.query_exec_request);
+    assertThat(actual.query_exec_request.query_ctx.system_tables_only, is(true));
+    assertThat(actual.query_exec_request.host_list.size(), is(2));
+  }
+
+  @Test
+  public void tesQueryMultipleTables() throws ImpalaException {
+    // Setup mocks of native function calls.
+    TAddressesList mockCoords = new TAddressesList(
+        Arrays.asList(new TNetworkAddress("localhost", 65534),
+                      new TNetworkAddress("localhost", 65535)));
+    MockedStatic<FeSupport> mockedNative = mockStatic(FeSupport.class);
+    mockedNative.when(FeSupport::GetCoordinators).thenReturn(mockCoords);
+    mockedNative.when(FeSupport::NumLiveQueries).thenReturn(1L);
+
+    TBackendGflags backendCfg = BackendConfig.INSTANCE.getBackendCfg().deepCopy();
+    backendCfg.setEnable_workload_mgmt(true);
+    backendCfg.setBlacklisted_dbs("information_schema");
+    backendCfg.setBlacklisted_tables("");
+    BackendConfig.create(backendCfg);
+
+    addTestDb("sys", "DB for system tables.");
+    addTestTable("create external table sys.impala_query_live (cluster_id string, " +
+                 "query_id string) TBLPROPERTIES ('__IMPALA_SYSTEM_TABLE'='true')");
+    addTestTable("create table sys.footable (field1 string) " +
+                "partitioned by (cluster_id string) stored as textfile " +
+                "location 'file:///tmp/footable'");
+
+    TQueryCtx queryCtx = TestUtils.createQueryContext(Catalog.DEFAULT_DB,
+        System.getProperty("user.name"));
+    TExecRequest actual = null;
+
+    queryCtx.client_request.setStmt("select * from " +
+                                    "sys.footable, sys.impala_query_live");
+    PlanCtx planCtx = new PlanCtx(queryCtx);
+    planCtx.disableDescTblSerialization();
+    frontend_.createExecRequest(planCtx);
+
+    actual = frontend_.createExecRequest(planCtx);
+
+    assertNotNull(actual);
+    assertNotNull(actual.query_exec_request);
+    assertThat(actual.query_exec_request.query_ctx.system_tables_only, is(false));
+    assertThat(actual.query_exec_request.host_list.size(), is(2));
   }
 }
