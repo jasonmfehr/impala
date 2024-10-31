@@ -47,20 +47,20 @@ class TestWorkloadManagementSQLDetails(TestQueryLogTableBase):
     # Assert tables queried.
   def _assert_all(self, vector, query, expected_tables_queried, expected_select_cols,
         expected_where_cols, expected_join_cols, expected_aggregate_cols,
-        expected_orderby_cols, db="tpcds"):
+        expected_orderby_cols, db="tpcds", expected_queries_written=1):
     """Runs the provided query ensuring it completed successfully and asserts the correct
        information is stored in the query log table.  If the 'db' parameter is not empty,
        this function first runs a 'use' query to switch to the specified database."""
     client = self.get_client(vector.get_value("protocol"))
 
-    if db != "":
+    if db is not None:
       assert client.execute("use {}".format(db)).success
     res = client.execute(query)
     assert res.success
 
     # Wait for the query to be written to the completed queries table.
     self.cluster.get_first_impalad().service.wait_for_metric_value(
-        "impala-server.completed-queries.written", 1, 60)
+        "impala-server.completed-queries.written", expected_queries_written, 60)
 
     # Assert tables queried.
     assert_csv_col(client, self.QUERY_TBL, TQueryTableColumn.TABLES_QUERIED, res.query_id,
@@ -440,8 +440,33 @@ class TestWorkloadManagementSQLDetails(TestQueryLogTableBase):
         "group by tinyint_col, smallint_col",
         ["alltypes"],
         ["alltypes.tinyint_col", "alltypes.smallint_col", "alltypes.float_col"],
-        ['alltypes.smallint_col', 'alltypes.tinyint_col'],
+        ["alltypes.smallint_col", "alltypes.tinyint_col"],
         [],
-        ['alltypes.smallint_col', 'alltypes.tinyint_col'],
+        ["alltypes.smallint_col", "alltypes.tinyint_col"],
         [],
         "functional")
+
+  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_graceful_shutdown=True,
+      impalad_args="--enable_workload_mgmt --query_log_write_interval_s=1",
+      catalogd_args="--enable_workload_mgmt")
+  def test_views(self, vector, unique_database):
+    """Asserts that columns in views are reported accurately"""
+    client = self.create_impala_client()
+
+    # Ensure the sys db exists
+    assert client.execute("create view {}.test_view as SELECT id, arr1, arr2 "
+        "FROM functional_parquet.complextypes_arrays".format(unique_database)).success
+    assert client.execute("create view {}.test_join_view as SELECT id, "
+        "date_string_col date_str FROM functional_parquet.alltypes"
+        .format(unique_database)).success
+
+    self._assert_all(vector, "select base.id, unnest(base.arr1) unnest1, j.date_str from {0}.test_view base inner join {0}.test_join_view j on base.id = j.id".format(unique_database),
+        ["functional_parquet.alltypes", "functional_parquet.complextypes_arrays",
+         "{}.test_join_view".format(unique_database),
+         "{}.test_view".format(unique_database)],
+        [],
+        [],
+        [],
+        [],
+        [],
+        None, 5)
