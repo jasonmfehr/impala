@@ -678,8 +678,10 @@ class TestQueryLogTableHS2(TestQueryLogTableBase):
                                                  "--shutdown_grace_period_s=0 "
                                                  "--shutdown_deadline_s=15 "
                                                  "--debug_actions="
-                                                 "WM_SHUTDOWN_DELAY:SLEEP@5000",
-                                    catalogd_args="--enable_workload_mgmt")
+                                                 "WM_SHUTDOWN_DELAY:SLEEP@5000 "
+                                                 "--logbuflevel=-1",
+                                    catalogd_args="--enable_workload_mgmt "
+                                                  "--logbuflevel=-1")
   def test_flush_on_shutdown(self, vector):
     """Asserts that queries that have completed but are not yet written to the query
        log table are flushed to the table before the coordinator exits. Graceful shutdown
@@ -729,8 +731,10 @@ class TestQueryLogTableHS2(TestQueryLogTableBase):
                                                  "--query_log_shutdown_timeout_s=3 "
                                                  "--shutdown_deadline_s=15 "
                                                  "--debug_actions="
-                                                 "WM_SHUTDOWN_DELAY:SLEEP@10000",
-                                    catalogd_args="--enable_workload_mgmt")
+                                                 "WM_SHUTDOWN_DELAY:SLEEP@10000 "
+                                                 "--logbuflevel=-1",
+                                    catalogd_args="--enable_workload_mgmt "
+                                                  "--logbuflevel=-1")
   def test_shutdown_flush_timed_out(self, vector):
     """Asserts that queries that have completed but are not yet written to the query
        log table are lost if the completed queries queue drain takes too long and that

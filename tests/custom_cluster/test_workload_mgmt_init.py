@@ -58,10 +58,10 @@ class TestWorkloadManagementInitBase(CustomClusterTestSuite):
        function blocks until the workload management init process completes. If
        additional_impalad_opts is specified, that string is appended to the impala_args
        startup flag."""
-    coord_opts = "--impalad_args=--enable_workload_mgmt "
+    coord_opts = "--impalad_args=--enable_workload_mgmt --logbuflevel=-1 "
     coord_opts += additional_impalad_opts
 
-    catalog_opts = "--catalogd_args=--enable_workload_mgmt "
+    catalog_opts = "--catalogd_args=--enable_workload_mgmt --logbuflevel=-1 "
     catalog_opts += additional_catalogd_opts
 
     if schema_version:
@@ -163,8 +163,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.wait_for_wm_init_complete()
 
   @CustomClusterTestSuite.with_args(
-      impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt --workload_mgmt_schema_version=1.1.0")
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --workload_mgmt_schema_version=1.1.0 "
+                    "--logbuflevel=-1")
   def test_no_upgrade(self):
     """Tests that no upgrade happens when starting a cluster where the workload management
        tables are already at version 1.1.0."""
@@ -175,8 +176,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
         r"upgraded", expected_count=0)
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --workload_mgmt_schema_version=1.0.0",
-      catalogd_args="--enable_workload_mgmt "
+      impalad_args="--enable_workload_mgmt --workload_mgmt_schema_version=1.0.0 "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1 "
                     "--workload_mgmt_schema_version=1.0.0 "
                     "--workload_mgmt_drop_tables=impala_query_log,impala_query_live")
   def test_create_on_version_1_0_0(self, vector):
@@ -190,8 +192,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.run_test_case('QueryTest/workload-management-log-v1.0.0', vector, self.WM_DB)
     self.run_test_case('QueryTest/workload-management-live-v1.0.0', vector, self.WM_DB)
 
-  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt "
+  @CustomClusterTestSuite.with_args(cluster_size=1,
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1 "
                     "--workload_mgmt_drop_tables=impala_query_log,impala_query_live")
   def test_create_on_version_1_1_0(self, vector):
     """Asserts that workload management tables are properly created on version 1.1.0 using
@@ -205,8 +208,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.run_test_case('QueryTest/workload-management-live-v1.1.0', vector, self.WM_DB)
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --workload_mgmt_schema_version=1.0.0",
-      catalogd_args="--enable_workload_mgmt "
+      impalad_args="--enable_workload_mgmt --workload_mgmt_schema_version=1.0.0 "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1 "
                     "--workload_mgmt_schema_version=1.0.0 "
                     "--workload_mgmt_drop_tables=impala_query_log,impala_query_live")
   def test_upgrade_1_0_0_to_1_1_0(self, vector):
@@ -232,8 +236,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.run_test_case('QueryTest/workload-management-log-v1.1.0', vector, self.WM_DB)
     self.run_test_case('QueryTest/workload-management-live-v1.1.0', vector, self.WM_DB)
 
-  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt")
+  @CustomClusterTestSuite.with_args(cluster_size=1,
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1")
   def test_log_table_newer_schema_version(self):
     """Asserts a catalog startup flag version that is older than the workload
        management table schema version will write only the fields associated with the
@@ -278,8 +283,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
           TQueryTableColumn.AGGREGATE_COLUMNS: "NULL",
           TQueryTableColumn.ORDERBY_COLUMNS: "NULL"})
 
-  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt "
+  @CustomClusterTestSuite.with_args(cluster_size=1,
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1 "
                     "--query_log_table_props=\"foo=bar,foo1=bar1\" "
                     "--workload_mgmt_drop_tables=impala_query_log,impala_query_live")
   def test_create_table_with_custom_props(self):
@@ -289,8 +295,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.assert_table_prop(self.QUERY_TBL_LOG, "foo", "bar")
     self.assert_table_prop(self.QUERY_TBL_LIVE, "foo", "bar")
 
-  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt "
+  @CustomClusterTestSuite.with_args(cluster_size=1,
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1 "
                     "--workload_mgmt_drop_tables=impala_query_log,impala_query_live")
   def test_create_from_scratch(self):
     """Tests the conditions that exist when workload management is first started by
@@ -331,8 +338,10 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
           "impala_query_live")
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
-      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
+      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                    "--logbuflevel=-1",
       tmp_dir_placeholders=['invalid_schema'])
   def test_invalid_schema_version_log_table_prop(self):
     """Tests that startup succeeds when the 'schema_version' table property on the
@@ -341,8 +350,10 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self._run_invalid_table_prop_test(self.QUERY_TBL_LOG, "schema_version", True)
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
-      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
+      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                    "--logbuflevel=-1",
       tmp_dir_placeholders=['invalid_schema'])
   def test_invalid_wm_schema_version_log_table_prop(self):
     """Tests that startup fails when the 'wm_schema_version' table property on the
@@ -350,8 +361,10 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self._run_invalid_table_prop_test(self.QUERY_TBL_LOG, "wm_schema_version")
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
-      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
+      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                    "--logbuflevel=-1",
       tmp_dir_placeholders=['invalid_schema'])
   def test_invalid_schema_version_live_table_prop(self):
     """Tests that startup succeeds when the 'schema_version' table property on the
@@ -360,16 +373,19 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self._run_invalid_table_prop_test(self.QUERY_TBL_LIVE, "schema_version", True)
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
-      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema}",
+      impalad_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --minidump_path={invalid_schema} "
+                    "--logbuflevel=-1",
       tmp_dir_placeholders=['invalid_schema'])
   def test_invalid_wm_schema_version_live_table_prop(self):
     """Tests that startup fails when the 'wm_schema_version' table property on the
        sys.impala_query_live table contains an invalid value."""
     self._run_invalid_table_prop_test(self.QUERY_TBL_LIVE, "wm_schema_version")
 
-  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt")
+  @CustomClusterTestSuite.with_args(cluster_size=1,
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1")
   def test_upgrade_to_latest_from_previous_binary(self):
     """Simulated an upgrade situation from workload management tables created by previous
        builds of Impala."""
@@ -402,8 +418,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
         "impala-server.completed-queries.written", 2, 60)
     assert_query(self.QUERY_TBL_LOG, client, impalad=impalad, query_id=res.query_id)
 
-  @CustomClusterTestSuite.with_args(cluster_size=1, impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt")
+  @CustomClusterTestSuite.with_args(cluster_size=1,
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1")
   def test_start_at_1_0_0(self):
     """Tests the situation where workload management tables were created by the original
        workload management code, and the current code is started at workload management
@@ -452,8 +469,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     data = log_results.data[0].split("\t")
     assert len(data) == len(log_results.column_labels)
 
-  @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt", start_args="--enable_catalogd_ha",
+  @CustomClusterTestSuite.with_args(start_args="--enable_catalogd_ha",
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1",
       statestored_args="--use_subscriber_id_as_catalogd_priority=true")
   def test_catalog_ha(self):
     """Asserts workload management initialization is only done on the active catalogd."""
@@ -466,8 +484,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.assert_catalogd_log_contains("INFO", r"workload management", expected_count=0,
         node_index=1)
 
-  @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt", start_args="--enable_catalogd_ha",
+  @CustomClusterTestSuite.with_args(start_args="--enable_catalogd_ha",
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1",
       statestored_args="--use_subscriber_id_as_catalogd_priority=true")
   def test_catalog_ha_failover(self):
     """Asserts workload management initialization is not run a second time when catalogd
@@ -493,10 +512,10 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.assert_catalogd_log_contains("INFO", r"workload management initialization",
         expected_count=0, node_index=1)
 
-  @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt",
-      statestored_args="--use_subscriber_id_as_catalogd_priority=true",
-      start_args="--enable_statestored_ha")
+  @CustomClusterTestSuite.with_args(start_args="--enable_statestored_ha",
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1",
+      statestored_args="--use_subscriber_id_as_catalogd_priority=true")
   def test_statestore_ha(self):
     """Asserts workload management initialization completes successfully when statestore
        ha is enabled."""
@@ -505,8 +524,9 @@ class TestWorkloadManagementInitWait(TestWorkloadManagementInitBase):
     self.assert_catalogd_log_contains("INFO",
         r"Completed workload management initialization")
 
-  @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt",
-      catalogd_args="--enable_workload_mgmt",
+  @CustomClusterTestSuite.with_args(
+      impalad_args="--enable_workload_mgmt --logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1",
       statestored_args="--use_subscriber_id_as_catalogd_priority=true",
       start_args="--enable_catalogd_ha --enable_statestored_ha")
   def test_catalog_statestore_ha(self):
@@ -532,8 +552,9 @@ class TestWorkloadManagementInitNoWait(TestWorkloadManagementInitBase):
     super(TestWorkloadManagementInitNoWait, self).setup_method(method)
 
   @CustomClusterTestSuite.with_args(cluster_size=1,
-      impalad_args="--enable_workload_mgmt --query_log_write_interval_s=3",
-      catalogd_args="--enable_workload_mgmt "
+      impalad_args="--enable_workload_mgmt --query_log_write_interval_s=3 "
+                   "--logbuflevel=-1",
+      catalogd_args="--enable_workload_mgmt --logbuflevel=-1 "
                     "--workload_mgmt_drop_tables=impala_query_log,impala_query_live "
                     "--debug_actions=CATALOG_WORKLOADMGMT_STARTUP:SLEEP@15000")
   def test_catalog_init_delay(self):
@@ -561,9 +582,10 @@ class TestWorkloadManagementInitNoWait(TestWorkloadManagementInitBase):
   @CustomClusterTestSuite.with_args(cluster_size=1, expect_startup_fail=True,
       impalad_timeout_s=60,
       impalad_args="--enable_workload_mgmt --workload_mgmt_schema_version=foo "
-                   "--minidump_path={minidumps}",
+                   "--minidump_path={minidumps} --logbuflevel=-1",
       catalogd_args="--enable_workload_mgmt --workload_mgmt_schema_version=foo "
-                    "--minidump_path={minidumps}", tmp_dir_placeholders=['minidumps'])
+                    "--minidump_path={minidumps} --logbuflevel=-1",
+      tmp_dir_placeholders=['minidumps'])
   def test_start_invalid_version(self):
     """Asserts that starting a cluster with an invalid workload management version
        errors. Cluster sizes of 1 are used to speed up the initial setup."""
@@ -578,9 +600,10 @@ class TestWorkloadManagementInitNoWait(TestWorkloadManagementInitBase):
   @CustomClusterTestSuite.with_args(cluster_size=1, expect_startup_fail=True,
       impalad_timeout_s=60,
       impalad_args="--enable_workload_mgmt --workload_mgmt_schema_version=0.0.1 "
-                   "--minidump_path={minidumps}",
+                   "--minidump_path={minidumps} --logbuflevel=-1",
       catalogd_args="--enable_workload_mgmt --workload_mgmt_schema_version=0.0.1 "
-                    "--minidump_path={minidumps}", tmp_dir_placeholders=['minidumps'])
+                    "--minidump_path={minidumps} --logbuflevel=-1",
+      tmp_dir_placeholders=['minidumps'])
   def test_start_unknown_version(self):
     """Asserts that starting a cluster with an unknown workload management version errors.
        Cluster sizes of 1 are used to speed up the initial setup."""
@@ -593,6 +616,7 @@ class TestWorkloadManagementInitNoWait(TestWorkloadManagementInitBase):
         r"'0.0.1' is not one of the known versions: '1.0.0', '1.1.0'$")
 
   @CustomClusterTestSuite.with_args(start_args="--enable_catalogd_ha",
+      impalad_args="--logbuflevel=-1", catalogd_args="--logbuflevel=-1",
       statestored_args="--use_subscriber_id_as_catalogd_priority=true")
   def test_catalog_ha_no_workload_mgmt(self):
     """Asserts workload management initialization is not done on either catalogd when

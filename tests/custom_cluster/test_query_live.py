@@ -199,8 +199,10 @@ class TestQueryLive(CustomClusterTestSuite):
                  result.runtime_profile)
 
   @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt "
-                                                 "--cluster_id=test_query_live",
-                                    catalogd_args="--enable_workload_mgmt")
+                                                 "--cluster_id=test_query_live "
+                                                 "--logbuflevel=-1",
+                                    catalogd_args="--enable_workload_mgmt "
+                                                  "--logbuflevel=-1")
   def test_alter(self):
     """Asserts alter works on query live table."""
     column_desc = 'test_alter\tstring\t'
@@ -328,8 +330,10 @@ class TestQueryLive(CustomClusterTestSuite):
     client2.close()
 
   @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt "
-                                                 "--cluster_id=test_query_live",
-                                    catalogd_args="--enable_workload_mgmt",
+                                                 "--cluster_id=test_query_live "
+                                                 "--logbuflevel=-1",
+                                    catalogd_args="--enable_workload_mgmt "
+                                                  "--logbuflevel=-1",
                                     cluster_size=3,
                                     num_exclusive_coordinators=2)
   def test_missing_coordinator(self):
