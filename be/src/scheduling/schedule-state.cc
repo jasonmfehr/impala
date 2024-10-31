@@ -226,6 +226,11 @@ bool ScheduleState::GetIsTrivialQuery() const {
   return request_.is_trivial_query;
 }
 
+bool ScheduleState::GetSystemTablesOnly() const {
+  return request_.query_ctx.__isset.system_tables_only
+      && request_.query_ctx.system_tables_only;
+}
+
 void ScheduleState::IncNumScanRanges(int64_t delta) {
   query_schedule_pb_->set_num_scan_ranges(query_schedule_pb_->num_scan_ranges() + delta);
 }

@@ -396,10 +396,11 @@ under the License.
       <version>${jackson-databind.version}</version>
     </dependency>
 
+    <!-- JDK 8 is only supported on Mockito version 4.x.x and below. -->
     <dependency>
       <groupId>org.mockito</groupId>
-      <artifactId>mockito-core</artifactId>
-      <version>2.23.4</version>
+      <artifactId>mockito-inline</artifactId>
+      <version>4.11.0</version>
       <scope>test</scope>
     </dependency>
 

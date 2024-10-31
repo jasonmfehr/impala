@@ -181,6 +181,9 @@ class ScheduleState {
   /// Return whether the request is a trivial query.
   bool GetIsTrivialQuery() const;
 
+  /// Indicates if the request only reads from system tables.
+  bool GetSystemTablesOnly() const;
+
   /// Helper methods used by scheduler to populate this ScheduleState.
   void IncNumScanRanges(int64_t delta);
 

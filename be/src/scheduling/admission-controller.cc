@@ -81,6 +81,10 @@ DEFINE_string_hidden(injected_group_members_debug_only, "",
     "For testing only. Set to a semicolon separated list of groups, each of which "
     "consists of a name followed by a colon and a comma separated list of group members");
 
+DEFINE_bool(system_tables_bypass_admission_control, true,
+    "Specifies if queries that only select from system tables should bypass admission "
+    "control.");
+
 DECLARE_bool(is_coordinator);
 DECLARE_bool(is_executor);
 
@@ -2376,6 +2380,17 @@ bool AdmissionController::FindGroupToAdmitOrReject(
       queue_node->admitted_schedule = std::move(group_state.state);
       DCHECK(is_trivial != nullptr);
       if (is_trivial != nullptr) *is_trivial = true;
+      return true;
+    }
+
+    if (UNLIKELY(state->GetSystemTablesOnly())
+        && LIKELY(FLAGS_system_tables_bypass_admission_control)) {
+      // TODO: check if coordinator has enough memory?
+      DCHECK_EQ(executor_group.NumExecutors(),
+          membership_snapshot->GetCoordinators().NumExecutors());
+      VLOG_QUERY << "Admitted by system tables only policy: query_id="
+                 << PrintId(state->query_id());
+      queue_node->admitted_schedule = std::move(group_state.state);
       return true;
     }
 

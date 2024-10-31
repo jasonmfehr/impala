@@ -380,6 +380,21 @@ class ImpalaTestSuite(BaseTestSuite):
       cls.hs2_http_client = None
 
   @classmethod
+  def wait_for_profile_change(self, query_handle, search_string, max_attempts=10,
+      sleep_time_s=1, client=None):
+    if client is None:
+      client = self.client
+
+    def _retryFunc(_):
+      profile = client.get_runtime_profile(query_handle)
+      if search_string in profile:
+        return True
+
+    assert retry(_retryFunc, max_attempts, sleep_time_s, backoff=1), \
+        "Timed out waiting for change to profile\nSearch String: {}\nProfile:\n{}" \
+        .format(search_string, str(client.get_runtime_profile(query_handle)))
+
+  @classmethod
   def __get_default_host_port(cls, protocol):
     if protocol == 'beeswax':
       return IMPALAD
