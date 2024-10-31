@@ -446,12 +446,16 @@ public class Path {
    *                    should use that alias in the return or if the alias should be
    *                    resolved to its actual db, table, and column.
    *
+   * @param ignoreSubtype {@code boolean} specifying if the returned path list should
+   *                      include the column subtype (if the column is a complex type).
+   *
    * @return {@link List} of {@link String}s with each element of the list containing an
    *         individual piece of the path. Element {@code 0} contains the database,
    *         element {@code 1} contains the table, and all elements after contain the
    *         remaining pieces of the path.
    */
-  public List<String> getFullyQualifiedRawPath(boolean preferAlias) {
+  public List<String> getFullyQualifiedRawPath(boolean preferAlias,
+      boolean ignoreSubtype) {
     Preconditions.checkState(rootTable_ != null || rootDesc_ != null);
     List<String> result = Lists.newArrayListWithCapacity(rawPath_.size() + 2);
     if (rootDesc_ != null && (preferAlias || rootTable_ == null)) {
@@ -463,12 +467,36 @@ public class Path {
         result.add(((IcebergMetadataTable)rootTable_).getMetadataTableName());
       }
     }
-    result.addAll(rawPath_);
+
+    // Always add the column name.
+    if (!rawPath_.isEmpty()) {
+      result.add(rawPath_.get(0));
+
+      // If specified, add column subtypes (if the column is a complex type).
+      if (!ignoreSubtype) {
+        for (int i=1; i<rawPath_.size(); i++) {
+          result.add(rawPath_.get(i));
+        }
+      }
+    }
+
     return result;
   }
 
   public List<String> getFullyQualifiedRawPath() {
-    return getFullyQualifiedRawPath(true);
+    return getFullyQualifiedRawPath(true, false);
+  }
+
+  /**
+   * Determines the number of elements in the actual fully qualified raw path. If an alias
+   * exists, it is ignored.
+   *
+   * @return {@code int} containing the number of elements in this Path's fully qualified
+   *         raw path. Usually the return will be 3 (db.table.column) or 4 (when the
+   *         column type is a complex type such as map or array).
+   */
+  public int fullyQualifiedRawPathSize() {
+    return rawPath_.size() + 2;
   }
 
   /**

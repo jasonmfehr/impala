@@ -4613,14 +4613,13 @@ public class Analyzer {
   private void addColumnsTo(final QueryClause clause, Stream<Path> paths) {
     paths.forEach(p -> {
       if (p != null) {
-        List<String> pathParts = p.getFullyQualifiedRawPath(false);
-
         // Ignore paths containing less than 3 elements since they point to an alias
         // instead of an actual column.
-        if (pathParts.size() > 2) {
+        if (p.fullyQualifiedRawPathSize() > 2) {
           // Complex types may include sub items (such as db.tbl.structtype.field1).
           // Only record the field name and drop any complex type sub items.
-          String fullPath = String.join(".", pathParts.subList(0, 3));
+          List<String> pathParts = p.getFullyQualifiedRawPath(false, true);
+          String fullPath = String.join(".", pathParts);
           clause.getColumnList(globalState_).add(fullPath);
           if (LOG.isTraceEnabled()) {
             LOG.trace("Adding column '{}' to {} columns", fullPath, clause);
