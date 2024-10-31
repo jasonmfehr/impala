@@ -440,8 +440,8 @@ class TestWorkloadManagementSQLDetails(TestQueryLogTableBase):
         "group by tinyint_col, smallint_col",
         ["alltypes"],
         ["alltypes.tinyint_col", "alltypes.smallint_col", "alltypes.float_col"],
-        ['alltypes.smallint_col', 'alltypes.tinyint_col'],
+        ["alltypes.smallint_col", "alltypes.tinyint_col"],
         [],
-        ['alltypes.smallint_col', 'alltypes.tinyint_col'],
+        ["alltypes.smallint_col", "alltypes.tinyint_col"],
         [],
         "functional")
