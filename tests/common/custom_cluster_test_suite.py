@@ -27,6 +27,7 @@ import pipes
 import pytest
 import subprocess
 
+from glob import glob
 from impala_py_lib.helpers import find_all_files, is_core_dump
 from re import search
 from signal import SIGRTMIN
@@ -373,9 +374,13 @@ class CustomClusterTestSuite(ImpalaTestSuite):
 
   def wait_for_wm_init_complete(self, timeout_s=120):
     """Waits for the catalog to report the workload management initialization process
-       has completed."""
+       has completed and for the catalog updates to be received by the coordinators."""
     self.assert_catalogd_log_contains("INFO", r'Completed workload management '
         r'initialization', timeout_s=timeout_s)
+    ret = self.assert_catalogd_log_contains("INFO", r'A catalog update with \d+ entries '
+        r'is assembled. Catalog version: (\d+)', timeout_s=10, expected_count=-1)
+    self.assert_impalad_log_contains("INFO", r'Catalog topic update applied with '
+        r'version: {}'.format(ret.group(1)), timeout_s=30)
 
   @classmethod
   def _stop_impala_cluster(cls):
@@ -492,6 +497,15 @@ class CustomClusterTestSuite(ImpalaTestSuite):
     try:
       check_call(cmd + options, close_fds=True)
     finally:
+      # List log files from this cluster startup to identify log files for failed tests.
+      file_list = ""
+      for pattern in ["*.INFO", "*.WARNING", "*.ERROR", "*.FATAL"]:
+        matching_files = glob(os.path.join(impala_log_dir, pattern))
+        for matching_file in sorted(matching_files):
+          file_list += "  * {} - {}\n".format(matching_file.split(os.path.sep)[-1],
+              os.path.realpath(matching_file))
+      LOG.info("Log Files for Test:\n{}".format(file_list))
+
       # Failure tests expect cluster to be initialised even if start-impala-cluster fails.
       cls.cluster = ImpalaCluster.get_e2e_test_cluster()
     statestored = cls.cluster.statestored

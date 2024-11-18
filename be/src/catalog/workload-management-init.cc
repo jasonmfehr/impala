@@ -491,14 +491,16 @@ static Status _tableSchemaManagement(CatalogServiceIf* svc, const string& ip_add
               << parsed_actual_schema_version.ToString() << "' and will be upgraded";
     RETURN_IF_ERROR(_upgradeTable(
         svc, ip_addr, table_name, parsed_actual_schema_version, target_schema_version));
+    LOG(INFO) << "Successfully upgraded workload management table '" << full_table_name
+              << "'";
   }
 
   return Status::OK();
 } // function _logTableSchemaManagement
 
 inline bool CatalogServer::IsCatalogInitialized() {
-  unique_lock<mutex> l(catalog_lock_);
-  return last_sent_catalog_version_ > 0;
+  lock_guard<mutex> l(catalog_lock_);
+  return last_sent_catalog_version_ > 0 || (is_ha_determined_ && !is_active_);
 } // CatalogServer::IsCatalogInitialized
 
 bool CatalogServer::WaitForFirstCatalogUpdate() {

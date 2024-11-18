@@ -209,12 +209,16 @@ class CatalogServer {
   std::unique_ptr<Thread> catalog_metrics_refresh_thread_;
 
   /// Protects is_active_, active_catalogd_version_checker_,
-  /// catalog_update_cv_, pending_topic_updates_, catalog_objects_to/from_version_, and
-  /// last_sent_catalog_version.
+  /// catalog_update_cv_, pending_topic_updates_, catalog_objects_to/from_version_,
+  /// last_sent_catalog_version, and is_ha_determined_.
   std::mutex catalog_lock_;
 
   /// Set to true if this catalog instance is active.
   bool is_active_;
+
+  /// Set to true after active catalog has been determined. Will be true if catalog ha
+  /// is not enabled.
+  bool is_ha_determined_;
 
   /// Object to track the version of received active catalogd.
   boost::scoped_ptr<ActiveCatalogdVersionChecker> active_catalogd_version_checker_;
