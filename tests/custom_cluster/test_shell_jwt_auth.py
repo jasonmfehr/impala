@@ -63,19 +63,28 @@ class TestImpalaShellJWTAuth(CustomClusterTestSuite):
     impalad_args=IMPALAD_ARGS,
     impala_log_dir="{jwt_auth_success}",
     tmp_dir_placeholders=["jwt_auth_success"],
-    disable_log_buffering=True)
+    disable_log_buffering=True,
+    cluster_size=1)
   def test_jwt_auth_valid(self, vector):
     """Asserts the Impala shell can authenticate to Impala using JWT authentication.
     Also executes a query to ensure the authentication was successful."""
+    impalad = self.cluster.get_first_impalad().service
+    before_rpc_count = impalad.get_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections")
+
+    # Run a query and wait for it to complete.
     args = ['--protocol', vector.get_value('protocol'), '-j', '--jwt_cmd',
             'cat {0}'.format(TestImpalaShellJWTAuth.JWT_SIGNED_PATH),
             '-q', 'select version()', '--auth_creds_ok_in_clear']
     result = run_impala_shell_cmd(vector, args)
+    impalad.wait_for_metric_value("impala-server.backend-num-queries-executed", 1, 15)
 
     # Ensure the Impala coordinator is correctly reporting the jwt auth metrics
     # must be done before the cluster shuts down since it calls to the coordinator
-    sleep(5)
-    self.__assert_success_fail_metric(success_count_min=15, success_count_max=16)
+    query_rpc_count = impalad.get_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections") \
+        - before_rpc_count
+    self.__assert_success_fail_metric(impalad, success_count=query_rpc_count)
 
     # Shut down cluster to ensure logs flush to disk.
     self._stop_impala_cluster()
@@ -99,10 +108,15 @@ class TestImpalaShellJWTAuth(CustomClusterTestSuite):
     impalad_args=IMPALAD_ARGS,
     impala_log_dir="{jwt_auth_fail}",
     tmp_dir_placeholders=["jwt_auth_fail"],
-    disable_log_buffering=True)
+    disable_log_buffering=True,
+    cluster_size=1)
   def test_jwt_auth_expired(self, vector):
     """Asserts the Impala shell fails to authenticate when it presents a JWT that has a
     valid signature but is expired."""
+    impalad = self.cluster.get_first_impalad().service
+    before_rpc_count = impalad.get_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections")
+
     args = ['--protocol', vector.get_value('protocol'), '-j', '--jwt_cmd',
             'cat {0}'.format(TestImpalaShellJWTAuth.JWT_EXPIRED_PATH),
             '-q', 'select version()', '--auth_creds_ok_in_clear']
@@ -110,8 +124,13 @@ class TestImpalaShellJWTAuth(CustomClusterTestSuite):
 
     # Ensure the Impala coordinator is correctly reporting the jwt auth metrics
     # must be done before the cluster shuts down since it calls to the coordinator
-    sleep(5)
-    self.__assert_success_fail_metric(failure_count_min=4, failure_count_max=4)
+    impalad.wait_for_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections",
+        before_rpc_count + 1, allow_greater=True)
+    query_rpc_count = impalad.get_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections") \
+        - before_rpc_count
+    self.__assert_success_fail_metric(impalad, fail_count=query_rpc_count)
 
     # Shut down cluster to ensure logs flush to disk.
     self._stop_impala_cluster()
@@ -139,10 +158,15 @@ class TestImpalaShellJWTAuth(CustomClusterTestSuite):
     impalad_args=IMPALAD_ARGS,
     impala_log_dir="{jwt_auth_invalid_jwk}",
     tmp_dir_placeholders=["jwt_auth_invalid_jwk"],
-    disable_log_buffering=True)
+    disable_log_buffering=True,
+    cluster_size=1)
   def test_jwt_auth_invalid_jwk(self, vector):
     """Asserts the Impala shell fails to authenticate when it presents a JWT that has a
     valid signature but is expired."""
+    impalad = self.cluster.get_first_impalad().service
+    before_rpc_count = impalad.get_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections")
+
     args = ['--protocol', vector.get_value('protocol'), '-j', '--jwt_cmd',
             'cat {0}'.format(TestImpalaShellJWTAuth.JWT_INVALID_JWK),
             '-q', 'select version()', '--auth_creds_ok_in_clear']
@@ -150,8 +174,13 @@ class TestImpalaShellJWTAuth(CustomClusterTestSuite):
 
     # Ensure the Impala coordinator is correctly reporting the jwt auth metrics
     # must be done before the cluster shuts down since it calls to the coordinator
-    sleep(5)
-    self.__assert_success_fail_metric(failure_count_min=4, failure_count_max=4)
+    impalad.wait_for_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections",
+        before_rpc_count + 1, allow_greater=True)
+    query_rpc_count = impalad.get_metric_value(
+        "impala.thrift-server.hiveserver2-http-frontend.total-connections") \
+        - before_rpc_count
+    self.__assert_success_fail_metric(impalad, fail_count=query_rpc_count)
 
     # Shut down cluster to ensure logs flush to disk.
     self._stop_impala_cluster()
@@ -174,24 +203,15 @@ class TestImpalaShellJWTAuth(CustomClusterTestSuite):
     assert "HTTP code 401: Unauthorized" in result.stderr
     assert "Not connected to Impala, could not execute queries." in result.stderr
 
-  def __assert_success_fail_metric(self, success_count_min=0, success_count_max=0,
-                                   failure_count_min=0, failure_count_max=0):
+  def __assert_success_fail_metric(self, impalad_service, success_count=0, fail_count=0):
     """Impala emits metrics that count the number of successful and failed JWT
     authentications. This function asserts the JWT auth success/fail counters from the
     coordinator are within the specified ranges."""
-    self.__assert_counter(
+    impalad_service.wait_for_metric_value(
       "impala.thrift-server.hiveserver2-http-frontend.total-jwt-token-auth-success",
-      success_count_min, success_count_max)
-    self.__assert_counter(
+      success_count, 1)
+    impalad_service.wait_for_metric_value(
       "impala.thrift-server.hiveserver2-http-frontend.total-jwt-token-auth-failure",
-      failure_count_min, failure_count_max)
+      fail_count, 1)
 
-  def __assert_counter(self, counter_name, expected_count_min, expected_count_max):
-    """Asserts the value of the specifed counter metric from the coordinator falls
-    within the specified min and max (inclusive)."""
-    counter_val = self.cluster.impalads[0].service.get_metric_value(counter_name)
 
-    assert counter_val >= expected_count_min and counter_val <= expected_count_max, \
-           "expected counter '{0}' to have a value between '{1}' and '{2}' inclusive " \
-           "but its value was {3}" \
-          .format(counter_name, expected_count_min, expected_count_max, counter_val)
