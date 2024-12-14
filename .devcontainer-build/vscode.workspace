@@ -1,0 +1,158 @@
+{
+  "folders": [
+    {
+      "name": "be",
+      "path": "be"
+    },
+    {
+      "name": "bin",
+      "path": "bin"
+    },
+    {
+      "name": "common",
+      "path": "common"
+    },
+    {
+      "name": "fe",
+      "path": "fe"
+    },
+    {
+      "name": "infra",
+      "path": "infra"
+    },
+    {
+      "name": "java",
+      "path": "java"
+    },
+    {
+      "name": "shell",
+      "path": "shell"
+    },
+    {
+      "name": "testdata",
+      "path": "testdata"
+    },
+    {
+      "name": "tests",
+      "path": "tests"
+    },
+    {
+      "name": "docs",
+      "path": "docs"
+    },
+    {
+      "name": ".devcontainer",
+      "path": ".devcontainer"
+    }
+  ],
+  "settings": {
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx16G -Xms100m -Xlog:disable",
+    "files.associations": {
+      "*.tcc": "cpp",
+      "slist": "cpp",
+      "functional": "cpp",
+      "valarray": "cpp",
+      "variant": "cpp",
+      "iostream": "cpp",
+      "cctype": "cpp",
+      "clocale": "cpp",
+      "cmath": "cpp",
+      "csetjmp": "cpp",
+      "csignal": "cpp",
+      "cstdarg": "cpp",
+      "cstddef": "cpp",
+      "cstdio": "cpp",
+      "cstdlib": "cpp",
+      "cstring": "cpp",
+      "ctime": "cpp",
+      "cwchar": "cpp",
+      "cwctype": "cpp",
+      "any": "cpp",
+      "array": "cpp",
+      "atomic": "cpp",
+      "strstream": "cpp",
+      "bit": "cpp",
+      "bitset": "cpp",
+      "cfenv": "cpp",
+      "charconv": "cpp",
+      "chrono": "cpp",
+      "cinttypes": "cpp",
+      "codecvt": "cpp",
+      "complex": "cpp",
+      "condition_variable": "cpp",
+      "cstdint": "cpp",
+      "cuchar": "cpp",
+      "deque": "cpp",
+      "forward_list": "cpp",
+      "list": "cpp",
+      "map": "cpp",
+      "set": "cpp",
+      "unordered_map": "cpp",
+      "unordered_set": "cpp",
+      "vector": "cpp",
+      "exception": "cpp",
+      "algorithm": "cpp",
+      "iterator": "cpp",
+      "memory": "cpp",
+      "memory_resource": "cpp",
+      "numeric": "cpp",
+      "optional": "cpp",
+      "random": "cpp",
+      "ratio": "cpp",
+      "regex": "cpp",
+      "source_location": "cpp",
+      "string": "cpp",
+      "string_view": "cpp",
+      "system_error": "cpp",
+      "tuple": "cpp",
+      "type_traits": "cpp",
+      "utility": "cpp",
+      "hash_map": "cpp",
+      "hash_set": "cpp",
+      "fstream": "cpp",
+      "future": "cpp",
+      "initializer_list": "cpp",
+      "iomanip": "cpp",
+      "iosfwd": "cpp",
+      "istream": "cpp",
+      "limits": "cpp",
+      "mutex": "cpp",
+      "new": "cpp",
+      "ostream": "cpp",
+      "scoped_allocator": "cpp",
+      "shared_mutex": "cpp",
+      "sstream": "cpp",
+      "stdexcept": "cpp",
+      "streambuf": "cpp",
+      "thread": "cpp",
+      "typeindex": "cpp",
+      "typeinfo": "cpp",
+      "*.ipp": "cpp",
+      "*.gen": "cpp",
+      "stack": "cpp",
+      "*.def": "cpp"
+    },
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.debug.settings.onBuildFailureProceed": true,
+    "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
+    "cmake.additionalKits": ["${workspaceFolder}/.vscode/cmake-kits.json"],
+    "cmake.showSystemKits": false,
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.defaultActiveFolder": "${workspaceFolder}",
+    "cmake.autoSelectActiveFolder": false,
+    "cmake.enableAutomaticKitScan": false,
+    "cmake.ignoreCMakeListsMissing": true,
+    "remote.autoForwardPorts": false,
+    "java.configuration.runtimes": [
+      {
+        "name": "JavaSE-1.8",
+        "path": "/usr/lib/jvm/java-8-openjdk",
+      },
+      {
+        "name": "JavaSE-21",
+        "path": "/usr/lib/jvm/java-21-openjdk",
+      }
+    ]
+  }
+}
