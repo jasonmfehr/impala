@@ -393,6 +393,7 @@ if [ ! -d "/usr/local/apache-maven-${MVN_VERSION}" ]; then
   # Ensure that Impala's preferred version is installed locally,
   # even if a previous version exists there.
   sudo ln -s -f "/usr/local/apache-maven-${MVN_VERSION}/bin/mvn" "/usr/local/bin"
+  sudo rm "apache-maven-${MVN_VERSION}-bin.tar.gz"
 
   # reset permissions on redhat8
   # TODO: figure out why this is necessary for redhat8

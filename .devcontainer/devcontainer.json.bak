@@ -1,6 +1,6 @@
 {
   "name": "Impala Dev",
-  "image": "impaladev:latest",
+  "dockerFile": "Dockerfile",
   "runArgs": [
     "--privileged"
   ],
@@ -8,6 +8,7 @@
   "containerUser": "impdev",
   "workspaceMount": "source=${localWorkspaceFolder},target=/home/impdev/impala,type=bind",
   "workspaceFolder": "/home/impdev/impala",
+  "postCreateCommand": "echo 'yes' | bin/bootstrap_system.sh",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -18,8 +19,7 @@
         "vscjava.vscode-java-pack",
         "ms-python.python",
         "alefragnani.Bookmarks",
-        "mohsen1.prettify-json",
-        "alefragnani.bookmarks"
+        "mohsen1.prettify-json"
       ]
     }
   }
