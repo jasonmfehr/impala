@@ -48,8 +48,11 @@ USER ${USER_UID}:${USER_GID}
 RUN --mount=type=bind,source=.,target=/tmp/impala \
     cp -R /tmp/impala/ "${USER_IMPALA_DIR}" \
     && ls -la "${USER_IMPALA_DIR}" \
+    && mkdir "${USER_HOME}/.ssh" \
+    && chmod 700 "${USER_HOME}/.ssh" \
     && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > ${USER_HOME}/.ssh/known_hosts \
-    && curl -Lo "${USER_IMPALA_DIR}/.git/hooks/commit-msg" https://gerrit.cloudera.org/tools/hooks/commit-msg && chmod 755 "${USER_IMPALA_DIR}/.git/hooks/commit-msg"
+    && curl -Lo "${USER_IMPALA_DIR}/.git/hooks/commit-msg" https://gerrit.cloudera.org/tools/hooks/commit-msg \
+    && chmod 755 "${USER_IMPALA_DIR}/.git/hooks/commit-msg"
 
 RUN cd "${USER_IMPALA_DIR}" \
    && echo "yes" | ./bin/bootstrap_system.sh
