@@ -473,20 +473,20 @@ ssh localhost whoami
 #    ...
 #  ...ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
 # Prefer the FQDN first for rpc-mgr-kerberized-test as newer krb5 requires FQDN.
-echo "DOCKER_BUILDKIT is: '${DOCKER_BUILDKIT:-}'"
-if [ -z "${DOCKER_BUILDKIT:-}" ]; then
-  echo -e "\n127.0.0.1 $(hostname) $(hostname -s)" | sudo tee -a /etc/hosts
+# TODO - figure something else out here
+# if [ -z "${DOCKER_BUILDKIT:-}" ]; then
+#   echo -e "\n127.0.0.1 $(hostname) $(hostname -s)" | sudo tee -a /etc/hosts
 
-  #
-  # In Docker, one can change /etc/hosts as above but not with sed -i. The error message is
-  # "sed: cannot rename /etc/sedc3gPj8: Device or resource busy". The following lines are
-  # basically sed -i but with cp instead of mv for -i part.
-  NEW_HOSTS=$(mktemp)
-  sed 's/127.0.1.1/127.0.0.1/g' /etc/hosts > "${NEW_HOSTS}"
-  diff -u /etc/hosts "${NEW_HOSTS}" || true
-  sudo cp "${NEW_HOSTS}" /etc/hosts
-  rm "${NEW_HOSTS}"
-fi
+#   #
+#   # In Docker, one can change /etc/hosts as above but not with sed -i. The error message is
+#   # "sed: cannot rename /etc/sedc3gPj8: Device or resource busy". The following lines are
+#   # basically sed -i but with cp instead of mv for -i part.
+#   NEW_HOSTS=$(mktemp)
+#   sed 's/127.0.1.1/127.0.0.1/g' /etc/hosts > "${NEW_HOSTS}"
+#   diff -u /etc/hosts "${NEW_HOSTS}" || true
+#   sudo cp "${NEW_HOSTS}" /etc/hosts
+#   rm "${NEW_HOSTS}"
+# fi
 
 sudo mkdir -p /var/lib/hadoop-hdfs
 sudo chown $(whoami) /var/lib/hadoop-hdfs/
