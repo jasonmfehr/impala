@@ -38,7 +38,7 @@ RUN apt-get update \
     && echo "if [[ -e \"\${IMPALA_HOME}/bin/set-classpath.sh\" ]]; then source \"\${IMPALA_HOME}/bin/set-classpath.sh\"; fi" >> ${USER_HOME}/.bashrc \
     && echo "if [[ -e \"\${IMPALA_HOME}/bin/impala-config.sh\" ]]; then source \"\${IMPALA_HOME}/bin/impala-config.sh\"; fi" >> ${USER_HOME}/.bashrc \
     && echo "if [[ -d \"\${IMPALA_HOME}\" ]]; then cd \${IMPALA_HOME}; fi" >> ${USER_HOME}/.bashrc \
-    echo >> /etc/sysctl.conf \
+    && echo >> /etc/sysctl.conf \
     && echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf \
     && sysctl -p
 
