@@ -4,6 +4,7 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 ARG USER_NAME=impdev
 ARG USER_HOME=/home/${USER_NAME}
+ARG USER_IMPALA_DIR=${USER_HOME}/impala
 
 # Available Locales are en_US.UTF-8, hu_HU.UTF-8, and hi_IN.UTF-8
 ARG LOCALE=en_US.UTF-8
@@ -11,7 +12,7 @@ ARG LOCALE=en_US.UTF-8
 # Specifies the default timezone
 ARG TZ="America/Los_Angeles"
 
-ARG IMPALA_BUILD_THREADS=4
+ARG IMPALA_BUILD_THREADS=16
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -36,14 +37,23 @@ RUN apt-get update \
     && echo "export LC_ALL=\"${LOCALE}\"" >> ${USER_HOME}/.bashrc \
     && echo "if [[ -e \"\${IMPALA_HOME}/bin/set-classpath.sh\" ]]; then source \"\${IMPALA_HOME}/bin/set-classpath.sh\"; fi" >> ${USER_HOME}/.bashrc \
     && echo "if [[ -e \"\${IMPALA_HOME}/bin/impala-config.sh\" ]]; then source \"\${IMPALA_HOME}/bin/impala-config.sh\"; fi" >> ${USER_HOME}/.bashrc \
-    && echo "if [[ -d \"\${IMPALA_HOME}\" ]]; then cd \${IMPALA_HOME}; fi" >> ${USER_HOME}/.bashrc
+    && echo "if [[ -d \"\${IMPALA_HOME}\" ]]; then cd \${IMPALA_HOME}; fi" >> ${USER_HOME}/.bashrc \
+    echo >> /etc/sysctl.conf \
+    && echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf \
+    && sysctl -p
 
 USER ${USER_UID}:${USER_GID}
 
-RUN mkdir "${USER_HOME}/impala"
-COPY * "${USER_HOME}/impala/"
-RUN ls -la "${USER_HOME}/impala"
+# TODO: remove all git remotes and add back upstream remote
+RUN --mount=type=bind,source=.,target=/tmp/impala \
+    cp -R /tmp/impala/ "${USER_IMPALA_DIR}" \
+    && ls -la "${USER_IMPALA_DIR}" \
+    && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > ${USER_HOME}/.ssh/known_hosts \
+    && curl -Lo "${USER_IMPALA_DIR}/.git/hooks/commit-msg" https://gerrit.cloudera.org/tools/hooks/commit-msg && chmod 755 "${USER_IMPALA_DIR}/.git/hooks/commit-msg"
 
-RUN cd /home/impdev/impala \
-   && echo "yes" | ./bin/bootstrap_system.sh \
+RUN cd "${USER_IMPALA_DIR}" \
+   && echo "yes" | ./bin/bootstrap_system.sh
+
+RUN cd ${USER_IMPALA_DIR} \
+   && source "${USER_IMPALA_DIR}/bin/impala-config.sh" \
    && ./buildall.sh -format -skiptests
