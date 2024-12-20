@@ -62,6 +62,6 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && echo "[STATUS] - sourcing impala-config.sh" \
     && source "${USER_IMPALA_DIR}/bin/impala-config.sh" \
     && echo "[STATUS] - build all" \
-    && ./buildall.sh -noclean -notests \
+    && ./buildall.sh -noclean -skiptests \
     && echo "[STATUS] - starting create-test-configuration.sh" \
     && ./bin/create-test-configuration.sh -create_metastore
