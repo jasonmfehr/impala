@@ -67,7 +67,9 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && ./bin/create-test-configuration.sh -create_metastore \
     && git remote rm origin \
     && git remote add upstream https://github.com/apache/impala \
-    && cp .devcontainer-build/vscode.workspace .code-workspace
+    && cp .devcontainer-build/vscode.workspace impala.code-workspace \
+    && mkdir .vscode \
+    && cp .devcontainer-build/vscode.settings.json .vscode/settings.json
 
 ENTRYPOINT ["/home/impdev/impala/.devcontainer-build/entrypoint.sh"]
 
