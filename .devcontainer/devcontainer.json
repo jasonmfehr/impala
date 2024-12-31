@@ -3,6 +3,5 @@
   "image": "jasonmfehr/impaladev:latest",
   "remoteUser": "impdev",
   "containerUser": "impdev",
-  "workspaceMount": "source=/home/impdev/impala,target=impala,type=bind,consistency=cached",
-  "workspaceFolder": "impala"
+  "workspaceFolder": "/home/impdev/impala"
 }

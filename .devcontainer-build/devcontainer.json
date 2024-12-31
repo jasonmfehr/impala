@@ -22,7 +22,8 @@
         "ms-python.python",
         "alefragnani.Bookmarks",
         "mohsen1.prettify-json",
-        "alefragnani.bookmarks"
+        "alefragnani.bookmarks",
+        "zoma.vscode-auto-open-workspace"
       ]
     }
   }
