@@ -1,27 +1,8 @@
 {
   "name": "Impala Dev",
   "image": "jasonmfehr/impaladev:latest",
-  "runArgs": [
-    "--privileged"
-  ],
   "remoteUser": "impdev",
   "containerUser": "impdev",
-  "postCreateCommand": "cp -r /home/impdev* ${localWorkspaceFolder}",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/home/impdev/impala,type=bind",
-  "workspaceFolder": "/home/impdev/impala",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "ms-vscode.cmake-tools",
-        "llvm-vs-code-extensions.vscode-clangd",
-        "vadimcn.vscode-lldb",
-        "webfreak.debug",
-        "vscjava.vscode-java-pack",
-        "ms-python.python",
-        "alefragnani.Bookmarks",
-        "mohsen1.prettify-json",
-        "alefragnani.bookmarks"
-      ]
-    }
-  }
+  "workspaceMount": "source=/home/impdev/impala,target=impala,type=bind,consistency=cached",
+  "workspaceFolder": "impala"
 }

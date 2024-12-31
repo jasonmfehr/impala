@@ -1,0 +1,29 @@
+{
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "options": [
+      "--force-rm",
+      "--progress=plain",
+      "--add-host=impdev:127.0.0.1"
+    ]
+  },
+  "features": {
+    "ghcr.io/devcontainers-extra/features/vscode-server:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cmake-tools",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "vadimcn.vscode-lldb",
+        "webfreak.debug",
+        "vscjava.vscode-java-pack",
+        "ms-python.python",
+        "alefragnani.Bookmarks",
+        "mohsen1.prettify-json",
+        "alefragnani.bookmarks"
+      ]
+    }
+  }
+}

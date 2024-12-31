@@ -64,4 +64,10 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && echo "[STATUS] - build all" \
     && ./buildall.sh -noclean -skiptests \
     && echo "[STATUS] - starting create-test-configuration.sh" \
-    && ./bin/create-test-configuration.sh -create_metastore
+    && ./bin/create-test-configuration.sh -create_metastore \
+    && git remote rm origin \
+    && git remote add upstream https://github.com/apache/impala \
+    && cp .devcontainer-build/vscode.workspace .code-workspace
+
+ENTRYPOINT ["/home/impdev/impala/.devcontainer-build/entrypoint.sh"]
+
