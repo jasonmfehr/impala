@@ -78,7 +78,7 @@ UBUNTU16=
 UBUNTU18=
 UBUNTU20=
 UBUNTU22=
-IN_DOCKER=${IN_DOCKER:-}
+IN_DOCKER=
 if [[ -f /etc/redhat-release ]]; then
   REDHAT=true
   echo "Identified redhat system."
@@ -128,7 +128,7 @@ else
     exit 1
   fi
 fi
-if grep docker /proc/1/cgroup; then
+if grep docker /proc/1/cgroup || grep -q '/docker/' /proc/self/mountinfo; then
   IN_DOCKER=true
   echo "Identified we are running inside of Docker."
 fi
