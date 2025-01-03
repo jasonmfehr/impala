@@ -79,7 +79,7 @@ UBUNTU18=
 UBUNTU20=
 UBUNTU22=
 UBUNTU24=
-IN_DOCKER=
+IN_DOCKER=${IN_DOCKER:-}
 if [[ -f /etc/redhat-release ]]; then
   REDHAT=true
   echo "Identified redhat system."
