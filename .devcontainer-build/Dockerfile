@@ -15,6 +15,7 @@ ARG TZ="America/Los_Angeles"
 ARG IMPALA_BUILD_THREADS=16
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV IN_DOCKER=true
 
 SHELL ["/bin/bash", "-c"]
 
