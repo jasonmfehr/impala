@@ -37,6 +37,7 @@
 #include "util/collection-metrics.h"
 #include "util/debug-util.h"
 #include "util/metrics.h"
+#include "util/parse-util.h"
 #include "util/pretty-printer.h"
 #include "util/runtime-profile-counters.h"
 #include "util/scope-exit-trigger.h"
@@ -85,6 +86,19 @@ DEFINE_bool(system_tables_bypass_admission_control, true,
     "Specifies if queries that only select from system tables should bypass admission "
     "control.");
 
+DEFINE_string(system_tables_resource_pool, "__impala_sys_tables__", "TBD");
+DEFINE_string(system_tables_resource_pool_size, "50m", "Amount of memory reserved for "
+    "running queries against system tables. Specified as number of bytes ('<int>[bB]?'), "
+    "megabytes ('<float>[mM]'), or gigabytes ('<float>[gG]') of the physical memory");
+DEFINE_validator(system_tables_resource_pool_size,
+    [](const char* name, const string& val) {
+      if (val.find_first_of("%") != string::npos) {
+        LOG(ERROR) << "percentages not supported in '" << name << "' flag";
+        return false;
+      }
+
+      return true;
+    });
 DECLARE_bool(is_coordinator);
 DECLARE_bool(is_executor);
 
@@ -730,6 +744,24 @@ Status AdmissionController::Init() {
                 vector<TTopicDelta>* topic_updates) {
     UpdatePoolStats(state, topic_updates);
   };
+
+  if (FLAGS_is_coordinator) {
+    // Set up the system tables request pool.
+    bool is_percent;
+    const int64_t bytes_limit = ParseUtil::ParseMemSpec(
+        FLAGS_system_tables_resource_pool_size, &is_percent, 0);
+    DCHECK(!is_percent);
+    RETURN_IF_ERROR(pool_mem_trackers_->CreateRequestPool(
+      FLAGS_system_tables_resource_pool, bytes_limit));
+
+    MemTracker* sys_tables = pool_mem_trackers_->GetRequestPoolMemTracker(FLAGS_system_tables_resource_pool, false);
+    if (sys_tables == nullptr) {
+      return Status("Resource pool '" + FLAGS_system_tables_resource_pool + "' was "
+          "already created.");
+    }
+    sys_tables->Consume(bytes_limit);
+  }
+
   // The executor only needs to read the entry with the key prefix "POOL:" from the topic.
   // This can effectively reduce the network load of the statestore.
   string filter_prefix =
@@ -960,18 +992,28 @@ void AdmissionController::UpdateHostStats(const NetworkAddressPB& host_addr,
   VLOG_ROW << "Update admitted mem reserved for host=" << host
            << " prev=" << PrintBytes(host_stats_[host].mem_admitted)
            << " new=" << PrintBytes(host_stats_[host].mem_admitted + mem_to_admit);
+LOG(WARNING) << "GOT HERE 40: Update admitted mem reserved for host=" << host
+         << " prev=" << PrintBytes(host_stats_[host].mem_admitted)
+         << " new=" << PrintBytes(host_stats_[host].mem_admitted + mem_to_admit);
   host_stats_[host].mem_admitted += mem_to_admit;
   DCHECK_GE(host_stats_[host].mem_admitted, 0);
   VLOG_ROW << "Update admitted queries for host=" << host
            << " prev=" << host_stats_[host].num_admitted
            << " new=" << host_stats_[host].num_admitted + num_queries_to_admit;
+LOG(WARNING) << "GOT HERE 40: Update admitted queries for host=" << host
+         << " prev=" << host_stats_[host].num_admitted
+         << " new=" << host_stats_[host].num_admitted + num_queries_to_admit;
   host_stats_[host].num_admitted += num_queries_to_admit;
   DCHECK_GE(host_stats_[host].num_admitted, 0);
   VLOG_ROW << "Update slots in use for host=" << host
            << " prev=" << host_stats_[host].slots_in_use
            << " new=" << host_stats_[host].slots_in_use + num_slots_to_admit;
+LOG(WARNING) << "GOT HERE 40: Update slots in use for host=" << host
+          << " prev=" << host_stats_[host].slots_in_use
+          << " new=" << host_stats_[host].slots_in_use + num_slots_to_admit;
   host_stats_[host].slots_in_use += num_slots_to_admit;
   DCHECK_GE(host_stats_[host].slots_in_use, 0);
+  LOG(WARNING) << "GOT HERE 40" << endl;
 }
 
 // Helper method used by CanAccommodateMaxInitialReservation(). Returns true if the given
@@ -1647,6 +1689,19 @@ Status AdmissionController::SubmitForAdmission(const AdmissionRequest& request,
         queue_node->admission_request.request.query_ctx.session, &user));
 
     if (queue_node->admitted_schedule.get() != nullptr) {
+
+LOG(WARNING) << "GOT HERE 30: admitted_schedule->coord_backend_mem_limit: " << queue_node->admitted_schedule->coord_backend_mem_limit() << endl;
+LOG(WARNING) << "GOT HERE 30: admitted_schedule->coord_backend_mem_to_admit: " << queue_node->admitted_schedule->coord_backend_mem_to_admit() << endl;
+LOG(WARNING) << "GOT HERE 30: admitted_schedule->coord_min_reservation: " << queue_node->admitted_schedule->coord_min_reservation() << endl;
+LOG(WARNING) << "GOT HERE 30: admitted_schedule->per_backend_mem_limit: " << queue_node->admitted_schedule->per_backend_mem_limit() << endl;
+LOG(WARNING) << "GOT HERE 30: admitted_schedule->per_backend_mem_to_admit(): " << queue_node->admitted_schedule->per_backend_mem_to_admit() << endl;
+LOG(WARNING) << "GOT HERE 30: admitted_schedule->executor_group: " << queue_node->admitted_schedule->executor_group() << endl;
+LOG(WARNING) << "GOT HERE 30: queue_node->pool_name: " << queue_node->pool_name << endl;
+
+for (auto& s : queue_node->admitted_schedule->per_backend_schedule_states()) {
+  LOG(WARNING) << "GOT HERE 30: admitted_schedule->backend: " << s.first.hostname() << ":" << s.first.port() << endl;
+}
+
       DCHECK(queue_node->admitted_schedule->query_schedule_pb().get() != nullptr);
       const string& group_name = queue_node->admitted_schedule->executor_group();
       VLOG(3) << "Can admit to group " << group_name << " (or cancelled)";
@@ -2165,6 +2220,7 @@ void AdmissionController::PoolStats::UpdateAggregates(HostMemMap* host_mem_reser
   new_agg_user_loads.export_users(metrics_.agg_current_users);
 
   VLOG_ROW << "Updated: " << DebugString();
+LOG(WARNING) << "GOT HERE 50: " << DebugString();
 }
 
 void AdmissionController::UpdateClusterAggregates(const set<string>& removed_nodes) {

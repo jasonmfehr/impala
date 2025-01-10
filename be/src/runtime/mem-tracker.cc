@@ -74,6 +74,7 @@ MemTracker::MemTracker(int64_t byte_limit, const string& label, MemTracker* pare
     bytes_over_limit_metric_(NULL),
     limit_metric_(NULL) {
   Init();
+  LOG(WARNING) << "GOT HERE 1: " << label << ": " << soft_limit_ << "," << limit_ << endl;
 }
 
 MemTracker::MemTracker(RuntimeProfile* profile, int64_t byte_limit,
@@ -91,6 +92,7 @@ MemTracker::MemTracker(RuntimeProfile* profile, int64_t byte_limit,
     bytes_over_limit_metric_(NULL),
     limit_metric_(NULL) {
   Init();
+  LOG(WARNING) << "GOT HERE 2: " << label << ": " << soft_limit_ << "," << limit_ << endl;
 }
 
 MemTracker::MemTracker(IntGauge* consumption_metric,
@@ -108,6 +110,7 @@ MemTracker::MemTracker(IntGauge* consumption_metric,
     bytes_over_limit_metric_(NULL),
     limit_metric_(NULL) {
   Init();
+  LOG(WARNING) << "GOT HERE 3: " << label << ": " << soft_limit_ << "," << limit_ << endl;
 }
 
 void MemTracker::Init() {
@@ -215,6 +218,24 @@ MemTracker* PoolMemTrackerRegistry::GetRequestPoolMemTracker(
   tracker->pool_name_ = pool_name;
   pool_to_mem_trackers_.emplace(pool_name, unique_ptr<MemTracker>(tracker));
   return tracker;
+}
+
+Status PoolMemTrackerRegistry::CreateRequestPool(const string& pool_name,
+    int64_t byte_limit) {
+  DCHECK(!pool_name.empty());
+  lock_guard<SpinLock> l(pool_to_mem_trackers_lock_);
+
+  if (pool_to_mem_trackers_.find(pool_name) != pool_to_mem_trackers_.end()) {
+    return Status("pool '" + pool_name + "' was already created");
+  }
+
+  MemTracker* tracker = new MemTracker(byte_limit,
+      Substitute(REQUEST_POOL_MEM_TRACKER_LABEL_FORMAT, pool_name),
+      ExecEnv::GetInstance()->process_mem_tracker());
+  tracker->pool_name_ = pool_name;
+  pool_to_mem_trackers_.emplace(pool_name, unique_ptr<MemTracker>(tracker));
+
+  return Status::OK();
 }
 
 MemTracker* MemTracker::CreateQueryMemTracker(const TUniqueId& id,

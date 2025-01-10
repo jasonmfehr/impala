@@ -560,6 +560,11 @@ class PoolMemTrackerRegistry {
   MemTracker* GetRequestPoolMemTracker(
       const std::string& pool_name, bool create_if_not_present);
 
+  /// Creates a MemTracker object with the specified byte limit and adds it to the 
+  /// pool_to_mem_trackers_ map. Returns an error if the specified pool already has an
+  /// associated MemTracker in the map.
+  Status CreateRequestPool(const std::string& pool_name, int64_t byte_limit);
+
  private:
   /// All per-request pool MemTracker objects. It is assumed that request pools will live
   /// for the entire duration of the process lifetime so MemTrackers are never removed
