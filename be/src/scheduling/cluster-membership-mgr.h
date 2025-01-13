@@ -88,8 +88,8 @@ class ClusterMembershipMgr {
   struct Snapshot {
     Snapshot() = default;
     Snapshot(const Snapshot&) = default;
-    /// Returns an executor group of all non-quiescing coordinators in the cluster.
-    ExecutorGroup GetCoordinators() const;
+    /// Executor group of all coordinators in the cluster.
+    std::shared_ptr<ExecutorGroup> coordinators;
     /// Returns the addresses of all non-quiescing coordinators in the cluster.
     std::vector<TNetworkAddress> GetCoordinatorAddresses() const;
     /// The current backend descriptor of the local backend.

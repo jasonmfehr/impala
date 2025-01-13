@@ -255,7 +255,13 @@ bool ScheduleState::UseDedicatedCoordEstimates() const {
     bool is_dedicated_coord = !coord.be_desc.is_executor();
     bool only_coord_fragment_scheduled =
         RequiresCoordinatorFragment() && coord.exec_params->instance_params().size() == 1;
+    LOG(WARNING) << "GOT HERE: RequiresCoordinatorFragment(): " << RequiresCoordinatorFragment() << endl;
+    LOG(WARNING) << "GOT HERE: coord.exec_params->instance_params().size(): " << coord.exec_params->instance_params().size() << endl;
     bool no_fragment_scheduled = coord.exec_params->instance_params().size() == 0;
+    LOG(WARNING) << "GOT HERE: FLAGS_use_dedicated_coordinator_estimates: " << FLAGS_use_dedicated_coordinator_estimates << endl;
+    LOG(WARNING) << "GOT HERE: is_dedicated_coord: " << is_dedicated_coord << endl;
+    LOG(WARNING) << "GOT HERE: only_coord_fragment_scheduled: " << only_coord_fragment_scheduled << endl;
+    LOG(WARNING) << "GOT HERE: no_fragment_scheduled: " << no_fragment_scheduled << endl;
     return FLAGS_use_dedicated_coordinator_estimates && is_dedicated_coord
         && (only_coord_fragment_scheduled || no_fragment_scheduled);
   }
@@ -308,6 +314,7 @@ void ScheduleState::UpdateMemoryRequirements(const TPoolConfig& pool_cfg,
   const bool mimic_old_behaviour =
       pool_cfg.min_query_mem_limit == 0 && pool_cfg.max_query_mem_limit == 0;
   const bool use_dedicated_coord_estimates = UseDedicatedCoordEstimates();
+  LOG(WARNING) << "GOT HERE: use_dedicated_coord_estimates: " << use_dedicated_coord_estimates << endl;
 
   query_schedule_pb_->set_per_backend_mem_to_admit(0);
   query_schedule_pb_->set_per_backend_mem_to_admit_source(MemLimitSourcePB::NO_LIMIT);
@@ -404,6 +411,8 @@ void ScheduleState::UpdateMemoryRequirements(const TPoolConfig& pool_cfg,
         coord_mem_limit_admission, MemLimitSourcePB::HOST_MEM_TRACKER_LIMIT);
   }
   // If the query is only scheduled to run on the coordinator.
+  LOG(WARNING) << "GOT HERE: per_backend_schedule_states_.size(): " << per_backend_schedule_states_.size() << endl;
+  LOG(WARNING) << "GOT HERE: RequiresCoordinatorFragment(): " << RequiresCoordinatorFragment() << endl;
   if (per_backend_schedule_states_.size() == 1 && RequiresCoordinatorFragment()) {
     query_schedule_pb_->set_per_backend_mem_to_admit(0);
     query_schedule_pb_->set_per_backend_mem_to_admit_source(
@@ -427,6 +436,9 @@ void ScheduleState::UpdateMemoryRequirements(const TPoolConfig& pool_cfg,
   DCHECK(query_schedule_pb_->has_coord_backend_mem_to_admit());
   DCHECK(query_schedule_pb_->has_per_backend_mem_to_admit_source());
   DCHECK(query_schedule_pb_->has_coord_backend_mem_to_admit_source());
+
+  LOG(WARNING) << "GOT HERE: Total Exec Mem: " << query_schedule_pb_->per_backend_mem_to_admit() * (per_backend_schedule_states_.size() - 1) << endl;
+  LOG(WARNING) << "GOT HERE: Coord Mem To Admit: " << coord_backend_mem_to_admit() << endl;
 }
 
 void ScheduleState::set_executor_group(string executor_group) {

@@ -1945,6 +1945,9 @@ public class Frontend {
 
     queryCtx.setSystem_tables_only(scanNodes.size() > 0
         && systemTableCount == scanNodes.size());
+    if (queryCtx.system_tables_only) {
+      queryCtx.setRequest_pool(BackendConfig.INSTANCE.getBackendCfg().system_tables_resource_pool);
+    }
 
     // Clear pre-existing lists to avoid adding duplicate entries in FE tests.
     queryCtx.unsetTables_missing_stats();

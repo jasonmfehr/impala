@@ -76,6 +76,8 @@ DEFINE_bool(disable_pool_mem_limits, false, "Disables all per-pool mem limits.")
 DEFINE_bool(disable_pool_max_requests, false, "Disables all per-pool limits on the "
     "maximum number of running requests.");
 
+DECLARE_string(system_tables_resource_pool);
+
 
 static const string RESOLVE_POOL_METRIC_NAME = "request-pool-service.resolve-pool-duration-ms";
 
@@ -153,6 +155,11 @@ RequestPoolService::RequestPoolService(MetricGroup* metrics) :
 
 Status RequestPoolService::ResolveRequestPool(const TQueryCtx& ctx,
     string* resolved_pool) {
+  if (ctx.request_pool == FLAGS_system_tables_resource_pool) {
+    *resolved_pool = FLAGS_system_tables_resource_pool;
+    return Status::OK();
+  }
+
   if (default_pool_only_) {
     *resolved_pool = DEFAULT_POOL_NAME;
     return Status::OK();

@@ -175,16 +175,6 @@ static bool is_active_coordinator(const BackendDescriptorPB& be) {
       !(be.has_is_quiescing() && be.is_quiescing());
 }
 
-ExecutorGroup ClusterMembershipMgr::Snapshot::GetCoordinators() const {
-  ExecutorGroup coordinators("all-coordinators");
-  for (const auto& it : current_backends) {
-    if (is_active_coordinator(it.second)) {
-      coordinators.AddExecutor(it.second);
-    }
-  }
-  return coordinators;
-}
-
 vector<TNetworkAddress> ClusterMembershipMgr::Snapshot::GetCoordinatorAddresses() const {
   vector<TNetworkAddress> coordinators;
   for (const auto& it : current_backends) {
@@ -425,6 +415,15 @@ void ClusterMembershipMgr::UpdateMembership(
     recovering_membership_ = new_state;
     return;
   }
+
+  // Build list of all coordinators
+  ExecutorGroup coords = ExecutorGroup("all-coordinators");
+  for (const auto& it : new_state->current_backends) {
+    if (is_active_coordinator(it.second)) {
+      coords.AddExecutor(it.second);
+    }
+  }
+  new_state->coordinators = make_shared<ExecutorGroup>(coords);
 
   // Atomically update the respective membership snapshot and update metrics.
   SetState(new_state);

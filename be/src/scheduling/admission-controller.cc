@@ -82,7 +82,7 @@ DEFINE_string_hidden(injected_group_members_debug_only, "",
     "For testing only. Set to a semicolon separated list of groups, each of which "
     "consists of a name followed by a colon and a comma separated list of group members");
 
-DEFINE_bool(system_tables_bypass_admission_control, true,
+DEFINE_bool(system_tables_allow_bypass_admission_control, true,
     "Specifies if queries that only select from system tables should bypass admission "
     "control.");
 
@@ -2309,9 +2309,20 @@ Status AdmissionController::ComputeGroupScheduleStates(
     return Status::OK();
   }
   const BackendDescriptorPB& coord_desc = it->second;
+    LOG(WARNING) << "GOT HERE: coord_desc.admission_slots(): " << coord_desc.admission_slots() << endl;
+    LOG(WARNING) << "GOT HERE: coord_desc.admit_mem_limit(): " << coord_desc.admit_mem_limit() << endl;
+
+  // Collect all coordinators if needed for the request.
+  LOG(WARNING) << "GOT HERE: include all coordinators: " << request.request.include_all_coordinators << endl;
+  ExecutorGroup coords = request.request.include_all_coordinators ?
+      *(membership_snapshot->coordinators.get()) : ExecutorGroup("all-coordinators");
 
   vector<const ExecutorGroup*> executor_groups =
       GetExecutorGroupsForQuery(membership_snapshot->executor_groups, request);
+   if (UNLIKELY(request.request.include_all_coordinators && request.request.query_ctx.system_tables_only)) {
+    executor_groups.clear();
+    executor_groups.push_back(membership_snapshot->coordinators.get());
+   }
 
   if (executor_groups.empty()) {
     queue_node->not_admitted_reason = REASON_NO_EXECUTOR_GROUPS;
@@ -2319,15 +2330,14 @@ Status AdmissionController::ComputeGroupScheduleStates(
     return Status::OK();
   }
 
-  // Collect all coordinators if needed for the request.
-  ExecutorGroup coords = request.request.include_all_coordinators ?
-      membership_snapshot->GetCoordinators() : ExecutorGroup("all-coordinators");
-
   // We loop over the executor groups in a deterministic order. If
   // --balance_queries_across_executor_groups set to true, executor groups with more
   // available memory and slots will be processed first. If the flag set to false, we will
   // process executor groups in alphanumerically sorted order.
   for (const ExecutorGroup* executor_group : executor_groups) {
+    LOG(WARNING) << "GOT HERE: EXECUTOR GROUP NAME: " << executor_group->name() << endl;
+    LOG(WARNING) << "  GOT HERE: EXECUTOR GROUP Num Physical Hosts: " << executor_group->NumHosts() << endl;
+    LOG(WARNING) << "  GOT HERE: EXECUTOR GROUP Num Executor Processes: " << executor_group->NumExecutors() << endl;
     DCHECK(executor_group->IsHealthy()
         || cluster_membership_mgr_->GetEmptyExecutorGroup() == executor_group)
         << executor_group->name();
@@ -2409,24 +2419,43 @@ bool AdmissionController::FindGroupToAdmitOrReject(
     state->UpdateMemoryRequirements(pool_config, coord_desc.admit_mem_limit(),
         executor_group.GetPerExecutorMemLimitForAdmission());
 
+LOG(WARNING) << "GOT HERE 1" << endl;
+LOG(WARNING) << "GOT HERE: executor_group.name: " << executor_group.name() << endl;
     const string& group_name = executor_group.name();
     int64_t group_size = executor_group.NumExecutors();
     VLOG(3) << "Trying to admit query to pool " << pool_name << " in executor group "
             << group_name << " (" << group_size << " executors)";
+LOG(WARNING) << "GOT HERE: Trying to admit query to pool " << pool_name << " in executor group "
+        << group_name << " (" << group_size << " executors)";
 
     const int64_t max_queued = GetMaxQueuedForPool(pool_config);
+LOG(WARNING) << "GOT HERE 2" << endl;
     const int64_t max_mem = GetMaxMemForPool(pool_config);
+LOG(WARNING) << "GOT HERE 3" << endl;
     const int64_t max_requests = GetMaxRequestsForPool(pool_config);
-    VLOG_QUERY << "Trying to admit id=" << PrintId(state->query_id())
-               << " in pool_name=" << pool_name << " executor_group_name=" << group_name
-               << " per_host_mem_estimate="
-               << PrintBytes(state->GetPerExecutorMemoryEstimate())
-               << " dedicated_coord_mem_estimate="
-               << PrintBytes(state->GetDedicatedCoordMemoryEstimate())
-               << " max_requests=" << max_requests << " max_queued=" << max_queued
-               << " max_mem=" << PrintBytes(max_mem) << " is_trivial_query="
-               << PrettyPrinter::Print(state->GetIsTrivialQuery(), TUnit::NONE);
+LOG(WARNING) << "GOT HERE 4" << endl;
+
+    LOG(WARNING) << "Trying to admit id=" << PrintId(state->query_id()) << endl;
+    LOG(WARNING) << " in pool_name=" << pool_name << " executor_group_name=" << group_name << endl;
+    LOG(WARNING) << " per_host_mem_estimate=" << endl;
+    LOG(WARNING) << PrintBytes(state->GetPerExecutorMemoryEstimate()) << endl;
+    LOG(WARNING) << " dedicated_coord_mem_estimate=" << endl;
+    LOG(WARNING) << PrintBytes(state->GetDedicatedCoordMemoryEstimate()) << endl;
+    LOG(WARNING) << " max_requests=" << max_requests << " max_queued=" << max_queued << endl;
+    LOG(WARNING) << " max_mem=" << PrintBytes(max_mem) << " is_trivial_query=" << endl;
+    LOG(WARNING) << PrettyPrinter::Print(state->GetIsTrivialQuery(), TUnit::NONE) << endl;
+    // VLOG_QUERY << "Trying to admit id=" << PrintId(state->query_id())
+    //            << " in pool_name=" << pool_name << " executor_group_name=" << group_name
+    //            << " per_host_mem_estimate="
+    //            << PrintBytes(state->GetPerExecutorMemoryEstimate())
+    //            << " dedicated_coord_mem_estimate="
+    //            << PrintBytes(state->GetDedicatedCoordMemoryEstimate())
+    //            << " max_requests=" << max_requests << " max_queued=" << max_queued
+    //            << " max_mem=" << PrintBytes(max_mem) << " is_trivial_query="
+    //            << PrettyPrinter::Print(state->GetIsTrivialQuery(), TUnit::NONE);
+    LOG(WARNING) << "GOT HERE 5" << endl;
     VLOG_QUERY << "Stats: " << pool_stats->DebugString();
+    LOG(WARNING) << "GOT HERE 6" << endl;
 
     if (state->GetIsTrivialQuery() && CanAdmitTrivialRequest(*state)) {
       // The trivial query is supposed to be a subset of the coord-only query,
@@ -2440,13 +2469,29 @@ bool AdmissionController::FindGroupToAdmitOrReject(
     }
 
     if (UNLIKELY(state->GetSystemTablesOnly())
-        && LIKELY(FLAGS_system_tables_bypass_admission_control)) {
-      // TODO: check if coordinator has enough memory?
-      DCHECK_EQ(executor_group.NumExecutors(),
-          membership_snapshot->GetCoordinators().NumExecutors());
+        && LIKELY(FLAGS_system_tables_allow_bypass_admission_control)) {
+      // DCHECK_EQ(executor_group.NumExecutors(),
+      //     membership_snapshot->GetCoordinators().NumExecutors());
       VLOG_QUERY << "Admitted by system tables only policy: query_id="
                  << PrintId(state->query_id());
       queue_node->admitted_schedule = std::move(group_state.state);
+LOG(WARNING) << "SCHEDULE: coord_backend_mem_limit: " << queue_node->admitted_schedule->coord_backend_mem_limit() << endl;
+LOG(WARNING) << "SCHEDULE: coord_backend_mem_to_admit: " << queue_node->admitted_schedule->coord_backend_mem_to_admit() << endl;
+LOG(WARNING) << "SCHEDULE: executor_group: " << queue_node->admitted_schedule->executor_group() << endl;
+LOG(WARNING) << "SCHEDULE: GetClusterMemoryToAdmit: " << queue_node->admitted_schedule->GetClusterMemoryToAdmit() << endl;
+LOG(WARNING) << "SCHEDULE: GetDedicatedCoordMemoryEstimate: " << queue_node->admitted_schedule->GetDedicatedCoordMemoryEstimate() << endl;
+LOG(WARNING) << "SCHEDULE: GetPerExecutorMemoryEstimate: " << queue_node->admitted_schedule->GetPerExecutorMemoryEstimate() << endl;
+LOG(WARNING) << "SCHEDULE: GetSystemTablesOnly: " << queue_node->admitted_schedule->GetSystemTablesOnly() << endl;
+LOG(WARNING) << "SCHEDULE: per_backend_mem_limit: " << queue_node->admitted_schedule->per_backend_mem_limit() << endl;
+LOG(WARNING) << "SCHEDULE: per_backend_mem_to_admit: " << queue_node->admitted_schedule->per_backend_mem_to_admit() << endl;
+for (auto& bs : queue_node->admitted_schedule->per_backend_schedule_states()) {
+  LOG(WARNING) << "SCHEDULE: backend: " << bs.first.hostname() << ":" << bs.first.port() << endl;
+  LOG(WARNING) << "SCHEDULE:     is_coord_backend: " << bs.second.exec_params->is_coord_backend() << endl;
+  LOG(WARNING) << "SCHEDULE:     slots_to_use: " << bs.second.exec_params->slots_to_use() << endl;
+  LOG(WARNING) << "SCHEDULE:     min_mem_reservation_bytes: " << bs.second.exec_params->min_mem_reservation_bytes() << endl;
+  LOG(WARNING) << "SCHEDULE:     initial_mem_reservation_total_claims: " << bs.second.exec_params->initial_mem_reservation_total_claims() << endl;
+  LOG(WARNING) << "SCHEDULE:     thread_reservation: " << bs.second.exec_params->thread_reservation() << endl;
+}
       return true;
     }
 

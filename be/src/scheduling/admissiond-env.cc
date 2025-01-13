@@ -53,6 +53,7 @@ AdmissiondEnv::AdmissiondEnv()
     request_pool_service_(new RequestPoolService(DaemonEnv::GetInstance()->metrics())),
     rpc_mgr_(new RpcMgr(IsInternalTlsConfigured())),
     rpc_metrics_(DaemonEnv::GetInstance()->metrics()->GetOrCreateChildGroup("rpc")) {
+  // TODO: add new system tables mem pool to pool_mem_trackers_
   MetricGroup* metrics = DaemonEnv::GetInstance()->metrics();
 
   TNetworkAddress admission_service_addr =
