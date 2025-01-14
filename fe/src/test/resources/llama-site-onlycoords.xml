@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration>
+  <property>
+    <name>llama.am.throttling.maximum.placed.reservations.all</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>llama.am.throttling.maximum.queued.reservations.all</name>
+    <value>5</value>
+  </property>
+  <property>
+    <name>impala.admission-control.pool-queue-timeout-ms.all</name>
+    <value>30000</value>
+  </property>
+  <property>
+    <name>impala.admission-control.max-query-mem-limit.all</name>
+    <value>1610612736</value><!--1.5GB-->
+  </property>
+  <property>
+    <name>impala.admission-control.min-query-mem-limit.all</name>
+    <value>52428800</value><!--50MB-->
+  </property>
+
+  <property>
+    <name>llama.am.throttling.maximum.placed.reservations.onlycoords</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>llama.am.throttling.maximum.queued.reservations.onlycoords</name>
+    <value>5</value>
+  </property>
+  <property>
+    <name>impala.admission-control.pool-queue-timeout-ms.onlycoords</name>
+    <value>30000</value>
+  </property>
+  <property>
+    <name>impala.admission-control.max-query-mem-limit.onlycoords</name>
+    <value>1610612736</value><!--1.5GB-->
+  </property>
+  <property>
+    <name>impala.admission-control.min-query-mem-limit.onlycoords</name>
+    <value>52428800</value><!--50MB-->
+  </property>
+</configuration>

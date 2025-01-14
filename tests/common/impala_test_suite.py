@@ -1039,12 +1039,15 @@ class ImpalaTestSuite(BaseTestSuite):
     end_time = int(round(time.time() * 1000))
     return end_time - start_time
 
-  def execute_query_using_client(self, client, query, vector):
+  def execute_query_using_client(self, client, query, vector, expect_success=None):
     self.validate_exec_option_dimension(vector)
     self.change_database(client, vector.get_value('table_format'))
     query_options = vector.get_value(EXEC_OPTION_KEY)
     if query_options is not None: client.set_configuration(query_options)
-    return client.execute(query)
+    result = client.execute(query)
+    if expect_success is not None:
+      assert result.success == expect_success
+    return result
 
   def execute_query_async_using_client(self, client, query, vector):
     self.validate_exec_option_dimension(vector)
@@ -1579,9 +1582,7 @@ class ImpalaTestSuite(BaseTestSuite):
     """
     actual_log_path = self.__build_log_path(daemon, level)
 
-    def exists_func(is_last_try):
-      if is_last_try:
-        LOG.info("Checking existence of {} for the last time.".format(actual_log_path))
+    def exists_func():
       return os.path.exists(actual_log_path)
 
     assert retry(exists_func, max_attempts, sleep_time_s, 1, True), "file '{}' did not " \
