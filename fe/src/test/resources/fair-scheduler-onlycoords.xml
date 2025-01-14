@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<allocations>
+    <queue name="all">
+        <maxResources>3000 mb, 0 vcores</maxResources>
+        <aclSubmitApps>* </aclSubmitApps>
+    </queue>
+    <queue name="onlycoords">
+        <maxResources>3000 mb, 0 vcores</maxResources>
+        <aclSubmitApps>* </aclSubmitApps>
+        <onlyCoordinators>true</onlyCoordinators>
+    </queue>
+    <queuePlacementPolicy>
+        <rule name="specified" create="false"/>
+        <rule name="reject" />
+    </queuePlacementPolicy>
+</allocations>

@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -356,7 +357,7 @@ public class TestRequestPoolService {
         10000L, "mem_limit=1024m,query_timeout_s=10");
     checkPoolConfigResult("root.queueB", 5, 10, -1, 30000L, "mem_limit=1024m");
     checkPoolConfigResult("root.queueC", 5, 10, 1024 * ByteUnits.MEGABYTE, 30000L,
-        "mem_limit=1024m", 1000, 10, false, 8, 8, null, null);
+        "mem_limit=1024m", 1000, 10, false, 8, 8, null, null, Optional.of(Boolean.TRUE));
 
     Map<String, Integer> queueDUserQueryLimits = new HashMap<>();
     queueDUserQueryLimits.put("userA", 2);
@@ -377,7 +378,8 @@ public class TestRequestPoolService {
     createPoolService(ALLOCATION_FILE_EMPTY, LLAMA_CONFIG_FILE_EMPTY);
     Assert.assertEquals("root.userA", poolService_.assignToPool("", "userA"));
     checkPoolAcls("root.userA", asList("userA", "userB", "userZ"), EMPTY_LIST);
-    checkPoolConfigResult("root", -1, 200, -1, null, "", 0, 0, true, 0, 0, null, null);
+    checkPoolConfigResult("root", -1, 200, -1, null, "", 0, 0, true, 0, 0, null, null,
+        Optional.of(Boolean.FALSE));
   }
 
   @Ignore("IMPALA-4868") @Test
@@ -684,7 +686,7 @@ public class TestRequestPoolService {
       String expectedQueryOptions, long max_query_mem_limit, long min_query_mem_limit,
       boolean clamp_mem_limit_query_option, long max_query_cpu_core_per_node_limit,
       long max_query_cpu_core_coordinator_limit, Map<String, Integer> userQueryLimits,
-      Map<String, Integer> groupQueryLimits) {
+      Map<String, Integer> groupQueryLimits, Optional<Boolean> onlyCoordinators) {
     TPoolConfig expectedResult = new TPoolConfig();
     expectedResult.setMax_requests(expectedMaxRequests);
     expectedResult.setMax_queued(expectedMaxQueued);
@@ -706,6 +708,11 @@ public class TestRequestPoolService {
         userQueryLimits != null ? userQueryLimits : Collections.emptyMap());
     expectedResult.setGroup_query_limits(
         groupQueryLimits != null ? groupQueryLimits : Collections.emptyMap());
+
+    if (onlyCoordinators.isPresent()) {
+      expectedResult.setOnly_coordinators(onlyCoordinators.get().booleanValue());
+    }
+
     TPoolConfig poolConfig = poolService_.getPoolConfig(pool);
     Assert.assertEquals(
         "Unexpected config values for pool " + pool, expectedResult, poolConfig);
@@ -725,7 +732,7 @@ public class TestRequestPoolService {
       Map<String, Integer> groupQueryLimits) {
     checkPoolConfigResult(pool, expectedMaxRequests, expectedMaxQueued, expectedMaxMem,
         expectedQueueTimeoutMs, expectedQueryOptions, 0, 0, true, 0, 0,
-        userQueryLimits, groupQueryLimits);
+        userQueryLimits, groupQueryLimits, Optional.of(Boolean.FALSE));
   }
 
   private void checkPoolConfigResult(String pool, long expectedMaxRequests,

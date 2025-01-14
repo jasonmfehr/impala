@@ -232,6 +232,8 @@ struct TPoolConfig {
   // If a rule for the user is not present in user_query_limits, then these rules
   // are evaluated, if the user is a member of a group.
   13: required map<string, i32> group_query_limits
+
+  14: optional bool only_coordinators
 }
 
 struct TParseDateStringResult {

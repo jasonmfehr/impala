@@ -288,6 +288,7 @@ public class AllocationFileLoaderService extends AbstractService {
     Map<String, Map<QueueACL, AccessControlList>> queueAcls = new HashMap<>();
     Map<String, Map<String, Integer>> userQueryLimits = new HashMap<>();
     Map<String, Map<String, Integer>> groupQueryLimits = new HashMap<>();
+    Map<String, Boolean> onlyCoordinators = new HashMap<>();
     Set<String> nonPreemptableQueues = new HashSet<>();
     int userMaxAppsDefault = Integer.MAX_VALUE;
     int queueMaxAppsDefault = Integer.MAX_VALUE;
@@ -416,7 +417,8 @@ public class AllocationFileLoaderService extends AbstractService {
           maxChildQueueResources, queueMaxApps, userMaxApps, queueMaxAMShares,
           queueWeights, queuePolicies, minSharePreemptionTimeouts,
           fairSharePreemptionTimeouts, fairSharePreemptionThresholds, queueAcls,
-          userQueryLimits, groupQueryLimits, configuredQueues, nonPreemptableQueues);
+          userQueryLimits, groupQueryLimits, configuredQueues, onlyCoordinators,
+          nonPreemptableQueues);
     }
 
     // Load placement policy and pass it configured queues
@@ -451,7 +453,7 @@ public class AllocationFileLoaderService extends AbstractService {
         queueMaxResourcesDefault, queueMaxAMShareDefault, queuePolicies,
         defaultSchedPolicy, minSharePreemptionTimeouts, fairSharePreemptionTimeouts,
         fairSharePreemptionThresholds, queueAcls, userQueryLimits, groupQueryLimits,
-        newPlacementPolicy, configuredQueues, nonPreemptableQueues);
+        onlyCoordinators, newPlacementPolicy, configuredQueues, nonPreemptableQueues);
     lastSuccessfulReload = clock.getTime();
     lastReloadAttemptFailed = false;
 
@@ -481,6 +483,7 @@ public class AllocationFileLoaderService extends AbstractService {
       Map<String, Map<String, Integer>> userQueryLimits,
       Map<String, Map<String, Integer>> groupQueryLimits,
       Map<FSQueueType, Set<String>> configuredQueues,
+      Map<String, Boolean> onlyCoordinators,
       Set<String> nonPreemptableQueues)
       throws AllocationConfigurationException {
     String queueName = CharMatcher.whitespace().trimFrom(element.getAttribute("name"));
@@ -576,9 +579,13 @@ public class AllocationFileLoaderService extends AbstractService {
             maxChildQueueResources, queueMaxApps, userMaxApps, queueMaxAMShares,
             queueWeights, queuePolicies, minSharePreemptionTimeouts,
             fairSharePreemptionTimeouts, fairSharePreemptionThresholds, queueAcls,
-            userQueryLimits, groupQueryLimits, configuredQueues, nonPreemptableQueues);
+            userQueryLimits, groupQueryLimits, configuredQueues, onlyCoordinators,
+            nonPreemptableQueues);
         configuredQueues.get(FSQueueType.PARENT).add(queueName);
         isLeaf = false;
+      } else if("onlyCoordinators".equals(field.getTagName())) {
+        String text = ((Text)field.getFirstChild()).getData().trim();
+        onlyCoordinators.put(queueName, Boolean.parseBoolean(text));
       }
     }
     if (isLeaf) {

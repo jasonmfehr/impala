@@ -1168,10 +1168,6 @@ if __name__ == "__main__":
         if int(delay.strip()) != 0: expected_catalog_delays += 1
     # Check for the cluster to be ready.
     expected_num_ready_impalads = expected_cluster_size - expected_catalog_delays
-    if options.add_impalads:
-      # TODO: This is a hack to make the waiting logic work. We'd better add a dedicated
-      # option for adding a new cluster using the existing catalogd and statestore.
-      expected_num_ready_impalads = options.cluster_size
     impala_cluster.wait_until_ready(expected_cluster_size, expected_num_ready_impalads)
   except Exception as e:
     LOG.exception("Error starting cluster")
