@@ -773,6 +773,7 @@ void ImpalaServer::WorkloadManagementWorker(const Version& target_schema_version
         std::to_string(max<size_t>(MIN_STATEMENT_EXPRESSION_LIMIT,
             queries_to_insert.size() * _TQueryTableColumn_VALUES_TO_NAMES.size()));
     opts[TImpalaQueryOptions::MAX_ROW_SIZE] = std::to_string(max_row_size);
+    // opts[TImpalaQueryOptions::FETCH_ROWS_TIMEOUT_MS] = "0";
 
     // Execute the insert dml.
     const Status ret_status = ExecuteIgnoreResults(FLAGS_workload_mgmt_user,

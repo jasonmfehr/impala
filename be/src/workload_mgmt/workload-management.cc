@@ -24,6 +24,7 @@
 #include "workload_mgmt/workload-management.h"
 
 #include <algorithm>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -38,12 +39,15 @@
 
 #include "common/compiler-util.h"
 #include "common/status.h"
-#include "gen-cpp/SystemTables_types.h"
+#include "gen-cpp/ImpalaService_types.h"
 #include "gen-cpp/Types_types.h"
 #include "kudu/util/version_util.h"
+#include "service/internal-server.h"
+#include "service/query-options.h"
 #include "util/version-util.h"
 
 DECLARE_string(query_log_table_name);
+DECLARE_string(workload_mgmt_query_options);
 DECLARE_string(workload_mgmt_schema_version);
 
 using namespace std;
@@ -216,6 +220,37 @@ Status ParseSchemaVersionFlag(kudu::Version* target_schema_version) {
 
   return Status::OK();
 }
+
+static InternalServer::QueryOptionMap additional_query_opts;
+
+Status ParseQueryOptionsFlag() {
+  TQueryOptions opts;
+  QueryOptionsMask set_query_options; // unused
+
+  Status stat = ParseQueryOptions(FLAGS_workload_mgmt_query_options, &opts,
+      &set_query_options);
+  stat.MergeStatus(ValidateQueryOptions(&opts));
+
+  if (stat.ok()) {
+    map<string, string> opts_map;
+    TQueryOptionsToMap(opts, &opts_map);
+
+    for (auto& key : opts_map) {
+      for (auto& opt_name : _TImpalaQueryOptions_VALUES_TO_NAMES) {
+        if (opt_name.second == key.first) {
+          additional_query_opts[static_cast<TImpalaQueryOptions::type>(opt_name.first)]
+              = key.second;
+        }
+      }
+    }
+  }
+
+  return stat;
+} // function ParseQueryOptionsFlag
+
+InternalServer::QueryOptionMap GetQueryOptions() {
+  return additional_query_opts;
+} // function GetQueryOptions
 
 Status StartupChecks(const kudu::Version& target_schema_version) {
   RETURN_IF_ERROR(_isVersionKnown(target_schema_version));

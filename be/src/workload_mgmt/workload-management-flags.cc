@@ -192,3 +192,7 @@ DEFINE_string_hidden(workload_mgmt_drop_tables, "", "Specifies which workload ma
     "tables to drop at startup. Value must be a comma-separated list of table names only "
     "(without the database name) used in workload managment. This flag will fix "
     "situations where the tables have become corrupt and are preventing daemon startup.");
+
+DEFINE_string_hidden(workload_mgmt_query_options, "", "key=value pair of query options "
+    "separated by ','. These query options will be set on the queries that insert into "
+    "the query log table.");

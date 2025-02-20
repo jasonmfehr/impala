@@ -26,9 +26,11 @@
 #include <utility>
 
 #include "common/status.h"
+#include "gen-cpp/Query_types.h"
 #include "gen-cpp/SystemTables_types.h"
 #include "gen-cpp/Types_types.h"
 #include "kudu/util/version_util.h"
+#include "service/internal-server.h"
 #include "util/version-util.h"
 
 namespace impala {
@@ -39,6 +41,13 @@ namespace workloadmgmt {
 /// function output parameter. If the --workload_mgmt_schema_version startup flag is
 /// empty, the latest workload management schema version is used.
 impala::Status ParseSchemaVersionFlag(kudu::Version* target_schema_version);
+
+/// Parses the workload_mgmt_query_options flag.
+impala::Status ParseQueryOptionsFlag();
+
+/// Returns a copy of the TQueryOptions that contains the parse query options from the
+/// workload_mgmt_query_options flag.
+impala::InternalServer::QueryOptionMap GetQueryOptions();
 
 /// Runs common startup checks for any daemon that participates in workload management.
 /// These checks ensure the provided `kudu::Version` object is a known schema version.

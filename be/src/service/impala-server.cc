@@ -3141,6 +3141,7 @@ Status ImpalaServer::Start(int32_t beeswax_port, int32_t hs2_port,
     if (FLAGS_enable_workload_mgmt) {
       ABORT_IF_ERROR(workloadmgmt::ParseSchemaVersionFlag(&target_schema_version));
       ABORT_IF_ERROR(workloadmgmt::StartupChecks(target_schema_version));
+      ABORT_IF_ERROR(workloadmgmt::ParseQueryOptionsFlag());
     }
 
     exec_env_->frontend()->WaitForCatalog();

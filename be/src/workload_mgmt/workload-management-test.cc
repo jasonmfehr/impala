@@ -21,13 +21,16 @@
 #include <gtest/gtest.h>
 
 #include "gen-cpp/ErrorCodes_types.h"
+#include "gen-cpp/Query_types.h"
 #include "gen-cpp/SystemTables_types.h"
 
 #include "kudu/util/version_util.h"
+#include "service/internal-server.h"
 #include "testutil/death-test-util.h"
 #include "testutil/gtest-util.h"
 
 DECLARE_string(query_log_table_name);
+DECLARE_string(workload_mgmt_query_options);
 DECLARE_string(workload_mgmt_schema_version);
 
 using namespace std;
@@ -147,4 +150,13 @@ TEST(WorkloadManagementTest, KnownVersions) {
   iter++;
 
   EXPECT_EQ(KNOWN_VERSIONS.cend(), iter);
+}
+
+TEST(WorkloadManagementTest, QueryOptions) {
+  FLAGS_workload_mgmt_query_options = "FETCH_ROWS_TIMEOUT_MS=0,RUNTIME_FILTER_MODE=OFF";
+  ASSERT_OK(ParseQueryOptionsFlag());
+
+  InternalServer::QueryOptionMap actual = GetQueryOptions();
+  ASSERT_EQ(2, actual.size());
+  ASSERT_NE(actual.find(TImpalaQueryOptions::FETCH_ROWS_TIMEOUT_MS), actual.end());
 }
