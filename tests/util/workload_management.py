@@ -21,6 +21,7 @@ import re
 import requests
 
 from datetime import datetime
+from time import sleep
 
 from SystemTables.ttypes import TQueryTableColumn
 from tests.util.assert_time import assert_time_str, convert_to_milliseconds
@@ -66,17 +67,29 @@ def assert_query(query_tbl, client, expected_cluster_id="", raw_profile=None,
   print("Query Id: {0}".format(query_id))
   profile_lines = profile_text.split("\n")
 
-  # Force Impala to process the inserts to the completed queries table.
-  if query_tbl != QUERY_TBL_LIVE:
-    client.execute("refresh " + query_tbl)
+  success = False
+  sql_results = None
 
-  # Assert the query was written correctly to the query log table.
-  if max_row_size is not None:
-    client.set_configuration_option("MAX_ROW_SIZE", max_row_size)
-  sql_results = client.execute("select * from {0} where query_id='{1}'".format(
-      query_tbl, query_id))
-  assert sql_results.success
-  assert len(sql_results.data) == 1, "did not find query in completed queries table"
+  for cntr in range(3):
+    # Force Impala to process the inserts to the completed queries table.
+    if query_tbl != QUERY_TBL_LIVE:
+      client.execute("refresh " + query_tbl)
+
+    # Assert the query was written correctly to the query log table.
+    if max_row_size is not None:
+      client.set_configuration_option("MAX_ROW_SIZE", max_row_size)
+    sql_results = client.execute("select * from {0} where query_id='{1}'".format(
+        query_tbl, query_id))
+    if sql_results.success and len(sql_results.data) == 1:
+      success = True
+      break
+
+    # Query is not yet available in the workload management table, wait and then try again
+    sleep(3000)
+
+  assert success, "Did not find query '{}' in the '{}' table after multiple attempts" \
+      .format(query_id, query_tbl)
+
 
   # Assert the expected columns were included.
   assert len(sql_results.column_labels) == len(TQueryTableColumn._VALUES_TO_NAMES)
@@ -675,16 +688,26 @@ def assert_csv_col(client, query_tbl, col, query_id, expected_list, db="tpcds"):
 
   print("Query Id: {0}".format(query_id))
 
-  # Force Impala to process the inserts to the completed queries table.
-  if query_tbl != QUERY_TBL_LIVE:
-    client.execute("refresh " + query_tbl)
+  success = False
+  sql_results = None
 
-  # Assert the query was written correctly to the query log table.
-  sql_results = client.execute("select * from {0} where query_id='{1}'".format(
-      query_tbl, query_id))
-  assert sql_results.success
-  assert len(sql_results.data) == 1, "did not find query '{}' in completed queries " \
-      "table".format(query_id)
+  for cntr in range(3):
+    # Force Impala to process the inserts to the completed queries table.
+    if query_tbl != QUERY_TBL_LIVE:
+      client.execute("refresh " + query_tbl)
+
+    # Assert the query was written correctly to the query log table.
+    sql_results = client.execute("select * from {0} where query_id='{1}'".format(
+        query_tbl, query_id))
+    if sql_results.success and len(sql_results.data) == 1:
+      success = True
+      break
+
+    # Query is not yet available in the workload management table, wait and then try again
+    sleep(3000)
+
+  assert success, "Did not find query '{}' in the '{}' table after multiple attempts" \
+      .format(query_id, query_tbl)
 
   data = sql_results.data[0].split("\t")
   actual = []
