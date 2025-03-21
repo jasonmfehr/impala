@@ -706,6 +706,19 @@ class TestQueryLogTableHS2(TestQueryLogTableBase):
     self.cluster.get_first_impalad().service.wait_for_metric_value(
       "impala-server.completed-queries.written", query_count, 20)
 
+    # Helper function that waits for the workload management insert DML to start.
+    def wait_for_insert_query():
+      self.insert_query_id = _find_query_in_ui(self.cluster.get_first_impalad().service,
+          "completed_queries", _is_insert_query)
+      return self.insert_query_id
+
+    assert retry(func=wait_for_insert_query, max_attempts=10, sleep_time_s=1, backoff=1),\
+        "did not find completed queries insert dml in the debug web ui"
+    self.assert_impalad_log_contains("INFO", r"wrote completed queries "
+                                     r"table=\"{}\" record_count=\d+ bytes=\S+\s\S+ "
+                                     r"gather_time=\S+ exec_time=\S+ query_id=\"{}\""
+                                     .format(QUERY_TBL_LOG, self.insert_query_id))
+
   @CustomClusterTestSuite.with_args(impalad_args="--enable_workload_mgmt "
                                                  "--query_log_write_interval_s=9999 "
                                                  "--shutdown_grace_period_s=0 "
@@ -811,11 +824,14 @@ class TestQueryLogTableHS2(TestQueryLogTableBase):
           "in_flight_queries", _is_insert_query)
       return self.insert_query_id
 
-    assert retry(func=wait_for_insert_query, max_attempts=10, sleep_time_s=1, backoff=1)
+    assert retry(func=wait_for_insert_query, max_attempts=10, sleep_time_s=1, backoff=1),\
+        "did not find completed queries insert dml in the debug web ui"
     self.assert_impalad_log_contains("INFO", "Expiring query {} due to execution time "
                                      "limit of 1s.".format(self.insert_query_id))
-    self.assert_impalad_log_contains("INFO", "failed to write completed queries table=\""
-                                     "{}\"".format(QUERY_TBL_LOG))
+    self.assert_impalad_log_contains("INFO", r"failed to write completed queries "
+                                     r"table=\"{}\" record_count=\d+ bytes=\S+\s\S+ "
+                                     r"gather_time=\S+ exec_time=\S+ query_id=\"{}\""
+                                     .format(QUERY_TBL_LOG, self.insert_query_id))
     self.assert_impalad_log_contains("INFO", "Query {} expired due to execution time "
                                      "limit of 1s000ms".format(self.insert_query_id))
 
@@ -1196,7 +1212,8 @@ class TestQueryLogQueuedQueries(CustomClusterTestSuite):
           "in_flight_queries", _is_insert_query)
       return self.insert_query_id
 
-    assert retry(func=wait_for_insert_query, max_attempts=10, sleep_time_s=1, backoff=1)
+    assert retry(func=wait_for_insert_query, max_attempts=10, sleep_time_s=1, backoff=1),\
+        "did not find completed queries insert dml in the debug web ui"
 
     # Wait 2 seconds to ensure the insert into DML is not killed by the fetch rows
     # timeout (set to 1 second in this test's annotations).
