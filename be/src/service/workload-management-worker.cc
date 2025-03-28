@@ -797,9 +797,9 @@ void ImpalaServer::WorkloadManagementWorker(const Version& target_schema_version
     log_msg_props
         << " table=\"" << log_table_name << "\""
         << " record_count=" << queries_to_insert.size()
-        << " bytes=" << PrettyPrinter::PrintBytes(sql.size())
-        << " gather_time=" << PrettyPrinter::Print(gather_time, TUnit::TIME_NS)
-        << " exec_time=" << PrettyPrinter::Print(exec_time, TUnit::TIME_NS)
+        << " bytes=\"" << PrettyPrinter::PrintBytes(sql.size()) << "\""
+        << " gather_time=\"" << PrettyPrinter::Print(gather_time, TUnit::TIME_NS) << "\""
+        << " exec_time=\"" << PrettyPrinter::Print(exec_time, TUnit::TIME_NS) << "\""
         << " query_id=\"" << PrintId(tmp_query_id) << "\"";
 
     if (ret_status.ok()) {
