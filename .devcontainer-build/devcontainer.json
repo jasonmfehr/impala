@@ -23,7 +23,8 @@
         "alefragnani.Bookmarks",
         "mohsen1.prettify-json",
         "alefragnani.bookmarks",
-        "zoma.vscode-auto-open-workspace"
+        "zoma.vscode-auto-open-workspace",
+        "coolchyni.beyond-debug"
       ]
     }
   }
