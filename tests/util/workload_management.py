@@ -27,6 +27,7 @@ from time import sleep, time
 from impala_thrift_gen.SystemTables.ttypes import TQueryTableColumn
 from tests.util.assert_time import assert_time_str, convert_to_milliseconds
 from tests.util.memory import assert_byte_str, convert_to_bytes
+from tests.util.query_profile_util import parse_db_user, parse_session_id
 
 DEDICATED_COORD_SAFETY_BUFFER_BYTES = 104857600
 WM_DB = "sys"
@@ -133,9 +134,7 @@ def assert_query(query_tbl, client, expected_cluster_id="", raw_profile=None,
   assert column_val(TQueryTableColumn.QUERY_ID) == query_id
 
   # Session ID
-  session_id = re.search(r'\n\s+Session ID:\s+(.*)\n', profile_text)
-  assert session_id is not None
-  assert column_val(TQueryTableColumn.SESSION_ID) == session_id.group(1),\
+  assert column_val(TQueryTableColumn.SESSION_ID) == parse_session_id(profile_text), \
       "session id incorrect"
 
   # Session Type
@@ -154,9 +153,8 @@ def assert_query(query_tbl, client, expected_cluster_id="", raw_profile=None,
     assert value == ""
 
   # Database User
-  user = re.search(r'\n\s+User:\s+(.*?)\n', profile_text)
-  assert user is not None
-  assert column_val(TQueryTableColumn.DB_USER) == user.group(1), "db user incorrect"
+  assert column_val(TQueryTableColumn.DB_USER) == parse_db_user(profile_text), \
+      "db user incorrect"
 
   # Connected Database User
   db_user = re.search(r'\n\s+Connected User:\s+(.*?)\n', profile_text)
