@@ -21,6 +21,7 @@
 #include "common/object-pool.h"
 #include "common/status.h"
 #include "exec/catalog-op-executor.h"
+#include "observe/span-manager.h"
 #include "rpc/rpc-trace.h"
 #include "service/child-query.h"
 #include "service/impala-server.h"
@@ -294,6 +295,7 @@ class ClientRequestState {
   int64_t num_rows_fetched_counter() const;
   int64_t row_materialization_rate() const;
   int64_t row_materialization_timer() const;
+  int64_t num_rows_fetched_from_cache_counter() const;
 
   /// Returns the TExecRequest for the query associated with this ClientRequestState.
   /// Contents are a place-holder until GetExecRequest(TQueryCtx) initializes the
@@ -542,6 +544,13 @@ class ClientRequestState {
   void AddClientFetchLockWaitTime(int64_t lock_wait_time_ns) {
     client_fetch_lock_wait_timer_->Add(lock_wait_time_ns);
   }
+
+  /// Returns the OpenTelemetry SpanManager for this query.
+  std::shared_ptr<SpanManager> otel_span_manager() { return otel_span_manager_; }
+
+  /// Returns true if OpenTelemetry tracing is enabled for this query.
+  inline bool otel_trace_query() const { return otel_span_manager_.get() != nullptr; }
+
  protected:
   /// Updates the end_time_us_ of this query if it isn't set. The end time is determined
   /// when this function is called for the first time, calling it multiple times does not
@@ -1007,5 +1016,8 @@ class ClientRequestState {
   /// Try to ask other coordinators to kill query by sending the request.
   Status TryKillQueryRemotely(
       const TUniqueId& query_id, const KillQueryRequestPB& request);
+
+  /// SpanManager instance for this query.
+  std::shared_ptr<SpanManager> otel_span_manager_;
 };
 }
