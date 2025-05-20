@@ -31,6 +31,7 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string.hpp>
 #include <gutil/strings/substitute.h>
+#include <opentelemetry/trace/provider.h>
 
 #include "common/hdfs.h"
 #include "exec/buffered-plan-root-sink.h"
@@ -151,6 +152,15 @@ Coordinator::~Coordinator() {
 Status Coordinator::Exec() {
   const TQueryExecRequest& request = exec_params_.query_exec_request();
   DCHECK(request.plan_exec_info.size() > 0);
+
+  // TODO: trace a query
+  // - We create a span here. It's SpanContext needs to be attached to all RPCs.
+  // - RPC receivers need to create a subspan based on the SpanContext for their
+  //   portion of work, and send that as part of any RPCs they send.
+  // - Attach relevant data to spans with SetAttribute.
+  // - No need to return anything about spans.
+  auto span = opentelemetry::trace::Provider::GetTracerProvider()
+      ->GetTracer("Coordinator")->StartSpan("Query");
 
   VLOG_QUERY << "Exec() query_id=" << PrintId(query_id())
              << " stmt=" << request.query_ctx.client_request.stmt;
@@ -533,6 +543,14 @@ Status Coordinator::StartBackendExec() {
   query_events_->MarkEvent(Substitute("Ready to start on $0 backends", num_backends));
   parent_query_driver_->SetExecTimeLimit(parent_request_state_);
 
+  // OTel Execution started
+  TimedSpan child_span(tracer, query_id, "Init", false);
+  child_span.SetAttribute("DefaultDb", "tpcds");
+  child_span.SetAttribute("QueryId", query_id);
+  child_span.SetAttribute("QueryString", "select name from ssn_tbl where ssn='****'");
+  child_span.SetAttribute("UserName", "user123");
+  child_span.AddEvent("Ready to Start execution");
+
   // Serialize the TQueryCtx once and pass it to each backend. The serialized buffer must
   // stay valid until WaitOnExecRpcs() has returned.
   ThriftSerializer serializer(true);
@@ -593,6 +611,8 @@ Status Coordinator::StartBackendExec() {
   query_events_->MarkEvent(
       Substitute("All $0 execution backends ($1 fragment instances) started",
           num_backends, exec_params_.GetNumFragmentInstances()));
+  // OTel: execution backends
+  child_span.AddEvent("AllBackendsStarted");
   return Status::OK();
 }
 
@@ -1016,6 +1036,8 @@ Status Coordinator::Wait() {
   RETURN_IF_ERROR(SetNonErrorTerminalState(ExecState::RETURNED_RESULTS));
   query_profile_->AddInfoString(
       "DML Stats", dml_exec_state_.OutputPartitionStats("\n"));
+  // OTel: Last row fetched
+  child_span.AddEvent("LastRowFetched");
   return Status::OK();
 }
 
@@ -1053,6 +1075,8 @@ Status Coordinator::GetNext(QueryResultSet* results, int max_rows, bool* eos,
   if (!first_row_fetched_ && results->size() > 0) {
     query_events_->MarkEvent(Coordinator::PROFILE_EVENT_LABEL_FIRST_ROW_FETCHED);
     first_row_fetched_ = true;
+    // OTel: First row fetched
+    child_span.AddEvent("FirstRowFetched");
   }
   RETURN_IF_ERROR(UpdateExecState(
           status, &runtime_state->fragment_instance_id(), FLAGS_hostname));
@@ -1470,6 +1494,8 @@ void Coordinator::ReleaseQueryAdmissionControlResources() {
   admission_control_client->ReleaseQuery(
       ComputeQueryResourceUtilization().peak_per_host_mem_consumption);
   query_events_->MarkEvent("Released admission control resources");
+  // OTel: Released Admission Control
+  child_span.AddEvent("ReleaseAdmissionControlResources");
 }
 
 void Coordinator::ReleaseBackendAdmissionControlResources(

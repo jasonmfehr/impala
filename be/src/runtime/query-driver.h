@@ -17,7 +17,9 @@
 
 #pragma once
 
+#include <memory>
 #include "common/status.h"
+#include "observe/span-manager.h"
 #include "service/impala-server.h"
 
 #include "common/names.h"
@@ -205,6 +207,11 @@ class QueryDriver {
       const TQueryCtx& query_ctx,
       std::shared_ptr<ImpalaServer::SessionState> session_state);
 
+  void InitOtel(const QueryHandle* query_handle);
+  void CloseOtel(const QueryHandle* query_handle);
+
+  std::shared_ptr<SpanManager> otel_span_manager() { return otel_span_manager_; }
+
  private:
   /// Helper method to process query retries, called by the 'retry_query_thread_'.
   /// 'error' is the reason why the query failed. The failed query is cancelled, and then
@@ -285,5 +292,7 @@ class QueryDriver {
   /// True if this query should be recorded in the query log table.
   /// Default: `true`
   bool include_in_query_log_ = true;
+
+  std::shared_ptr<SpanManager> otel_span_manager_;
 };
 }

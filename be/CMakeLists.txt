@@ -387,6 +387,7 @@ if (DOXYGEN_FOUND)
     ${CMAKE_SOURCE_DIR}/be/src/common/
     ${CMAKE_SOURCE_DIR}/be/src/exec/
     ${CMAKE_SOURCE_DIR}/be/src/exprs/
+    ${CMAKE_SOURCE_DIR}/be/src/observe/
     ${CMAKE_SOURCE_DIR}/be/src/runtime/
     ${CMAKE_SOURCE_DIR}/be/src/scheduling/
     ${CMAKE_SOURCE_DIR}/be/src/service/
@@ -450,6 +451,7 @@ set(CLANG_INCLUDE_FLAGS
   "-I${PROTOBUF_INCLUDE_DIR}"
   "-I${CCTZ_INCLUDE_DIR}"
   "-I${CURL_INCLUDE_DIR}"
+  "-isystem${OPENTELEMETRY_CPP_INCLUDE_DIRS}"
 )
 
 # allow linking of static libs into dynamic lib
@@ -539,6 +541,7 @@ set (IMPALA_LIBS
   rpc_header_proto
   rpc_introspection_proto
   pb_util_proto
+  Observe
   Runtime
   RuntimeIr
   Scheduling
@@ -630,6 +633,7 @@ if (BUILD_SHARED_LIBS)
     ExecIcebergMetadata
     CodeGen
     Exprs
+    Observe
     Rpc
     Service
     security
@@ -658,6 +662,7 @@ set (IMPALA_DEPENDENCIES
   ThriftSaslTransport
   openssl_ssl
   openssl_crypto
+  ${OPENTELEMETRY_CPP_STATIC_LIBS}
   crcutil
   gutil
   glog
@@ -876,6 +881,7 @@ add_subdirectory(src/exprs)
 add_subdirectory(src/kudu/security)
 add_subdirectory(src/kudu/rpc)
 add_subdirectory(src/kudu/util)
+add_subdirectory(src/observe)
 add_subdirectory(src/runtime)
 add_subdirectory(src/scheduling)
 add_subdirectory(src/statestore)
@@ -902,6 +908,7 @@ link_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/build/common
   ${CMAKE_CURRENT_SOURCE_DIR}/build/exec
   ${CMAKE_CURRENT_SOURCE_DIR}/build/exprs
+  ${CMAKE_CURRENT_SOURCE_DIR}/build/observe
   ${CMAKE_CURRENT_SOURCE_DIR}/build/rpc
   ${CMAKE_CURRENT_SOURCE_DIR}/build/runtime
   ${CMAKE_CURRENT_SOURCE_DIR}/build/statestore
@@ -918,9 +925,11 @@ if (NOT BUILD_WITH_NO_TESTS)
   # ADD_UNIFIED_BE_TEST calls into AGG_UNIFIED_FILTER_PATTERN.
   get_property(TOTAL_UNIFIED_FILTER_PATTERN GLOBAL PROPERTY AGG_UNIFIED_FILTER_PATTERN)
   add_custom_target(unified-be-test-validated-executable
-    "${CMAKE_CURRENT_SOURCE_DIR}/../bin/validate-unified-backend-test-filters.py"
-    "-f" "${TOTAL_UNIFIED_FILTER_PATTERN}"
-    "-b" "${BUILD_OUTPUT_ROOT_DIRECTORY}/service/unifiedbetests")
+    COMMAND ${CMAKE_COMMAND} -E env
+      LD_LIBRARY_PATH=${PROTOBUF_ROOT}/lib
+      "${CMAKE_CURRENT_SOURCE_DIR}/../bin/validate-unified-backend-test-filters.py"
+      "-f" "${TOTAL_UNIFIED_FILTER_PATTERN}"
+      "-b" "${BUILD_OUTPUT_ROOT_DIRECTORY}/service/unifiedbetests")
 
   ADD_DEPENDENCIES(be-test unified-be-test)
   ADD_DEPENDENCIES(unified-be-test unified-be-test-validated-executable)

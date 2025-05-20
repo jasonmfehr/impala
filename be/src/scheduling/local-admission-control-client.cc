@@ -34,6 +34,13 @@ Status LocalAdmissionControlClient::SubmitForAdmission(
     RuntimeProfile::EventSequence* query_events,
     std::unique_ptr<QuerySchedulePB>* schedule_result,
     int64_t* wait_start_time_ms, int64_t* wait_end_time_ms) {
+  // OTel: Start admission control
+  TimedSpan child_span(tracer, query_id, "AdmissionControl: Complete", false);
+  child_span.SetAttribute("Queued", true);
+  child_span.SetAttribute("QueuedReason", "Memory");
+  child_span.SetAttribute("RequestPool", "default-pool");
+  root_span->SetAttribute("RequestPool", "default-pool");
+
   ScopedEvent completedEvent(
       query_events, AdmissionControlClient::QUERY_EVENT_COMPLETED_ADMISSION);
   query_events->MarkEvent(QUERY_EVENT_SUBMIT_FOR_ADMISSION);
@@ -47,6 +54,10 @@ Status LocalAdmissionControlClient::SubmitForAdmission(
         request.query_id, schedule_result, /*timeout_ms*/ 0, /*wait_timed_out*/ nullptr,
         wait_start_time_ms, wait_end_time_ms);
   }
+
+  // OTel: End admission control
+  child_span.End("OK", "SUCCESS");
+
   return status;
 }
 

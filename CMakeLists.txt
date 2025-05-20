@@ -145,6 +145,7 @@ set_dep_root(CCTZ)
 set_dep_root(CURL)
 set_dep_root(CALLONCEHACK)
 set_dep_root(CLOUDFLAREZLIB)
+set_dep_root(OPENTELEMETRY_CPP)
 
 # The boost-cmake project hasn't been maintained for years. Let's make sure we
 # don't accidentally use it if it can be found.
@@ -231,6 +232,7 @@ endif()
 find_package(Zlib REQUIRED)
 IMPALA_ADD_THIRDPARTY_LIB(zlib ${ZLIB_INCLUDE_DIR} ${ZLIB_STATIC_LIBRARIES}
   ${ZLIB_SHARED_LIBRARIES})
+add_library(ZLIB::ZLIB ALIAS zlib)
 
 # find HDFS headers and libs
 set(HDFS_FIND_QUIETLY TRUE)
@@ -384,6 +386,7 @@ IMPALA_ADD_THIRDPARTY_LIB(protobuf ${PROTOBUF_INCLUDE_DIR} ${PROTOBUF_STATIC_LIB
   ${PROTOBUF_SHARED_LIBRARY})
 IMPALA_ADD_THIRDPARTY_LIB(protoc ${PROTOBUF_INCLUDE_DIR} ${PROTOBUF_PROTOC_STATIC_LIBRARY}
   ${PROTOBUF_PROTOC_SHARED_LIBRARY})
+add_library(protobuf::libprotobuf ALIAS protobuf)
 
 # find libev headers and libs
 find_package(LibEv REQUIRED)
@@ -418,11 +421,42 @@ find_package(KerberosPrograms)
 # find curl headers and libs
 find_package(Curl REQUIRED)
 IMPALA_ADD_THIRDPARTY_LIB(curl ${CURL_INCLUDE_DIR} ${CURL_STATIC_LIB} "")
+add_library(CURL::libcurl ALIAS curl)
 
 # find calloncehack headers and libs
 find_package(CallOnceHack REQUIRED)
 IMPALA_ADD_THIRDPARTY_LIB(calloncehack ${CALLONCEHACK_INCLUDE_DIR} ""
   ${CALLONCEHACK_SHARED_LIB})
+
+# find opentelemetry-cpp sdk
+add_compile_definitions(ENABLE_THREAD_INSTRUMENTATION_PREVIEW)
+set(OPENTELEMETRY_CPP_STATIC_LIB_DIR ${OPENTELEMETRY_CPP_ROOT}/lib)
+message(STATUS "Opentelemetry static lib dir: " ${OPENTELEMETRY_CPP_STATIC_LIB_DIR})
+find_package(opentelemetry-cpp REQUIRED COMPONENTS
+libopentelemetry_common
+libopentelemetry_exporter_in_memory
+libopentelemetry_exporter_in_memory_metric
+libopentelemetry_exporter_ostream_logs
+libopentelemetry_exporter_ostream_metrics
+libopentelemetry_exporter_ostream_span
+libopentelemetry_exporter_otlp_http
+libopentelemetry_exporter_otlp_http_client
+libopentelemetry_exporter_otlp_http_log
+libopentelemetry_exporter_otlp_http_metric
+libopentelemetry_http_client_curl
+libopentelemetry_logs
+libopentelemetry_metrics
+libopentelemetry_otlp_recordable
+libopentelemetry_proto
+libopentelemetry_resources
+libopentelemetry_trace
+libopentelemetry_version
+PATHS ${OPENTELEMETRY_CPP_STATIC_LIB_DIR} PATH_SUFFIXES "cmake/opentelemetry-cpp")
+message(STATUS "Opentelemetry include dir: " ${OPENTELEMETRY_CPP_INCLUDE_DIRS})
+include_directories(SYSTEM ${OPENTELEMETRY_CPP_INCLUDE_DIRS})
+file(GLOB OPENTELEMETRY_CPP_STATIC_LIBS "${OPENTELEMETRY_CPP_STATIC_LIB_DIR}/*.a")
+list(JOIN OPENTELEMETRY_CPP_STATIC_LIBS ";" OPENTELEMETRY_CPP_STATIC_LIBS_CONCAT)
+message(STATUS "OpenTelemetry static libs: ${OPENTELEMETRY_CPP_STATIC_LIBS_CONCAT}")
 
 # Tests that run any security related tests need to link this in to override the
 # krb5_realm_override() implementation in krb5.

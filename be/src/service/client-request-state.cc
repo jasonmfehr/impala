@@ -1176,6 +1176,8 @@ void ClientRequestState::Finalize(const Status* cause) {
   // Update the timeline here so that all of the above work is captured in the timeline.
   query_events_->MarkEvent("Unregister query");
   UnRegisterRemainingRPCs();
+  // OTel: unregister query
+  child_span.AddEvent("Unregister Query");
 }
 
 Status ClientRequestState::Exec(const TMetadataOpRequest& exec_request) {
@@ -1232,6 +1234,8 @@ void ClientRequestState::Wait() {
     lock_guard<mutex> l(lock_);
     if (returns_result_set()) {
       query_events()->MarkEvent("Rows available");
+      // OTel: Rows Available
+      child_span.AddEvent("Rows Available");
     } else {
       query_events()->MarkEvent("Request finished");
       UpdateEndTime();

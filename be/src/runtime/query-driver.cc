@@ -17,6 +17,7 @@
 
 #include <thrift/protocol/TDebugProtocol.h>
 
+#include "observe/otel.h"
 #include "runtime/exec-env.h"
 #include "runtime/query-driver.h"
 #include "service/client-request-state.h"
@@ -563,5 +564,27 @@ void QueryDriver::CreateNewDriver(ImpalaServer* impala_server, QueryHandle* quer
   query_handle->query_driver_ = std::make_shared<QueryDriver>(impala_server);
   query_handle->query_driver_->CreateClientRequestState(
       query_ctx, move(session_state), query_handle);
+
+  if (otel_enabled()) {
+    query_handle->query_driver()->InitOtel(query_handle);
+  }
 }
+
+void QueryDriver::InitOtel(const QueryHandle* query_handle) {
+  VLOG(2) << "Initializing OpenTelemetry for query "
+      << PrintId((*query_handle)->query_id());
+  otel_span_manager_ = build_span_manager(query_handle);
+  otel_span_manager_->StartRootSpan();
 }
+
+void QueryDriver::CloseOtel(const QueryHandle* query_handle) {
+  VLOG(2) << "Closing OpenTelemetry for query "
+      << PrintId((*query_handle)->query_id());
+
+  if (otel_span_manager_) {
+    otel_span_manager_->EndRootSpan();
+    otel_span_manager_.reset();
+  }
+}
+
+} // namespace impala

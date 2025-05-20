@@ -57,6 +57,7 @@
 #include "kudu/security/security_flags.h"
 #include "kudu/util/random_util.h"
 #include "kudu/util/version_util.h"
+#include "observe/otel.h"
 #include "rpc/authentication.h"
 #include "rpc/rpc-mgr.h"
 #include "rpc/rpc-trace.h"
@@ -253,6 +254,13 @@ const string SSL_MIN_VERSION_HELP = "The minimum SSL/TLS version that Thrift "
     "services should use for both client and server connections. Supported versions are "
     "TLSv1.0, TLSv1.1 and TLSv1.2 (as long as the system OpenSSL library supports them)";
 DEFINE_string(ssl_minimum_version, "tlsv1.2", SSL_MIN_VERSION_HELP.c_str());
+DEFINE_validator(ssl_minimum_version, [](const char* flagname, const string& value) {
+  const std::string trimmed = boost::algorithm::trim_copy(value);
+  return boost::iequals(trimmed, "tlsv1.0")
+      || boost::iequals(trimmed, "tlsv1.1")
+      || boost::iequals(trimmed, "tlsv1.2")
+      || boost::iequals(trimmed, "tlsv1.3");
+});
 
 DEFINE_int32(idle_session_timeout, 0, "The time, in seconds, that a session may be idle"
     " for before it is closed (and all running queries cancelled) by Impala. If 0, idle"
@@ -1316,6 +1324,11 @@ Status ImpalaServer::Execute(TQueryCtx* query_ctx,
   if (!status.ok() && registered_query) {
     UnregisterQueryDiscardResult((*query_handle)->query_id(), false, &status);
   }
+
+  if (otel_enabled()) {
+    query_handle->query_driver()->CloseOtel(query_handle);
+  }
+
   return status;
 }
 
@@ -1326,6 +1339,8 @@ Status ImpalaServer::ExecuteInternal(const TQueryCtx& query_ctx,
   DCHECK(session_state != nullptr);
   DCHECK(query_handle != nullptr);
   DCHECK(registered_query != nullptr);
+  // OTel: Register query
+  TimedSpan child_span(tracer, query_id, "Submitted", false);
   *registered_query = false;
   // Create the QueryDriver for this query. CreateNewDriver creates the associated
   // ClientRequestState as well.
@@ -1338,6 +1353,16 @@ Status ImpalaServer::ExecuteInternal(const TQueryCtx& query_ctx,
   }
 
   (*query_handle)->query_events()->MarkEvent("Query submitted");
+
+  // OTel: Query submitted
+    child_span.End("OK", "SUCCESS");
+
+  // OTel: Planning started
+  TimedSpan child_span(tracer, query_id, "Planning", false);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1519));
+  child_span.SetAttribute("QueryType", "QUERY");
+  root_span->SetAttribute("ExplainPlan", "Explain the query plan");
+  root_span->SetAttribute("QueryType", "QUERY");
 
   {
     // Keep a lock on query_handle so that registration and setting
@@ -1387,6 +1412,10 @@ Status ImpalaServer::ExecuteInternal(const TQueryCtx& query_ctx,
     if (result.__isset.result_set_metadata) {
       (*query_handle)->set_result_metadata(result.result_set_metadata);
     }
+
+    // OTel: Planning
+    child_span.End("OK", "SUCCESS");
+
   }
   VLOG(2) << "Execution request: "
           << ThriftDebugString((*query_handle)->exec_request());
@@ -1464,6 +1493,12 @@ void ImpalaServer::PrepareQueryContext(const std::string& hostname,
 Status ImpalaServer::RegisterQuery(const TUniqueId& query_id,
     const shared_ptr<SessionState>& session_state, QueryHandle* query_handle) {
   lock_guard<mutex> l2(session_state->lock);
+  // OTel: Query register start
+  TimedSpan child_span(tracer, query_id, "Init", false);
+  child_span.SetAttribute("DefaultDb", "tpcds");
+  child_span.SetAttribute("QueryId", query_id);
+  child_span.SetAttribute("QueryString", "select name from ssn_tbl where ssn='****'");
+  child_span.SetAttribute("UserName", "user123");
   // The session wasn't expired at the time it was checked out and it isn't allowed to
   // expire while checked out, so it must not be expired.
   DCHECK_GT(session_state->ref_count, 0);
@@ -1479,6 +1514,10 @@ Status ImpalaServer::RegisterQuery(const TUniqueId& query_id,
   ImpaladMetrics::NUM_QUERIES_REGISTERED->Increment(1L);
   VLOG_QUERY << "Registered query query_id=" << PrintId(query_id) << " session_id="
              << PrintId(session_state->session_id);
+
+  // OTel: Query register end
+  child_span.End("OK", "SUCCESS");
+
   return Status::OK();
 }
 
