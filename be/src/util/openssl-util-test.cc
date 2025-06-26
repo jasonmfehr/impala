@@ -22,6 +22,11 @@
 #include <openssl/rand.h>
 
 #include "common/init.h"
+#include "common/status.h"
+#include "gutil/strings/substitute.h"
+#include "kudu/util/env.h"
+#include "kudu/util/faststring.h"
+#include "kudu/util/status.h"
 #include "testutil/gtest-util.h"
 #include "util/openssl-util.h"
 
@@ -241,5 +246,144 @@ TEST_F(OpenSSLUtilTest, RandSeeding) {
     ASSERT_OK(key.InitializeRandom(AES_BLOCK_SIZE, key.GetSupportedDefaultMode()));
   }
 }
+
+///
+/// ValidatePemBundle tests
+///
+static std::string IMPALA_HOME(getenv("IMPALA_HOME"));
+static const std::string& EXPIRED_CERT = "bad-cert";
+static const std::string& INVALID_CERT = "invalid-server-cert";
+static const std::string& VALID_CERT_1 = "server-cert";
+static const std::string& VALID_CERT_2 = "wildcardCA";
+
+static const std::string& MSG_INVALID = "PEM bundle contains at least 1 invalid "
+    "certificate";
+static const std::string& MSG_NONE_VALID = "PEM bundle contains no valid certificates";
+static const std::string& MSG_UNKNOWN = "OpenSSL error in PEM_read_bio_X509 unknown "
+    "error while reading PEM bundle";
+
+/// Helper function to read a certificate from the be/src/testutil directory.
+static std::string read_cert(const std::string& cert_name) {
+  kudu::faststring contents;
+  kudu::Status s = kudu::ReadFileToString(kudu::Env::Default(),
+      strings::Substitute("$0/be/src/testutil/$1.pem", IMPALA_HOME, cert_name),
+      &contents);
+
+  EXPECT_TRUE(s.ok())<< "Certificate '" << cert_name << "' could not be read: "
+      << s.ToString();
+  EXPECT_FALSE(contents.ToString().empty()) << "Certificate '" << cert_name
+      << "' is empty. Please check the test data.";
+
+  string cert = contents.ToString();
+  if (cert.back() != '\n') {
+    cert.push_back('\n');
+  }
+
+  return cert;
+} // function read_cert
+
+/// Asserts a PEM bundle containing one valid certificate is valid.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleHappyPathOneCert) {
+  ASSERT_OK(ValidatePemBundle(strings::Substitute("$0", read_cert(VALID_CERT_1))));
 }
 
+/// Asserts a PEM bundle containing two valid certificates is valid.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleHappyPath) {
+  ASSERT_OK(ValidatePemBundle(strings::Substitute("$0$1", read_cert(VALID_CERT_1),
+      read_cert(VALID_CERT_2))));
+}
+
+/// Asserts an empty PEM bundle is invalid.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleEmpty) {
+  ASSERT_ERROR_MSG(ValidatePemBundle(""), "bundle is empty");
+}
+
+/// Asserts a bundle containing a single expired certificate is invalid.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleExpired) {
+  ASSERT_ERROR_MSG(ValidatePemBundle(read_cert(EXPIRED_CERT)), MSG_INVALID);
+}
+
+/// Asserts a bundle containing a single invalid certificate is invalid.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleNotACert) {
+  ASSERT_ERROR_MSG(ValidatePemBundle("-----BEGIN CERTIFICATE-----\nnot a cert"),
+      MSG_INVALID);
+}
+
+/// Asserts a bundle is invalid if it contains one expired and two non-expired
+/// certificates where the expired cert changes position in the bundle.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleThreeCertsOneExpired) {
+  // Expired cert is first in the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(EXPIRED_CERT), read_cert(VALID_CERT_1), read_cert(VALID_CERT_2))),
+      MSG_INVALID);
+
+  // Expired cert is in the middle of the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(VALID_CERT_1), read_cert(EXPIRED_CERT), read_cert(VALID_CERT_2))),
+      MSG_INVALID);
+
+  // Expired cert is last in the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(VALID_CERT_1), read_cert(VALID_CERT_2), read_cert(EXPIRED_CERT))),
+      MSG_INVALID);
+}
+
+/// Asserts a bundle is invalid if it contains two expired and one non-expired
+/// certificate no matter the position of the expired cert in the bundle.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleThreeCertsTwoExpired) {
+  // First two certs are expired.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(EXPIRED_CERT), read_cert(EXPIRED_CERT), read_cert(VALID_CERT_2))),
+      MSG_INVALID);
+
+  // Last two certs are expired.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(VALID_CERT_2), read_cert(EXPIRED_CERT), read_cert(EXPIRED_CERT))),
+      MSG_INVALID);
+}
+
+/// Asserts a bundle is invalid if it contains one invalid and two invalid certificates
+/// where the expired cert changes position in the bundle.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleThreeCertsOneInvalid) {
+  // Invalid cert is first in the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1$2",
+      "-----BEGIN CERTIFICATE-----\nnot a cert", read_cert(VALID_CERT_1),
+      read_cert(VALID_CERT_2))), MSG_INVALID);
+
+  // Invalid cert is in the middle of the bundle.
+  EXPECT_STR_CONTAINS(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(VALID_CERT_1), read_cert(VALID_CERT_2),
+      "-----BEGIN CERTIFICATE-----\nnot a cert")).GetDetail(), MSG_UNKNOWN);
+
+  // Invalid cert is last in the bundle.
+  EXPECT_STR_CONTAINS(ValidatePemBundle(strings::Substitute("$0$1$2",
+      read_cert(VALID_CERT_1), read_cert(VALID_CERT_2),
+      "-----BEGIN CERTIFICATE-----\nnot a cert")).GetDetail(), MSG_UNKNOWN);
+}
+
+/// Asserts a bundle is invalid if it contains one expired and one non-expired certificate
+/// no matter the position of the expired cert in the bundle.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleTwoCertsExpired) {
+  // Expired cert is first in the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1", read_cert(EXPIRED_CERT),
+      read_cert(VALID_CERT_1))), MSG_INVALID);
+
+  // Expired cert is last in the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1", read_cert(VALID_CERT_1),
+      read_cert(EXPIRED_CERT))), MSG_INVALID);
+}
+
+/// Asserts a bundle is invalid if it contains one valid and one invalid certificate
+/// no matter the position of the expired cert in the bundle.
+TEST_F(OpenSSLUtilTest, ValidatePemBundleTwoCertsNotCertFirst) {
+  // Invalid cert is first in the bundle.
+  ASSERT_ERROR_MSG(ValidatePemBundle(strings::Substitute("$0$1",
+      "-----BEGIN CERTIFICATE-----\nnot a cert", read_cert(VALID_CERT_1))), MSG_INVALID);
+
+  // Invalid cert is last in the bundle.
+  EXPECT_STR_CONTAINS(ValidatePemBundle(strings::Substitute("$0$1",
+    read_cert(VALID_CERT_1), "-----BEGIN CERTIFICATE-----\nnot a cert")).GetDetail(),
+    MSG_UNKNOWN);
+}
+
+} // namespace impala
