@@ -70,6 +70,11 @@ inline bool IsFIPSMode() {
 #endif
 };
 
+/// Validates a PEM-encoded certificate bundle. All certificates in the bundle must be
+/// valid PEM certificates. Invalid certificates (those that cannot be used based on their
+/// notBefore/notAfter configurations) will cause validation to fail.
+Status ValidatePemBundle(const string& bundle);
+
 // Enum of all the AES modes that are currently supported. INVALID is used whenever
 // user inputs a wrong AES Mode, for example, AES_128_CTF etc.
 enum class AES_CIPHER_MODE {

@@ -25,13 +25,17 @@
 #include <iostream>
 
 #include <glog/logging.h>
+#include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/tls1.h>
+#include <openssl/x509.h>
 
 #include "common/atomic.h"
+#include "common/compiler-util.h"
 #include "common/status.h"
 #include "gutil/port.h" // ATTRIBUTE_WEAK
 #include "gutil/strings/substitute.h"
@@ -151,6 +155,54 @@ static Status OpenSSLErr(const string& function, const string& context) {
 void SeedOpenSSLRNG() {
   RAND_load_file("/dev/urandom", RNG_RESEED_BYTES);
 }
+
+Status ValidatePemBundle(const string& bundle) {
+  if (!bundle.empty()) {
+    BIO* bio = BIO_new_mem_buf(bundle.data(), bundle.size());
+    if (bio == nullptr) {
+      return OpenSSLErr("BIO_new_mem_buf", "reading PEM bundle");
+    }
+
+    X509* cert = nullptr;
+    int cert_count = 0;
+    int invalid_cert_count = 0;
+    while ((cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) != nullptr) {
+      cert_count++;
+      // Check certificate validity (notBefore and notAfter)
+      if (X509_cmp_current_time(X509_get0_notBefore(cert)) > 0
+          || X509_cmp_current_time(X509_get0_notAfter(cert)) < 0) {
+        invalid_cert_count++;
+      }
+      X509_free(cert);
+
+      if (ERR_peek_error() != 0) {
+        BIO_free(bio);
+        return OpenSSLErr("PEM_read_bio_X509", "parsing certificate from PEM bundle");
+      }
+    }
+
+    Status ret;
+
+    if (UNLIKELY(invalid_cert_count > 0 || cert_count == invalid_cert_count)) {
+      ret = Status("PEM bundle contains at least 1 invalid certificate");
+    } else if (UNLIKELY(cert_count == 0)) {
+      ret = Status("PEM bundle contains no valid certificates");
+    } else if (UNLIKELY(ERR_GET_REASON(ERR_peek_error()) != PEM_R_NO_START_LINE)) {
+      // The final PEM_read_bio_X509 always sets the openssl error.
+      ret = OpenSSLErr("PEM_read_bio_X509", "unknown error while reading PEM bundle");
+    } else {
+      ret = Status::OK();
+    }
+
+    // Clear the error left by the final PEM_read_bio_X509 call when it returns nullptr.
+    ERR_clear_error();
+    BIO_free(bio);
+
+    return ret;
+  }
+
+  return Status("bundle is empty");
+} // function ValidatePemBundle
 
 void IntegrityHash::Compute(const uint8_t* data, int64_t len) {
   // Explicitly ignore the return value from SHA256(); it can't fail.
