@@ -450,6 +450,7 @@ set(CLANG_INCLUDE_FLAGS
   "-I${PROTOBUF_INCLUDE_DIR}"
   "-I${CCTZ_INCLUDE_DIR}"
   "-I${CURL_INCLUDE_DIR}"
+  "-I${OPENTELEMETRY_CPP_INCLUDE_DIR}"
 )
 
 # allow linking of static libs into dynamic lib
@@ -658,6 +659,22 @@ set (IMPALA_DEPENDENCIES
   ThriftSaslTransport
   openssl_ssl
   openssl_crypto
+  opentelemetry-cpp::api
+  opentelemetry-cpp::sdk
+  opentelemetry-cpp::version
+  opentelemetry-cpp::common
+  opentelemetry-cpp::resources
+  opentelemetry-cpp::trace
+  opentelemetry-cpp::ext
+  opentelemetry-cpp::http_client_curl
+  opentelemetry-cpp::proto
+  opentelemetry-cpp::otlp_recordable
+  opentelemetry-cpp::otlp_file_client
+  opentelemetry-cpp::otlp_file_exporter
+  opentelemetry-cpp::otlp_http_client
+  opentelemetry-cpp::otlp_http_exporter
+  opentelemetry-cpp::otlp_http_log_record_exporter
+  opentelemetry-cpp::otlp_http_metric_exporter
   crcutil
   gutil
   glog
