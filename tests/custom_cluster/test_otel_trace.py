@@ -19,12 +19,14 @@ from __future__ import absolute_import, division, print_function
 
 import json
 import os
+import random
+import string
+import time
 
 from tests.common.custom_cluster_test_suite import CustomClusterTestSuite
 from tests.common.environ import IMPALA_LOCAL_BUILD_VERSION
 from tests.common.test_dimensions import hs2_client_protocol_dimension
 from tests.util.workload_management import parse_db_user, parse_session_id
-import time
 
 class TestOtelTrace(CustomClusterTestSuite):
   """Tests that exercise OpenTelemetry tracing behavior."""
@@ -52,12 +54,56 @@ class TestOtelTrace(CustomClusterTestSuite):
   def setup_method(self, method):
     super(TestOtelTrace, self).setup_method(method)
 
+  def __assert_json_path_value(self, obj, path, expected_value, message=None):
+    """
+    Assert that a path exists in a nested JSON object and has the expected value.
+    
+    Args:
+        obj: The JSON object (dict/list) to check
+        path: The path to check (e.g. "resourceSpans[0].scope.name")
+        expected_value: The expected value at that path
+        message: Optional custom message prefix for the assertion error
+    """
+    parts = path.replace('][', '].[').replace('[', '.[').split('.')
+    current = obj
+    
+    # Navigate the path
+    for part in parts:
+        if not part:  # Skip empty parts
+            continue
+            
+        if part.endswith(']'):  # Handle array indexing
+            idx_start = part.find('[')
+            idx_end = part.find(']', idx_start)
+            if idx_start > 0:
+                key = part[:idx_start]
+                idx = int(part[idx_start+1:idx_end])
+                assert key in current, "{}: '{}' not found in object".format(message or 'Path validation error', key)
+                current = current[key]
+                assert isinstance(current, list), "{}: '{}' is not a list".format(message or 'Path validation error', key)
+                assert idx < len(current), "{}: Index {} out of range for '{}'".format(message or 'Path validation error', idx, key)
+                current = current[idx]
+            else:
+                # Just an array index like [0]
+                idx = int(part[1:idx_end])
+                assert isinstance(current, list), "{}: Current object is not a list".format(message or 'Path validation error')
+                assert idx < len(current), "{}: Index {} out of range".format(message or 'Path validation error', idx)
+                current = current[idx]
+        else:  # Handle regular dict keys
+            assert isinstance(current, dict), "{}: Cannot access key '{}' in non-dict object".format(message or 'Path validation error', part)
+            assert part in current, "{}: Key '{}' not found in object".format(message or 'Path validation error', part)
+            current = current[part]
+    
+    # Check the value
+    assert current == expected_value, "{}: Expected '{}', got '{}'".format(message or 'Path validation error', expected_value, current)
+    return True
+  
   @CustomClusterTestSuite.with_args(
       impalad_args="-v=2 --cluster_id=otel_trace --otel_trace_enabled=true "
                    "--otel_trace_exporter=file --otel_file_flush_interval_ms=500 "
                    "--otel_file_pattern={out_dir}/" + TRACE_FILE,
       cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
-  def test_otel_trace(self, vector):
+  def test_otel_trace(self):
     """Test that OpenTelemetry tracing is working by running a simple query and
     checking that the trace file is created and contains spans."""
     query = "select count(*) from tpch_parquet.lineitem"
@@ -69,26 +115,63 @@ class TestOtelTrace(CustomClusterTestSuite):
     root_span_id, _ = self.find_span_log("root", query_id)
 
     # Wait until all spans are written to the trace file.
-    trace_file_path = "{}/{}".format(self.get_tmp_dir(self.OUT_DIR), self.TRACE_FILE)
-    timeout = 30
-    start_time = time.time()
-    while True:
-      if os.path.exists(trace_file_path):
-        with open(trace_file_path, "r") as f:
-          try:
-            line = f.readline()
-            if line:
-              obj = json.loads(line.strip())
-              scope_spans = obj["resourceSpans"][0]["scopeSpans"][0]["spans"]
-              if isinstance(scope_spans, list) and len(scope_spans) == self.ROOT_SPAN_IDX + 1:
-                break
-          except Exception:
-            pass
-      if time.time() - start_time > timeout:
-        raise RuntimeError("Timed out waiting for trace file to contain "+
-          str(self.ROOT_SPAN_IDX+1) + " scopeSpans. " \
-          "actual size: {}".format(len(scope_spans)))
-      time.sleep(0.5)
+    obj = self.__wait_for_all_spans()
+
+    # assert global resource attributes
+    self.__assert_json_path_value(obj, "resourceSpans[0].resource.attributes[3].key", "service.version")
+    self.__assert_json_path_value(obj, "resourceSpans[0].resource.attributes[3].value.stringValue", "5.0.0-SNAPSHOT")
+    self.__assert_json_path_value(obj, "resourceSpans[0].resource.attributes[4].key", "service.name")
+    self.__assert_json_path_value(obj, "resourceSpans[0].resource.attributes[4].value.stringValue", "Impala")
+
+    # assert span level scope
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].scope.name", "org.apache.impala.impalad")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].scope.version", "5.0.0-SNAPSHOT")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[0].key", "Running")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[0].value.boolValue", False)
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[1].key", "UserName")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[1].value.stringValue", parse_db_user(result.runtime_profile))
+    
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[2].key", "BeginTime")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[3].key", "SessionId")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[3].value.stringValue", parse_session_id(result.runtime_profile))
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[4].key", "QueryId")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[4].value.stringValue", query_id)
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[5].key", "Name")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[5].value.stringValue", "{} - Init".format(query_id))
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[6].key", "OriginalQueryId")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[6].value.stringValue", "")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[7].key", "DefaultDb")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[7].value.stringValue", "default")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[8].key", "RequestPool")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[8].value.stringValue", "default-pool")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[9].key", "QueryString")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[9].value.stringValue", query)
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[10].key", "ClusterId")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[10].value.stringValue", "otel_trace")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[11].key", "Status")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[11].value.stringValue", "TODO")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[12].key", "ErrorMsg")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[12].value.stringValue", "TODO")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[13].key", "StatusMessage")
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[13].value.stringValue", "OK")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[14].key", "EndTime")
+
+    self.__assert_json_path_value(obj, "resourceSpans[0].scopeSpans[0].spans[0].attributes[15].key", "ElapsedTime")
+
 
     # Assert the only top-level key is 'resourceSpans' and it is a 1 element list.
     cur_path = "resourceSpans"
@@ -184,6 +267,53 @@ class TestOtelTrace(CustomClusterTestSuite):
         self.PLANNING_SPAN_IDX, query_id, root_span_id, self.PLANNING_SPAN_ATTRS_COUNT)
     assert_attr(plan_attrs, "QueryType", "QUERY", cur_path)
 
+#   @CustomClusterTestSuite.with_args(
+#       impalad_args="-v=2 --cluster_id=otel_trace --otel_trace_enabled=true "
+#                    "--otel_trace_exporter=file --otel_file_flush_interval_ms=500 "
+#                    "--otel_file_pattern={out_dir}/" + TRACE_FILE,
+#       cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+#   def test_dml_createdb(self):
+#     db_name = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(7))
+#     query = "create database {}".format(db_name)
+
+#     try:
+#       result = self.execute_query_expect_success(self.client, query)
+#       assert result.success
+#     finally:
+#       assert self.execute_query_expect_success(self.client,
+#           "drop database if exists {}".format(db_name))
+#     query_id = result.query_id
+
+#     # Wait until all spans are written to the trace file.
+#     obj = self.__wait_for_all_spans()
+#     print("Obj: " + obj)
+
+#     # Read the root span id from the Impalad logs.
+#     root_span_id, _ = self.find_span_log("root", query_id)
+#     print("Root span id: {}".format(root_span_id))
+#     import pdb; pdb.set_trace()
+
+#   @CustomClusterTestSuite.with_args(
+#       impalad_args="-v=2 --cluster_id=otel_trace --otel_trace_enabled=true "
+#                    "--otel_trace_exporter=file --otel_file_flush_interval_ms=500 "
+#                    "--otel_file_pattern={out_dir}/" + TRACE_FILE,
+#       cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+#   def test_dml_createtable(self, unique_database):
+#     query = "create database {}.footable".format(unique_database)
+#     result = self.execute_query_expect_success(self.client, query)
+#     assert result.success
+#     query_id = result.query_id
+
+#     # Wait until all spans are written to the trace file.
+#     obj = self.__wait_for_all_spans()
+#     print("Obj: " + obj)
+
+#     # Read the root span id from the Impalad logs.
+#     root_span_id, _ = self.find_span_log("root", query_id)
+
+#     print("Root span id: {}".format(root_span_id))
+#     import pdb; pdb.set_trace()
+
   def assert_span_common(self, spans, is_root, name, span_idx, query_id, root_span_id,
         attributes_count):
     """
@@ -250,6 +380,28 @@ class TestOtelTrace(CustomClusterTestSuite):
 
     return span_id, trace_id
 
+  def __wait_for_all_spans(self):
+    """Wait until all spans are written to the trace file."""
+    trace_file_path = "{}/{}".format(self.get_tmp_dir(self.OUT_DIR), self.TRACE_FILE)
+    timeout = 30
+    start_time = time.time()
+    while True:
+      if os.path.exists(trace_file_path):
+        with open(trace_file_path, "r") as f:
+          try:
+            line = f.readline()
+            if line:
+              obj = json.loads(line.strip())
+              scope_spans = obj["resourceSpans"][0]["scopeSpans"][0]["spans"]
+              if isinstance(scope_spans, list) and len(scope_spans) == self.ROOT_SPAN_IDX + 1:
+                return obj
+          except Exception:
+            continue
+      if time.time() - start_time > timeout:
+        raise RuntimeError("Timed out waiting for trace file to contain "+
+          str(self.ROOT_SPAN_IDX+1) + " scopeSpans. " \
+          "actual size: {}".format(len(scope_spans)))
+      time.sleep(0.5)
 
 def assert_attr(attributes, expected_key, expected_value, cur_path, type="stringValue"):
   """
