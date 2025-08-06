@@ -17,8 +17,11 @@
 
 from __future__ import absolute_import, division, print_function
 
+from threading import Thread
+from time import sleep
+
 from tests.common.custom_cluster_test_suite import CustomClusterTestSuite
-from tests.common.file_utils import wait_for_file_line_count
+from tests.common.file_utils import wait_for_file_line_count, count_lines
 from tests.common.impala_connection import ERROR, RUNNING, FINISHED, INITIALIZED
 from tests.common.test_vector import PROTOCOL, HS2, BEESWAX, ImpalaTestDimension
 from tests.util.otel_trace import parse_trace_file, ATTR_VAL_TYPE_STRING, \
@@ -26,15 +29,14 @@ from tests.util.otel_trace import parse_trace_file, ATTR_VAL_TYPE_STRING, \
 from tests.util.query_profile_util import parse_db_user, parse_session_id, parse_sql, \
     parse_query_type, parse_query_status, parse_impala_query_state, parse_query_id, \
     parse_retry_status, parse_original_query_id, parse_retried_query_id, \
-    parse_num_rows_fetched, parse_admission_result, parse_default_db
+    parse_num_rows_fetched, parse_admission_result, parse_default_db, \
+    parse_num_modified_rows, parse_num_deleted_rows, parse_coordinator
 from tests.util.retry import retry
 
+OUT_DIR = "out_dir_traces"
+TRACE_FILE = "export-trace.jsonl"
 
 class TestOtelTrace(CustomClusterTestSuite):
-  """Tests that exercise OpenTelemetry tracing behavior."""
-
-  OUT_DIR = "out_dir"
-  TRACE_FILE = "export-trace.jsonl"
 
   @classmethod
   def add_test_dimensions(cls):
@@ -43,190 +45,21 @@ class TestOtelTrace(CustomClusterTestSuite):
 
   def setup_method(self, method):
     super(TestOtelTrace, self).setup_method(method)
+    self.assert_impalad_log_contains("INFO", "join Impala Service pool")
+    self.trace_file_path = "{}/{}".format(self.get_tmp_dir(OUT_DIR), TRACE_FILE)
+    self.trace_file_count = count_lines(self.trace_file_path, True)
 
-  @CustomClusterTestSuite.with_args(
-      impalad_args="-v=2 --cluster_id=otel_trace --otel_trace_enabled=true "
-                   "--otel_trace_exporter=file --otel_file_flush_interval_ms=500 "
-                   "--otel_file_pattern={out_dir}/" + TRACE_FILE,
-      cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
-  def test_query_success(self, vector):
-    """Test that OpenTelemetry tracing is working by running a simple query and
-    checking that the trace file is created and contains spans."""
-    query = "select count(*) from functional.alltypes"
-    result = self.execute_query_expect_success(
-        self.create_impala_client_from_vector(vector), query)
-
-    self.__assert_trace(result.query_id, result.runtime_profile, "otel_trace")
-
-  @CustomClusterTestSuite.with_args(
-      impalad_args="-v=2 --cluster_id=test_invalid_sql "
-                   "--otel_trace_enabled=true --otel_trace_exporter=file "
-                   "--otel_file_flush_interval_ms=500 "
-                   "--otel_file_pattern={out_dir}/" + TRACE_FILE,
-      cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
-  def test_invalid_sql(self, vector):
-    query = "select * from functional.alltypes where field_does_not_exist=1"
-    self.execute_query_expect_failure(self.create_impala_client_from_vector(vector),
-        query)
-
-    # Retrieve the query id and runtime profile from the UI since the query execute call
-    # only returns a HiveServer2Error object and not the query id or profile.
-    query_id, profile = self.query_id_from_ui(section="completed_queries",
-        match_query=query)
-
-    self.__assert_trace(
-        query_id=query_id,
-        query_profile=profile,
-        cluster_id="test_invalid_sql",
-        trace_cnt=1,
-        err_span="Planning",
-        missing_spans=["AdmissionControl", "QueryExecution"])
-
-  @CustomClusterTestSuite.with_args(
-      impalad_args="-v=2 --cluster_id=test_retry_select_success "
-                   "--otel_trace_enabled=true --otel_trace_exporter=file "
-                   "--otel_file_flush_interval_ms=500 "
-                   "--otel_file_pattern={out_dir}/" + TRACE_FILE,
-      cluster_size=3, num_exclusive_coordinators=1, tmp_dir_placeholders=[OUT_DIR],
-      disable_log_buffering=True,
-      statestored_args="-statestore_heartbeat_frequency_ms=60000")
-  def test_retry_select_success(self, vector):
-    query = "select count(*) from tpch_parquet.lineitem where l_orderkey < 50"
-    self.cluster.impalads[1].kill()
-
-    result = self.execute_query_expect_success(
-        self.create_impala_client_from_vector(vector), query,
-        {"RETRY_FAILED_QUERIES": True})
-    retried_query_id = parse_query_id(result.runtime_profile)
-    orig_query_profile = self.query_profile_from_ui(result.query_id)
-
-    # Assert the trace from the original query.
-    self.__assert_trace(
-        query_id=result.query_id,
-        query_profile=orig_query_profile,
-        cluster_id="test_retry_select_success",
-        trace_cnt=2,
-        err_span="QueryExecution")
-
-    # Assert the trace from the retried query.
-    self.__assert_trace(
-        query_id=retried_query_id,
-        query_profile=result.runtime_profile,
-        cluster_id="test_retry_select_success",
-        trace_cnt=2,
-        missing_spans=["Submitted", "Planning"])
-
-  @CustomClusterTestSuite.with_args(
-      impalad_args="-v=2 --cluster_id=test_retry_select_failed "
-                   "--otel_trace_enabled=true --otel_trace_exporter=file "
-                   "--otel_file_flush_interval_ms=500 "
-                   "--otel_file_pattern={out_dir}/" + TRACE_FILE,
-      cluster_size=3, num_exclusive_coordinators=1, tmp_dir_placeholders=[OUT_DIR],
-      disable_log_buffering=True,
-      statestored_args="-statestore_heartbeat_frequency_ms=1000")
-  def test_retry_select_failed(self, vector):
-    # Shuffle heavy query.
-    query = "select * from tpch.lineitem t1, tpch.lineitem t2 where " \
-      "t1.l_orderkey = t2.l_orderkey order by t1.l_orderkey, t2.l_orderkey limit 1"
-
-    vector.set_exec_option("retry_failed_queries", "true")
-    client = self.create_impala_client_from_vector(vector)
-
-    # Launch a query, it should be retried.
-    handle = self.execute_query_async_using_client(client, query, vector)
-    client.wait_for_impala_state(handle, RUNNING, 60)
-    query_id = client.handle_id(handle)
-    self.cluster.impalads[1].kill()
-
-    # Wait until the retry is running.
-    def __wait_until_retried():
-      return parse_retry_status(self.query_profile_from_ui(query_id)) == "RETRIED"
-    retry(__wait_until_retried, 60, 1, 1, False)
-
-    # Kill another impalad so that another retry is attempted.
-    self.cluster.impalads[2].kill()
-
-    # Wait until the query fails.
-    client.wait_for_impala_state(handle, ERROR, 60)
-
-    retried_query_profile = client.get_runtime_profile(handle)
-    retried_query_id = parse_query_id(retried_query_profile)
-    orig_query_profile = self.query_profile_from_ui(query_id)
-
-    client.close_query(handle)
-
-    # Assert the trace from the original query.
-    self.__assert_trace(
-        query_id=query_id,
-        query_profile=orig_query_profile,
-        cluster_id="test_retry_select_failed",
-        trace_cnt=3,
-        err_span="QueryExecution")
-
-    # Assert the trace from the retried query.
-    self.__assert_trace(
-        query_id=retried_query_id,
-        query_profile=retried_query_profile,
-        cluster_id="test_retry_select_failed",
-        trace_cnt=3,
-        err_span="QueryExecution",
-        missing_spans=["Submitted", "Planning"])
-
-  @CustomClusterTestSuite.with_args(
-      impalad_args="-v=2 --cluster_id=test_select_queued "
-                   "--otel_trace_enabled=true --otel_trace_exporter=file "
-                   "--otel_file_flush_interval_ms=500 "
-                   "--otel_file_pattern={out_dir}/" + TRACE_FILE + " "
-                   "--default_pool_max_requests=1",
-      cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
-  def test_select_queued(self, vector):
-    # Launch two queries, the second will be queued until the first completes.
-    client = self.create_impala_client_from_vector(vector)
-
-    query = "select * from functional.alltypes where id = 1"
-    handle1 = self.execute_query_async_using_client(client,
-        "{} and int_col = sleep(5000)".format(query), vector)
-    client.wait_for_impala_state(handle1, RUNNING, 60)
-    query_id_1 = client.handle_id(handle1)
-
-    handle2 = self.execute_query_async_using_client(client, query, vector)
-    query_id_2 = client.handle_id(handle2)
-
-    client.wait_for_impala_state(handle1, FINISHED, 60)
-    query_profile_1 = client.get_runtime_profile(handle1)
-    client.close_query(handle1)
-
-    client.wait_for_impala_state(handle2, FINISHED, 60)
-    query_profile_2 = client.get_runtime_profile(handle2)
-
-    client.close_query(handle2)
-
-    self.__assert_trace(
-        query_id=query_id_1,
-        query_profile=query_profile_1,
-        cluster_id="test_select_queued",
-        trace_cnt=3)
-
-    self.__assert_trace(
-        query_id=query_id_2,
-        query_profile=query_profile_2,
-        cluster_id="test_select_queued",
-        trace_cnt=3)
-
-  ######################
-  # Helper functions.
-  ######################
-  def __assert_trace(self, query_id, query_profile, cluster_id, trace_cnt=1, err_span="",
+  def assert_trace(self, query_id, query_profile, cluster_id, trace_cnt=1, err_span="",
       missing_spans=[]):
     # Parse common values needed in multiple asserts.
     session_id = parse_session_id(query_profile)
     db_user = parse_db_user(query_profile)
 
     # Wait until all spans are written to the trace file.
-    trace_file_path = "{}/{}".format(self.get_tmp_dir(self.OUT_DIR), self.TRACE_FILE)
+    trace_file_path = "{}/{}".format(self.get_tmp_dir(OUT_DIR), TRACE_FILE)
     wait_for_file_line_count(
         file_path=trace_file_path,
-        expected_line_count=trace_cnt,
+        expected_line_count=trace_cnt + self.trace_file_count,
         max_attempts=60,
         sleep_time_s=1,
         backoff=1)
@@ -258,10 +91,13 @@ class TestOtelTrace(CustomClusterTestSuite):
     # Error message should follow on all spans after the errored span
     in_error = False
 
+    # Retrieve the coordinator from the query profile.
+    coordinator = parse_coordinator(query_profile)
+
     # Assert root span.
     root_span_id = self.__assert_rootspan_attrs(trace.root_span, query_id, session_id,
       cluster_id, db_user, "default-pool", impala_query_state, query_status,
-      original_query_id, retried_query_id)
+      original_query_id, retried_query_id, coordinator)
 
     # Assert Init span.
     if "Init" not in missing_spans:
@@ -271,7 +107,7 @@ class TestOtelTrace(CustomClusterTestSuite):
         in_error = True
       self.__assert_initspan_attrs(trace.child_spans, root_span_id, query_id, session_id,
           cluster_id, db_user, "default-pool", parse_default_db(query_profile),
-          parse_sql(query_profile), original_query_id)
+          parse_sql(query_profile), original_query_id, coordinator)
 
     # Assert Submitted span.
     if "Submitted" not in missing_spans:
@@ -460,13 +296,13 @@ class TestOtelTrace(CustomClusterTestSuite):
          val.get_type())
 
   def __assert_rootspan_attrs(self, span, query_id, session_id, cluster_id, user_name,
-      request_pool, state, err_msg, original_query_id, retried_query_id):
+      request_pool, state, err_msg, original_query_id, retried_query_id, coordinator):
     """
       Helper function that asserts the common attributes in the root span.
     """
 
     root_span_id, _ = self.__find_span_log("Root", query_id)
-    self.__assert_scopespan_common(span, query_id, True, "Root", 13, "", None, err_msg)
+    self.__assert_scopespan_common(span, query_id, True, "Root", 14, "", None, err_msg)
 
     self.__assert_attr(span.name, span.attributes, "QueryId", query_id)
     self.__assert_attr(span.name, span.attributes, "SessionId", session_id)
@@ -476,11 +312,12 @@ class TestOtelTrace(CustomClusterTestSuite):
     self.__assert_attr(span.name, span.attributes, "State", state)
     self.__assert_attr(span.name, span.attributes, "OriginalQueryId", original_query_id)
     self.__assert_attr(span.name, span.attributes, "RetriedQueryId", retried_query_id)
+    self.__assert_attr(span.name, span.attributes, "Coordinator", coordinator)
 
     return root_span_id
 
   def __assert_initspan_attrs(self, spans, root_span_id, query_id, session_id, cluster_id,
-      user_name, request_pool, default_db, query_string, original_query_id):
+      user_name, request_pool, default_db, query_string, original_query_id, coordinator):
     """
       Helper function that asserts the common and span-specific attributes in the
       init span.
@@ -489,7 +326,7 @@ class TestOtelTrace(CustomClusterTestSuite):
     # Locate the init span and assert.
     init_span = self.__find_span(spans, "Init", query_id)
 
-    self.__assert_scopespan_common(init_span, query_id, False, "Init", 8, INITIALIZED,
+    self.__assert_scopespan_common(init_span, query_id, False, "Init", 9, INITIALIZED,
         root_span_id)
 
     self.__assert_attr(init_span.name, init_span.attributes, "QueryId", query_id)
@@ -501,6 +338,7 @@ class TestOtelTrace(CustomClusterTestSuite):
     self.__assert_attr(init_span.name, init_span.attributes, "QueryString", query_string)
     self.__assert_attr(init_span.name, init_span.attributes, "OriginalQueryId",
         original_query_id)
+    self.__assert_attr(init_span.name, init_span.attributes, "Coordinator", coordinator)
 
   def __assert_submittedspan_attrs(self, spans, root_span_id, query_id):
     """
@@ -553,10 +391,10 @@ class TestOtelTrace(CustomClusterTestSuite):
     query_exec_span = self.__find_span(spans, "QueryExecution", query_id)
     self.__assert_scopespan_common(query_exec_span, query_id, False, "QueryExecution", 3,
         status, root_span_id, err_msg)
-    self.__assert_attr(query_exec_span.name, query_exec_span.attributes, "NumDeletedRows",
-        0, "intValue")
     self.__assert_attr(query_exec_span.name, query_exec_span.attributes,
-        "NumModifiedRows", 0, "intValue")
+        "NumModifiedRows", parse_num_modified_rows(query_profile), "intValue")
+    self.__assert_attr(query_exec_span.name, query_exec_span.attributes, "NumDeletedRows",
+        parse_num_deleted_rows(query_profile), "intValue")
     self.__assert_attr(query_exec_span.name, query_exec_span.attributes, "NumRowsFetched",
         parse_num_rows_fetched(query_profile), "intValue")
 
@@ -581,3 +419,425 @@ class TestOtelTrace(CustomClusterTestSuite):
         return s
 
     assert False, "Span '{}' not found for query '{}'".format(name, query_id)
+
+
+@CustomClusterTestSuite.with_args(
+    impalad_args="-v=2 --cluster_id=select_dml --otel_trace_enabled=true "
+                 "--otel_trace_exporter=file --otel_file_flush_interval_ms=500 "
+                 "--otel_file_pattern={out_dir_traces}/" + TRACE_FILE,
+    cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+class TestOtelTraceSelectsDMLs(TestOtelTrace):
+  """Tests that exercise OpenTelemetry tracing behavior for select and dml queries."""
+
+  def test_query_success(self, vector):
+    """Test that OpenTelemetry tracing is working by running a simple query and
+    checking that the trace file is created and contains spans."""
+    query = "select count(*) from functional.alltypes"
+    result = self.execute_query_expect_success(
+        self.create_impala_client_from_vector(vector), query)
+
+    self.assert_trace(result.query_id, result.runtime_profile, "select_dml")
+
+  def test_invalid_sql(self, vector):
+    query = "select * from functional.alltypes where field_does_not_exist=1"
+    self.execute_query_expect_failure(self.create_impala_client_from_vector(vector),
+        query)
+
+    # Retrieve the query id and runtime profile from the UI since the query execute call
+    # only returns a HiveServer2Error object and not the query id or profile.
+    query_id, profile = self.query_id_from_ui(section="completed_queries",
+        match_query=query)
+
+    self.assert_trace(
+        query_id=query_id,
+        query_profile=profile,
+        cluster_id="select_dml",
+        trace_cnt=1,
+        err_span="Planning",
+        missing_spans=["AdmissionControl", "QueryExecution"])
+
+  def test_cte_query_success(self, vector):
+    """Test that OpenTelemetry tracing is working by running a simple query that uses a
+       common table expression and checking that the trace file is created and contains
+       expected spans with the expected attributes."""
+    result = self.execute_query_expect_success(
+        self.create_impala_client_from_vector(vector), "with alltypes_tiny1 as ("
+        "select * from functional.alltypes where tinyint_col=1 limit 10) select id from "
+        "alltypes_tiny1")
+
+    self.assert_trace(result.query_id, result.runtime_profile, "select_dml")
+
+  def test_dml_insert_success(self, vector, unique_database, unique_name):
+    client = self.create_impala_client_from_vector(vector)
+
+    query = "create table {}.{} (id int, string_col string, int_col int)" \
+        .format(unique_database, unique_name)
+    self.execute_query_expect_success(client, query)
+
+    query = "insert into {}.{} (id, string_col, int_col) values (1, 'a', 10), " \
+        "(2, 'b', 20), (3, 'c', 30)".format(unique_database, unique_name)
+    result = self.execute_query_expect_success(client, query)
+
+    self.assert_trace(result.query_id, result.runtime_profile, "select_dml", 4)
+
+  def test_dml_insert_cte_success(self, vector, unique_database, unique_name):
+    client = self.create_impala_client_from_vector(vector)
+
+    self.execute_query_expect_success(client, "create table {}.{} (id int)"
+        .format(unique_database, unique_name))
+
+    result = self.execute_query_expect_success(client, "with a1 as (select * from "
+        "functional.alltypes where tinyint_col=1 limit 10) insert into {}.{} select id "
+        "from a1".format(unique_database, unique_name))
+
+    self.assert_trace(result.query_id, result.runtime_profile, "select_dml", 4)
+
+
+class TestOtelTraceSelectQueued(TestOtelTrace):
+  """Tests that require setting additional startup flags to assert admission control
+     queueing behavior. The cluster must be restarted after each test to apply the
+     new flags."""
+
+  @CustomClusterTestSuite.with_args(
+      impalad_args="-v=2 --cluster_id=test_select_queued "
+                   "--otel_trace_enabled=true --otel_trace_exporter=file "
+                   "--otel_file_flush_interval_ms=500 "
+                   "--otel_file_pattern={out_dir_traces}/" + TRACE_FILE + " "
+                   "--default_pool_max_requests=1",
+      cluster_size=1, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+  def test_select_queued(self, vector):
+    # Launch two queries, the second will be queued until the first completes.
+    client = self.create_impala_client_from_vector(vector)
+
+    query = "select * from functional.alltypes where id = 1"
+    handle1 = self.execute_query_async_using_client(client,
+        "{} and int_col = sleep(5000)".format(query), vector)
+    client.wait_for_impala_state(handle1, RUNNING, 60)
+    query_id_1 = client.handle_id(handle1)
+
+    handle2 = self.execute_query_async_using_client(client, query, vector)
+    query_id_2 = client.handle_id(handle2)
+
+    client.wait_for_impala_state(handle1, FINISHED, 60)
+    query_profile_1 = client.get_runtime_profile(handle1)
+    client.close_query(handle1)
+
+    client.wait_for_impala_state(handle2, FINISHED, 60)
+    query_profile_2 = client.get_runtime_profile(handle2)
+
+    client.close_query(handle2)
+
+    self.assert_trace(
+        query_id=query_id_1,
+        query_profile=query_profile_1,
+        cluster_id="test_select_queued",
+        trace_cnt=3)
+
+    self.assert_trace(
+        query_id=query_id_2,
+        query_profile=query_profile_2,
+        cluster_id="test_select_queued",
+        trace_cnt=3)
+
+
+class TestOtelTraceSelectRetry(TestOtelTrace):
+  """Tests the require ending an Impala daemon and thus the cluster must restart after
+     each test."""
+
+  @CustomClusterTestSuite.with_args(
+      impalad_args="-v=2 --cluster_id=test_retry_select_success "
+                   "--otel_trace_enabled=true --otel_trace_exporter=file "
+                   "--otel_file_flush_interval_ms=500 "
+                   "--otel_file_pattern={out_dir_traces}/" + TRACE_FILE,
+      cluster_size=3, num_exclusive_coordinators=1, tmp_dir_placeholders=[OUT_DIR],
+      disable_log_buffering=True,
+      statestored_args="-statestore_heartbeat_frequency_ms=60000")
+  def test_retry_select_success(self, vector):
+    query = "select count(*) from tpch_parquet.lineitem where l_orderkey < 50"
+    self.cluster.impalads[1].kill()
+
+    result = self.execute_query_expect_success(
+        self.create_impala_client_from_vector(vector), query,
+        {"RETRY_FAILED_QUERIES": True})
+    retried_query_id = parse_query_id(result.runtime_profile)
+    orig_query_profile = self.query_profile_from_ui(result.query_id)
+
+    # Assert the trace from the original query.
+    self.assert_trace(
+        query_id=result.query_id,
+        query_profile=orig_query_profile,
+        cluster_id="test_retry_select_success",
+        trace_cnt=2,
+        err_span="QueryExecution")
+
+    # Assert the trace from the retried query.
+    self.assert_trace(
+        query_id=retried_query_id,
+        query_profile=result.runtime_profile,
+        cluster_id="test_retry_select_success",
+        trace_cnt=2,
+        missing_spans=["Submitted", "Planning"])
+
+  @CustomClusterTestSuite.with_args(
+      impalad_args="-v=2 --cluster_id=test_retry_select_failed "
+                   "--otel_trace_enabled=true --otel_trace_exporter=file "
+                   "--otel_file_flush_interval_ms=500 "
+                   "--otel_file_pattern={out_dir_traces}/" + TRACE_FILE,
+      cluster_size=3, num_exclusive_coordinators=1, tmp_dir_placeholders=[OUT_DIR],
+      disable_log_buffering=True,
+      statestored_args="-statestore_heartbeat_frequency_ms=1000")
+  def test_retry_select_failed(self, vector):
+    # Shuffle heavy query.
+    query = "select * from tpch.lineitem t1, tpch.lineitem t2 where " \
+      "t1.l_orderkey = t2.l_orderkey order by t1.l_orderkey, t2.l_orderkey limit 1"
+
+    vector.set_exec_option("retry_failed_queries", "true")
+    client = self.create_impala_client_from_vector(vector)
+
+    # Launch a query, it should be retried.
+    handle = self.execute_query_async_using_client(client, query, vector)
+    client.wait_for_impala_state(handle, RUNNING, 60)
+    query_id = client.handle_id(handle)
+    self.cluster.impalads[1].kill()
+
+    # Wait until the retry is running.
+    def __wait_until_retried():
+      return parse_retry_status(self.query_profile_from_ui(query_id)) == "RETRIED"
+    retry(__wait_until_retried, 60, 1, 1, False)
+
+    # Kill another impalad so that another retry is attempted.
+    self.cluster.impalads[2].kill()
+
+    # Wait until the query fails.
+    client.wait_for_impala_state(handle, ERROR, 60)
+
+    retried_query_profile = client.get_runtime_profile(handle)
+    retried_query_id = parse_query_id(retried_query_profile)
+    orig_query_profile = self.query_profile_from_ui(query_id)
+
+    client.close_query(handle)
+
+    # Assert the trace from the original query.
+    self.assert_trace(
+        query_id=query_id,
+        query_profile=orig_query_profile,
+        cluster_id="test_retry_select_failed",
+        trace_cnt=3,
+        err_span="QueryExecution")
+
+    # Assert the trace from the retried query.
+    self.assert_trace(
+        query_id=retried_query_id,
+        query_profile=retried_query_profile,
+        cluster_id="test_retry_select_failed",
+        trace_cnt=3,
+        err_span="QueryExecution",
+        missing_spans=["Submitted", "Planning"])
+
+
+@CustomClusterTestSuite.with_args(
+    impalad_args="-v=2 --cluster_id=trace_ddl --otel_trace_enabled=true "
+                 "--otel_trace_exporter=file --otel_file_flush_interval_ms=500 "
+                 "--otel_file_pattern={out_dir_traces}/" + TRACE_FILE,
+    cluster_size=2, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+class TestOtelTraceDDLs(TestOtelTrace):
+  """Tests that exercise OpenTelemetry tracing behavior on DDLs."""
+
+  @classmethod
+  def add_test_dimensions(cls):
+    super(TestOtelTraceDDLs, cls).add_test_dimensions()
+    cls.ImpalaTestMatrix.add_dimension(ImpalaTestDimension('async_ddl', True, False))
+
+  def test_ddl_createdb(self, vector, unique_name):
+    query = "create database {}".format(unique_name)
+
+    try:
+      result = self.execute_query_expect_success(self.client, query,
+          {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+      self.assert_trace(
+          query_id=result.query_id,
+          query_profile=result.runtime_profile,
+          cluster_id="trace_ddl",
+          missing_spans=["AdmissionControl"])
+    finally:
+      result = self.execute_query_expect_success(self.client, "drop database if exists {}"
+          .format(unique_name),
+          {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+      self.assert_trace(
+          query_id=result.query_id,
+          query_profile=result.runtime_profile,
+          cluster_id="trace_ddl",
+          trace_cnt=2,
+          missing_spans=["AdmissionControl"])
+
+  def test_ddl_createtable_success(self, vector, unique_database, unique_name):
+    query = "create table {}.{} (id int, string_col string, int_col int)" \
+        .format(unique_database, unique_name)
+    result = self.execute_query_expect_success(self.client, query,
+        {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+    self.assert_trace(
+        query_id=result.query_id,
+        query_profile=result.runtime_profile,
+        cluster_id="trace_ddl",
+        trace_cnt=3,
+        missing_spans=["AdmissionControl"])
+
+  def test_ddl_createtable_fail(self, vector, unique_name):
+    second_coord_client = self.create_client_for_nth_impalad(1,
+          vector.get_value(PROTOCOL))
+
+    try:
+      # Create a database to use for this test. Cannot use the unique_database fixture
+      # because we want to drop the database after planning but before execution and that
+      # fixture drops the database without the "if exists" clause.
+      self.execute_query_expect_success(self.client, "create database {}"
+          .format(unique_name))
+
+      first_coord_client = self.create_client_for_nth_impalad(0,
+          vector.get_value(PROTOCOL))
+
+      # In a separate thread, run the create table DDL that will fail.
+      fail_query = "create table {}.{} (id int, string_col string, int_col int)" \
+          .format(unique_name, unique_name)
+
+      def execute_query_fail():
+        self.execute_query_expect_failure(first_coord_client, fail_query,
+            {"debug_action": "CRS_DELAY_BEFORE_CATALOG_OP_EXEC:SLEEP@5000",
+                "ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+      thread = Thread(target=execute_query_fail)
+      thread.daemon = True
+      thread.start()
+
+      # Wait until the create table query is in flight.
+      fail_query_id = None
+      while fail_query_id is None:
+        fail_query_id, profile = self.query_id_from_ui(section="in_flight_queries",
+            match_query=fail_query, not_found_ok=True)
+        if fail_query_id is not None and len(profile.strip()) > 0 \
+            and parse_impala_query_state(profile) == "RUNNING":
+          break
+        sleep(0.1)
+
+      # Drop the database after planning to cause the create table to fail.
+      self.execute_query_expect_success(second_coord_client, "drop database {} cascade"
+          .format(unique_name),
+          {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+      # Wait until the create table query fails.
+      thread.join()
+      fail_profile_str = self.query_profile_from_ui(fail_query_id)
+    finally:
+      self.execute_query_expect_success(second_coord_client,
+          "drop database if exists {} cascade".format(unique_name))
+
+    # Assert the errored query.
+    self.assert_trace(
+        query_id=fail_query_id,
+        query_profile=fail_profile_str,
+        cluster_id="trace_ddl",
+        trace_cnt=4,
+        missing_spans=["AdmissionControl"],
+        err_span="QueryExecution")
+
+  def test_ddl_createtable_cte_success(self, vector, unique_database, unique_name):
+    query = "create table {}.{} as with a1 as (select * from functional.alltypes where " \
+        "tinyint_col=1 limit 10) select id from a1".format(unique_database, unique_name)
+    result = self.execute_query_expect_success(self.client, query,
+        {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+    self.assert_trace(
+        query_id=result.query_id,
+        query_profile=result.runtime_profile,
+        cluster_id="trace_ddl",
+        trace_cnt=3,
+        missing_spans=["AdmissionControl"])
+
+
+  # @CustomClusterTestSuite.with_args(
+  #     impalad_args="-v=2 --cluster_id=test_dml_fail "
+  #                  "--otel_trace_enabled=true --otel_trace_exporter=file "
+  #                  "--otel_file_flush_interval_ms=500 "
+  #                  "--otel_file_pattern={out_dir_dmls}/" + TRACE_FILE,
+  #     cluster_size=2, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+  # def test_dml_insert_fail(self, vector, unique_database, unique_name):
+  #   first_coord_client = self.create_client_for_nth_impalad(0,
+  #       vector.get_value(PROTOCOL))
+  #   second_coord_client = self.create_client_for_nth_impalad(1,
+  #         vector.get_value(PROTOCOL))
+
+  #   # Create a table that will be modified while the DML is executing.
+  #   self.execute_query_expect_success(first_coord_client, "create table {}.{} (id int, "
+  #       "string_col string, int_col int)".format(unique_database, unique_name))
+
+  #   # In a separate thread, run the insert DML that will fail.
+  #   fail_query = "insert into {}.{} (id, string_col, int_col) values (1, 'a', 10)" \
+  #       .format(unique_database, unique_name)
+
+  #   def execute_query_fail():
+  #     self.execute_query_expect_failure(first_coord_client, fail_query,
+  #         {"debug_action": "CRS_DELAY_BEFORE_CATALOG_OP_EXEC:SLEEP@10000"})
+
+  #   thread = Thread(target=execute_query_fail)
+  #   thread.daemon = True
+  #   thread.start()
+
+  #   # Wait until the insert query is in flight.
+  #   fail_query_id = None
+  #   while fail_query_id is None:
+  #     fail_query_id, profile = self.query_id_from_ui(section="in_flight_queries",
+  #         match_query=fail_query, not_found_ok=True)
+  #     if fail_query_id is not None and len(profile.strip()) > 0 \
+  #         and parse_impala_query_state(profile) == "RUNNING":
+  #       break
+  #     sleep(0.1)
+
+  #   # Drop the database after planning to cause the create table to fail.
+  #   # Drop a column after planning to cause the insert to fail.
+  #   self.execute_query_expect_success(second_coord_client, "alter table {}.{} drop "
+  #       "column string_col".format(unique_database, unique_name))
+
+  #   # Wait until the insert query query fails.
+  #   thread.join()
+  #   fail_profile_str = self.query_profile_from_ui(fail_query_id)
+
+  #   # Assert the errored query.
+  #   self.assert_trace(
+  #       query_id=fail_query_id,
+  #       query_profile=fail_profile_str,
+  #       cluster_id="test_dml_fail",
+  #       trace_cnt=4,
+  #       missing_spans=["AdmissionControl"],
+  #       err_span="QueryExecution")
+
+
+
+
+    # client = self.create_impala_client_from_vector(vector)
+
+    # # Fully qualified table name.
+    # fq_table = "{}.{}".format(unique_database, unique_name)
+
+    # self.execute_query_expect_success(client, "create table {} (id int, "
+    #     "string_col string, int_col int)".format(fq_table))
+
+    # vector.set_exec_option("debug_action", "CRS_DELAY_BEFORE_CATALOG_OP_EXEC:SLEEP@5000")
+    # query = "insert into {} (id, string_col, int_col) values (1, 'a', 10)" \
+    #     .format(fq_table)
+    # handle = self.execute_query_async_using_client(client, query, vector)
+    # client.wait_for_any_impala_state(handle, [RUNNING], 60)
+
+    # # Drop a column after planning to cause the insert to fail.
+    # self.execute_query_expect_success(client, "alter table {} drop column "
+    #     "string_col".format(fq_table))
+    # import pdb;pdb.set_trace()
+
+    # # Wait until the insert query fails.
+    # client.wait_for_any_impala_state(handle, [ERROR], 60)
+
+    # query_id, profile = self.query_id_from_ui(section="completed_queries",
+    #     match_query=query)
+
+    # self.assert_trace(query_id, profile, "test_dml_fail", 4, "Query Execution")

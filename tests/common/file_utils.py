@@ -202,19 +202,24 @@ def cleanup_tmp_test_dir(dir_path):
   shutil.rmtree(dir_path, ignore_errors=True)
 
 
-def count_lines(file_path):
+def count_lines(file_path, missing_ok=False):
   """Counts the number of lines in the file located at 'file_path'."""
-  with open(file_path, 'rb') as file:
-    return sum(1 for _ in file.readlines())
+  try:
+    with open(file_path, 'rb') as file:
+      return sum(1 for _ in file.readlines())
+  except IOError:
+    if missing_ok:
+      return 0
+    raise
 
 
 def wait_for_file_line_count(file_path, expected_line_count, max_attempts=3,
     sleep_time_s=1, backoff=2):
-  """Waits until the given file contains the expected number of lines or until the
-      timeout is reached. Fails an assert if the timeout is reached before the expected
-      number of lines is found."""
+  """Waits until the given file contains at minimum the expected number of lines or until
+      the timeout is reached. Fails an assert if the timeout is reached before the
+      expected number of lines is found."""
   def assert_trace_file_lines():
-    return count_lines(file_path) == expected_line_count
+    return count_lines(file_path) >= expected_line_count
 
   assert retry(assert_trace_file_lines, max_attempts, sleep_time_s, backoff), \
       "File '{}' did not reach expected line count of '{}'. actual line count: '{}'" \

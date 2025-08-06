@@ -320,6 +320,9 @@ Status ClientRequestState::Exec() {
     }
     case TStmtType::DDL: {
       DCHECK(exec_req.__isset.catalog_op_request);
+      if (otel_trace_query()) {
+        otel_span_manager_->StartChildSpanQueryExecution();
+      }
       LOG_AND_RETURN_IF_ERROR(ExecDdlRequest());
       break;
     }
@@ -653,7 +656,8 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
   DCHECK(exec_req.__isset.query_exec_request);
   UniqueIdPB query_id_pb;
   TUniqueIdToUniqueIdPB(query_id(), &query_id_pb);
-  if (otel_trace_query()) {
+
+  if (otel_trace_query() && !IsCTAS()) {
     otel_span_manager_->StartChildSpanAdmissionControl();
   }
 
@@ -663,13 +667,15 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
           summary_profile_, blacklisted_executor_addresses_},
       query_events_, &schedule_, &wait_start_time_ms_, &wait_end_time_ms_,
       otel_span_manager_.get());
+
+  if (otel_trace_query() && !IsCTAS()) {
+    otel_span_manager_->EndChildSpanAdmissionControl();
+    otel_span_manager_->StartChildSpanQueryExecution();
+  }
+
   {
     lock_guard<mutex> l(lock_);
     if (!UpdateQueryStatus(admit_status).ok()) return;
-  }
-
-  if (otel_trace_query()) {
-    otel_span_manager_->EndChildSpanAdmissionControl();
   }
 
   DCHECK(schedule_.get() != nullptr);
@@ -718,7 +724,6 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
 }
 
 Status ClientRequestState::ExecDdlRequestImplSync() {
-
   if (catalog_op_type() != TCatalogOpType::DDL &&
       catalog_op_type() != TCatalogOpType::RESET_METADATA) {
     Status status = ExecLocalCatalogOp(exec_request().catalog_op_request);

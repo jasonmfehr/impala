@@ -34,9 +34,12 @@
 #include "common/compiler-util.h"
 #include "gen-cpp/Types_types.h"
 #include "observe/timed-span.h"
+#include "runtime/coordinator.h"
+#include "runtime/exec-env.h"
 #include "scheduling/admission-control-client.h"
 #include "service/client-request-state.h"
 #include "util/debug-util.h"
+#include "util/network-util.h"
 
 using namespace opentelemetry;
 using namespace std;
@@ -54,6 +57,7 @@ static constexpr char const* ATTR_STATE = "State";
 
 // Names of attributes on both Root and one or more child spans.
 static constexpr char const* ATTR_CLUSTER_ID = "ClusterId";
+static constexpr char const* ATTR_COORDINATOR = "Coordinator";
 static constexpr char const* ATTR_ORIGINAL_QUERY_ID = "OriginalQueryId";
 static constexpr char const* ATTR_QUERY_ID = "QueryId";
 static constexpr char const* ATTR_QUERY_TYPE = "QueryType";
@@ -185,7 +189,9 @@ void SpanManager::StartChildSpanInit() {
   ChildSpanBuilder(ChildSpanType::INIT,
       {
         {ATTR_CLUSTER_ID, FLAGS_cluster_id},
-        {ATTR_QUERY_ID, query_id_}
+        {ATTR_QUERY_ID, query_id_},
+        {ATTR_COORDINATOR, TNetworkAddressToString(
+                     ExecEnv::GetInstance()->configured_backend_address())}
       });
 
   {
@@ -329,11 +335,26 @@ void SpanManager::DoEndChildSpanQueryExecution(const Status* cause) {
     attrs.emplace(ATTR_NUM_DELETED_ROWS, static_cast<int64_t>(0));
     attrs.emplace(ATTR_NUM_MODIFIED_ROWS, static_cast<int64_t>(0));
   } else {
-    attrs.emplace(ATTR_NUM_DELETED_ROWS, static_cast<int64_t>(-1));
-    attrs.emplace(ATTR_NUM_MODIFIED_ROWS, static_cast<int64_t>(-1));
+    int64_t num_deleted_rows = 0;
+    int64_t num_modified_rows = 0;
+
+    if (client_request_state_->GetCoordinator() != nullptr
+        && client_request_state_->GetCoordinator()->dml_exec_state() != nullptr) {
+      num_deleted_rows =
+      client_request_state_->GetCoordinator()->dml_exec_state()->GetNumDeletedRows();
+      num_modified_rows =
+          client_request_state_->GetCoordinator()->dml_exec_state()->GetNumModifiedRows();
+    }
+
+    attrs.emplace(ATTR_NUM_DELETED_ROWS, num_deleted_rows);
+    attrs.emplace(ATTR_NUM_MODIFIED_ROWS, num_modified_rows);
   }
 
-  attrs.emplace(ATTR_NUM_ROWS_FETCHED, client_request_state_->num_rows_fetched());
+  if (client_request_state_->stmt_type() == TStmtType::DDL) {
+    attrs.emplace(ATTR_NUM_ROWS_FETCHED, 0);
+  } else {
+    attrs.emplace(ATTR_NUM_ROWS_FETCHED, client_request_state_->num_rows_fetched());
+  }
 
   EndChildSpan(cause, attrs);
 } // function DoEndChildSpanQueryExecution
@@ -362,42 +383,48 @@ void SpanManager::EndChildSpanClose() {
   DCHECK_CHILD_SPAN_TYPE(ChildSpanType::CLOSE);
 
   lock_guard<mutex> l(child_span_mu_);
-  lock_guard<mutex> crs_lock(*(client_request_state_->lock()));
-  EndChildSpan();
 
-  // Set all root span attributes to avoid dereferencing the client_request_state_ in the
-  // dtor (as the dtor is invoked when client_request_state_ is destroyed).
-  root_->SetAttribute(ATTR_QUERY_TYPE,
-    to_string(client_request_state_->exec_request().stmt_type));
+  root_->SetAttribute(ATTR_COORDINATOR, TNetworkAddressToString(
+                     ExecEnv::GetInstance()->configured_backend_address()));
 
-  if (client_request_state_->query_status().ok()) {
-    root_->SetAttributeEmpty(ATTR_ERROR_MESSAGE);
-  } else {
-    string error_msg = client_request_state_->query_status().msg().msg();
+  {
+    lock_guard<mutex> crs_lock(*(client_request_state_->lock()));
+    EndChildSpan();
 
-    for (const auto& detail : client_request_state_->query_status().msg().details()) {
-      error_msg += "\n" + detail;
+    // Set all root span attributes to avoid dereferencing the client_request_state_ in
+    // the dtor (as the dtor is invoked when client_request_state_ is destroyed).
+    root_->SetAttribute(ATTR_QUERY_TYPE,
+      to_string(client_request_state_->exec_request().stmt_type));
+
+    if (client_request_state_->query_status().ok()) {
+      root_->SetAttributeEmpty(ATTR_ERROR_MESSAGE);
+    } else {
+      string error_msg = client_request_state_->query_status().msg().msg();
+
+      for (const auto& detail : client_request_state_->query_status().msg().details()) {
+        error_msg += "\n" + detail;
+      }
+
+      root_->SetAttribute(ATTR_ERROR_MESSAGE, error_msg);
     }
 
-    root_->SetAttribute(ATTR_ERROR_MESSAGE, error_msg);
-  }
+    if (UNLIKELY(client_request_state_->WasRetried())) {
+      root_->SetAttribute(ATTR_STATE, ClientRequestState::RetryStateToString(
+          client_request_state_->retry_state()));
+      root_->SetAttribute(ATTR_RETRIED_QUERY_ID,
+          PrintId(client_request_state_->retried_id()));
+    } else {
+      root_->SetAttribute(ATTR_STATE,
+        ClientRequestState::ExecStateToString(client_request_state_->exec_state()));
+        root_->SetAttributeEmpty(ATTR_RETRIED_QUERY_ID);
+    }
 
-  if (UNLIKELY(client_request_state_->WasRetried())) {
-    root_->SetAttribute(ATTR_STATE, ClientRequestState::RetryStateToString(
-        client_request_state_->retry_state()));
-    root_->SetAttribute(ATTR_RETRIED_QUERY_ID,
-        PrintId(client_request_state_->retried_id()));
-  } else {
-    root_->SetAttribute(ATTR_STATE,
-      ClientRequestState::ExecStateToString(client_request_state_->exec_state()));
-      root_->SetAttributeEmpty(ATTR_RETRIED_QUERY_ID);
-  }
-
-  if (UNLIKELY(client_request_state_->IsRetriedQuery())) {
-    root_->SetAttribute(ATTR_ORIGINAL_QUERY_ID,
-        PrintId(client_request_state_->original_id()));
-  } else {
-    root_->SetAttributeEmpty(ATTR_ORIGINAL_QUERY_ID);
+    if (UNLIKELY(client_request_state_->IsRetriedQuery())) {
+      root_->SetAttribute(ATTR_ORIGINAL_QUERY_ID,
+          PrintId(client_request_state_->original_id()));
+    } else {
+      root_->SetAttributeEmpty(ATTR_ORIGINAL_QUERY_ID);
+    }
   }
 } // function EndChildSpanClose
 
