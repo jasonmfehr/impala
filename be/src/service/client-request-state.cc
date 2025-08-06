@@ -320,6 +320,9 @@ Status ClientRequestState::Exec() {
     }
     case TStmtType::DDL: {
       DCHECK(exec_req.__isset.catalog_op_request);
+      if (otel_trace_query()) {
+        otel_span_manager_->StartChildSpanQueryExecution();
+      }
       LOG_AND_RETURN_IF_ERROR(ExecDdlRequest());
       break;
     }
@@ -653,6 +656,7 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
   DCHECK(exec_req.__isset.query_exec_request);
   UniqueIdPB query_id_pb;
   TUniqueIdToUniqueIdPB(query_id(), &query_id_pb);
+
   if (otel_trace_query()) {
     otel_span_manager_->StartChildSpanAdmissionControl();
   }
@@ -663,13 +667,15 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
           summary_profile_, blacklisted_executor_addresses_},
       query_events_, &schedule_, &wait_start_time_ms_, &wait_end_time_ms_,
       otel_span_manager_.get());
-  {
-    lock_guard<mutex> l(lock_);
-    if (!UpdateQueryStatus(admit_status).ok()) return;
-  }
 
   if (otel_trace_query()) {
     otel_span_manager_->EndChildSpanAdmissionControl();
+    otel_span_manager_->StartChildSpanQueryExecution();
+  }
+
+  {
+    lock_guard<mutex> l(lock_);
+    if (!UpdateQueryStatus(admit_status).ok()) return;
   }
 
   DCHECK(schedule_.get() != nullptr);
@@ -718,7 +724,6 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
 }
 
 Status ClientRequestState::ExecDdlRequestImplSync() {
-
   if (catalog_op_type() != TCatalogOpType::DDL &&
       catalog_op_type() != TCatalogOpType::RESET_METADATA) {
     Status status = ExecLocalCatalogOp(exec_request().catalog_op_request);
@@ -781,7 +786,9 @@ void ClientRequestState::ExecDdlRequestImpl(bool exec_in_worker_thread) {
   }
 
   // Optionally wait with a debug action before Exec() below.
+  LOG(WARNING) << "GOT HERE 1" << endl;
   DebugActionNoFail(exec_req.query_options, "CRS_DELAY_BEFORE_CATALOG_OP_EXEC");
+  LOG(WARNING) << "GOT HERE 2" << endl;
 
   Status status = catalog_op_executor_->Exec(exec_req.catalog_op_request);
   query_events_->MarkEvent("CatalogDdlRequest finished");
@@ -857,6 +864,8 @@ Status ClientRequestState::ExecDdlRequest() {
   summary_profile_->AddInfoString("DDL execution mode", exec_mode);
   VLOG_QUERY << "DDL exec mode=" << exec_mode;
 
+  LOG(WARNING) << "IS ASYNC: " << async_ddl
+               << ", ASYNC ENABLED: " << async_ddl_enabled << endl;
   if (!async_ddl) return ExecDdlRequestImplSync();
 
   if (async_ddl_enabled) {

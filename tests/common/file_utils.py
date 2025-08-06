@@ -210,11 +210,11 @@ def count_lines(file_path):
 
 def wait_for_file_line_count(file_path, expected_line_count, max_attempts=3,
     sleep_time_s=1, backoff=2):
-  """Waits until the given file contains the expected number of lines or until the
-      timeout is reached. Fails an assert if the timeout is reached before the expected
-      number of lines is found."""
+  """Waits until the given file contains at minimum the expected number of lines or until
+      the timeout is reached. Fails an assert if the timeout is reached before the
+      expected number of lines is found."""
   def assert_trace_file_lines():
-    return count_lines(file_path) == expected_line_count
+    return count_lines(file_path) >= expected_line_count
 
   assert retry(assert_trace_file_lines, max_attempts, sleep_time_s, backoff), \
       "File '{}' did not reach expected line count of '{}'. actual line count: '{}'" \

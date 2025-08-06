@@ -121,7 +121,14 @@ bool otel_trace_enabled() {
 
 bool should_otel_trace_query(const char* sql) {
   DCHECK(sql != nullptr) << "SQL statement cannot be null.";
-  return boost::algorithm::istarts_with(sql, "select ");
+  return boost::algorithm::istarts_with(sql, "alter ")
+      || boost::algorithm::istarts_with(sql, "create ")
+      || boost::algorithm::istarts_with(sql, "delete ")
+      || boost::algorithm::istarts_with(sql, "drop ")
+      || boost::algorithm::istarts_with(sql, "insert ")
+      || boost::algorithm::istarts_with(sql, "select ")
+      || boost::algorithm::istarts_with(sql, "update ")
+      || boost::algorithm::istarts_with(sql, "upsert ");
 } // function should_otel_trace_query
 
 // Initializes an OtlpHttpExporter instance with configuration from global flags. The

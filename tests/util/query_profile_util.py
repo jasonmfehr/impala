@@ -130,3 +130,18 @@ def parse_admission_result(profile_text):
   admission_result = re.search(r'\n\s+Admission result:\s+(.*?)\n', profile_text)
   assert admission_result is not None, "Admission Result not found in query profile"
   return admission_result.group(1)
+
+def parse_num_modified_rows(profile_text):
+  """Parses the number of modified rows from the query profile text."""
+  num_mod_rows = re.search(r'\nNumModifiedRows:\s+(\d+)', profile_text)
+  if num_mod_rows is None:
+    return 0
+  return int(num_mod_rows.group(1))
+
+
+def parse_num_deleted_rows(profile_text):
+  """Parses the number of deleted rows from the query profile text."""
+  num_del_rows = re.search(r'\nNumDeletedRows:\s+(\d+)', profile_text)
+  if num_del_rows is None:
+    return 0
+  return int(num_del_rows.group(1))

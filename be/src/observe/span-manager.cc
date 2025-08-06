@@ -34,6 +34,7 @@
 #include "common/compiler-util.h"
 #include "gen-cpp/Types_types.h"
 #include "observe/timed-span.h"
+#include "runtime/coordinator.h"
 #include "scheduling/admission-control-client.h"
 #include "service/client-request-state.h"
 #include "util/debug-util.h"
@@ -291,13 +292,29 @@ void SpanManager::DoEndChildSpanQueryExecution(const Status* cause) {
     attrs.emplace(ATTR_NUM_DELETED_ROWS, static_cast<int64_t>(0));
     attrs.emplace(ATTR_NUM_MODIFIED_ROWS, static_cast<int64_t>(0));
   } else {
-    attrs.emplace(ATTR_NUM_DELETED_ROWS, static_cast<int64_t>(-1));
-    attrs.emplace(ATTR_NUM_MODIFIED_ROWS, static_cast<int64_t>(-1));
+    int64_t num_deleted_rows = 0;
+    int64_t num_modified_rows = 0;
+
+    if (client_request_state_->GetCoordinator() != nullptr
+        && client_request_state_->GetCoordinator()->dml_exec_state() != nullptr) {
+      num_deleted_rows =
+      client_request_state_->GetCoordinator()->dml_exec_state()->GetNumDeletedRows();
+      num_modified_rows =
+          client_request_state_->GetCoordinator()->dml_exec_state()->GetNumModifiedRows();
+    }
+
+    attrs.emplace(ATTR_NUM_DELETED_ROWS, num_deleted_rows);
+    attrs.emplace(ATTR_NUM_MODIFIED_ROWS, num_modified_rows);
   }
 
-  attrs.emplace(ATTR_NUM_ROWS_FETCHED, client_request_state_->num_rows_fetched());
-  attrs.emplace(ATTR_NUM_ROWS_FETCHED_FROM_CACHE,
-      client_request_state_->num_rows_fetched_from_cache_counter());
+  if (client_request_state_->stmt_type() == TStmtType::DDL) {
+    attrs.emplace(ATTR_NUM_ROWS_FETCHED, 0);
+    attrs.emplace(ATTR_NUM_ROWS_FETCHED_FROM_CACHE, 0);
+  } else {
+    attrs.emplace(ATTR_NUM_ROWS_FETCHED, client_request_state_->num_rows_fetched());
+    attrs.emplace(ATTR_NUM_ROWS_FETCHED_FROM_CACHE,
+        client_request_state_->num_rows_fetched_from_cache_counter());
+  }
 
   EndChildSpan(cause, attrs);
 } // function DoEndChildSpanQueryExecution
