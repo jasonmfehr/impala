@@ -127,3 +127,26 @@ def parse_default_db(profile_text):
   default_db = re.search(r'\n\s+Default Db:\s+(.*?)\n', profile_text)
   assert default_db is not None, "Default Db not found in query profile"
   return default_db.group(1)
+
+
+def parse_num_modified_rows(profile_text):
+  """Parses the number of modified rows from the query profile text."""
+  num_mod_rows = re.search(r'\nNumModifiedRows:\s+(\d+)', profile_text)
+  if num_mod_rows is None:
+    return 0
+  return int(num_mod_rows.group(1))
+
+
+def parse_num_deleted_rows(profile_text):
+  """Parses the number of deleted rows from the query profile text."""
+  num_del_rows = re.search(r'\nNumDeletedRows:\s+(\d+)', profile_text)
+  if num_del_rows is None:
+    return 0
+  return int(num_del_rows.group(1))
+
+
+def parse_coordinator(profile_text):
+  """Parses the coordinator from the query profile text."""
+  coordinator = re.search(r'\n\s+Coordinator:\s+(.*?)\n', profile_text)
+  assert coordinator is not None, "Coordinator not found in query profile"
+  return coordinator.group(1)

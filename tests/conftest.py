@@ -453,6 +453,14 @@ def unique_name(request, testid_checksum):
   return '{0}_{1}'.format(name_prefix, testid_checksum)
 
 
+@pytest.fixture
+def rand_name(request, testid_checksum):
+  """Returns a random name created by combining the unique_name fixture with random
+     characters to any test using the fixture."""
+  return '{0}_{1}'.format(
+      unique_name(request, testid_checksum), ''.join(sample(ascii_lowercase + digits, 5)))
+
+
 @pytest.yield_fixture
 def kudu_client():
   """Provides a new Kudu client as a pytest fixture. The client only exists for the

@@ -21,6 +21,7 @@
 #include <string>
 
 #include "common/status.h"
+#include "gen-cpp/Query_types.h"
 #include "observe/span-manager.h"
 #include "service/client-request-state.h"
 
@@ -41,7 +42,7 @@ const std::string SPAN_PROCESSOR_BATCH = "batch";
 bool otel_trace_enabled();
 
 // Returns true if an OpenTelemetry trace needs to be created for the given SQL query.
-bool should_otel_trace_query(const char* sql);
+bool should_otel_trace_query(const char* sql, const TSessionType::type& session_type);
 
 // Initializes the OpenTelemetry tracer with the configuration defined in the coordinator
 // startup flags (see otel-flags.cc and otel-flags-trace.cc for the list). Does not verify

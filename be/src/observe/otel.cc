@@ -25,6 +25,7 @@
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/trim.hpp>
+#include <boost/regex.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gutil/strings/split.h>
@@ -50,8 +51,10 @@
 #include <opentelemetry/trace/tracer.h>
 #include <opentelemetry/version.h>
 
+#include "common/compiler-util.h"
 #include "common/status.h"
 #include "common/version.h"
+#include "gen-cpp/Query_types.h"
 #include "observe/otel-instrument.h"
 #include "observe/span-manager.h"
 #include "service/client-request-state.h"
@@ -67,6 +70,7 @@ DECLARE_string(otel_trace_additional_headers);
 DECLARE_int32(otel_trace_batch_queue_size);
 DECLARE_int32(otel_trace_batch_max_batch_size);
 DECLARE_int32(otel_trace_batch_schedule_delay_ms);
+DECLARE_bool(otel_trace_beeswax);
 DECLARE_string(otel_trace_ca_cert_path);
 DECLARE_string(otel_trace_ca_cert_string);
 DECLARE_string(otel_trace_collector_url);
@@ -98,6 +102,8 @@ DECLARE_string(ssl_minimum_version);
 
 // Constants
 static const string SCOPE_SPAN_NAME = "org.apache.impala.impalad.query";
+static const boost::regex refresh_sql(
+      "^refresh\\s+(functions|authorization)", boost::regex::icase);
 
 namespace impala {
 
@@ -112,16 +118,33 @@ static inline bool otel_tls_enabled() {
       || !FLAGS_otel_trace_ca_cert_string.empty()
       || !FLAGS_otel_trace_tls_minimum_version.empty()
       || !FLAGS_otel_trace_ssl_ciphers.empty()
-      || !FLAGS_otel_trace_tls_cipher_suites.empty();
+      || !FLAGS_otel_trace_tls_cipher_suites.empty()
+      || FLAGS_otel_trace_collector_url.find("https://") == 0;
 } // function otel_tls_enabled
 
 bool otel_trace_enabled() {
   return FLAGS_otel_trace_enabled;
 } // function otel_trace_enabled
 
-bool should_otel_trace_query(const char* sql) {
+bool should_otel_trace_query(const char* sql, const TSessionType::type& session_type) {
   DCHECK(sql != nullptr) << "SQL statement cannot be null.";
-  return boost::algorithm::istarts_with(sql, "select ");
+
+  if (LIKELY(!FLAGS_otel_trace_beeswax) && session_type == TSessionType::BEESWAX) {
+    return false;
+  }
+
+  return boost::algorithm::istarts_with(sql, "select ")
+      || boost::algorithm::istarts_with(sql, "alter ")
+      || boost::algorithm::istarts_with(sql, "compute ")
+      || boost::algorithm::istarts_with(sql, "create ")
+      || boost::algorithm::istarts_with(sql, "delete ")
+      || boost::algorithm::istarts_with(sql, "drop ")
+      || boost::algorithm::istarts_with(sql, "insert ")
+      || boost::algorithm::istarts_with(sql, "invalidate ")
+      || boost::algorithm::istarts_with(sql, "update ")
+      || boost::algorithm::istarts_with(sql, "with ")
+      || (boost::algorithm::istarts_with(sql, "refresh ")
+          && !boost::regex_search(sql, refresh_sql));
 } // function should_otel_trace_query
 
 // Initializes an OtlpHttpExporter instance with configuration from global flags. The
@@ -158,13 +181,9 @@ static Status init_exporter_http(unique_ptr<SpanExporter>& exporter) {
       // Set minimum TLS version to the value of the global ssl_minimum_version flag.
       // Since this flag is in the format "tlv1.2" or "tlsv1.3", we need to
       // convert it to the format expected by OtlpHttpExporterOptions.
-      const string min_ssl_ver = to_lower_copy(trim_copy(FLAGS_ssl_minimum_version));
-
-      if (!min_ssl_ver.empty() && min_ssl_ver.rfind("tlsv", 0) != 0) {
-        return Status("ssl_minimum_version must start with 'tlsv'");
+      if (!FLAGS_ssl_minimum_version.empty()) {
+        opts.ssl_min_tls = FLAGS_ssl_minimum_version.substr(4); // Remove "tlsv" prefix
       }
-
-      opts.ssl_min_tls = min_ssl_ver.substr(4); // Remove "tlsv" prefix
     } else {
       opts.ssl_min_tls = FLAGS_otel_trace_tls_minimum_version;
     }

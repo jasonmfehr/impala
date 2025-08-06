@@ -27,6 +27,7 @@ import math
 import re
 import time
 
+from copy import deepcopy
 from future.utils import with_metaclass
 import impala.dbapi as impyla
 import impala.error as impyla_error
@@ -183,6 +184,10 @@ class ImpalaConnection(with_metaclass(abc.ABCMeta, object)):
         log_lines.append("set {0}={1};".format(name, value))
     if log_lines:
       self.log_client("set_configuration:\n\n{}\n".format('\n'.join(log_lines)))
+
+  def get_configuration(self):
+    """Returns a deep copy of the current configuration options."""
+    pass
 
   @abc.abstractmethod
   def clear_configuration(self):
@@ -420,6 +425,9 @@ class BeeswaxConnection(ImpalaConnection):
       return True
     return False
 
+  def get_configuration(self):
+    assert False, "Beeswax client does not support getting configuration options."
+
   def clear_configuration(self):
     self.__beeswax_client.clear_query_options()
     # A hook in conftest sets tests.common.current_node.
@@ -592,6 +600,9 @@ class ImpylaHS2Connection(ImpalaConnection):
     self.__query_options.clear()
     if hasattr(tests.common, "current_node") and not self._is_hive:
       self.set_configuration_option("client_identifier", tests.common.current_node)
+
+  def get_configuration(self):
+    return deepcopy(self.__query_options)
 
   def __open_single_cursor(self, user=None):
     return self.__impyla_conn.cursor(user=user, convert_types=False,
@@ -1117,6 +1128,9 @@ class MinimalHS2Connection(ImpalaConnection):
     self.__query_options.clear()
     if hasattr(tests.common, "current_node"):
       self.set_configuration_option("client_identifier", tests.common.current_node)
+
+  def get_configuration(self):
+    return deepcopy(self.__query_options)
 
   def get_host_port(self):
     return self.__host_port
