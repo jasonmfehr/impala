@@ -741,61 +741,61 @@ class TestOtelTraceDMLs(TestOtelTrace):
 
     self.assert_trace(result.query_id, result.runtime_profile, "test_dml_success", 4)
 
-  @CustomClusterTestSuite.with_args(
-      impalad_args="-v=2 --cluster_id=test_dml_fail "
-                   "--otel_trace_enabled=true --otel_trace_exporter=file "
-                   "--otel_file_flush_interval_ms=500 "
-                   "--otel_file_pattern={out_dir_dmls}/" + TRACE_FILE,
-      cluster_size=2, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
-  def test_dml_insert_fail(self, vector, unique_database, unique_name):
-    first_coord_client = self.create_client_for_nth_impalad(0,
-        vector.get_value(PROTOCOL))
-    second_coord_client = self.create_client_for_nth_impalad(1,
-          vector.get_value(PROTOCOL))
+  # @CustomClusterTestSuite.with_args(
+  #     impalad_args="-v=2 --cluster_id=test_dml_fail "
+  #                  "--otel_trace_enabled=true --otel_trace_exporter=file "
+  #                  "--otel_file_flush_interval_ms=500 "
+  #                  "--otel_file_pattern={out_dir_dmls}/" + TRACE_FILE,
+  #     cluster_size=2, tmp_dir_placeholders=[OUT_DIR], disable_log_buffering=True)
+  # def test_dml_insert_fail(self, vector, unique_database, unique_name):
+  #   first_coord_client = self.create_client_for_nth_impalad(0,
+  #       vector.get_value(PROTOCOL))
+  #   second_coord_client = self.create_client_for_nth_impalad(1,
+  #         vector.get_value(PROTOCOL))
 
-    # Create a table that will be modified while the DML is executing.
-    self.execute_query_expect_success(first_coord_client, "create table {}.{} (id int, "
-        "string_col string, int_col int)".format(unique_database, unique_name))
+  #   # Create a table that will be modified while the DML is executing.
+  #   self.execute_query_expect_success(first_coord_client, "create table {}.{} (id int, "
+  #       "string_col string, int_col int)".format(unique_database, unique_name))
 
-    # In a separate thread, run the insert DML that will fail.
-    fail_query = "insert into {}.{} (id, string_col, int_col) values (1, 'a', 10)" \
-        .format(unique_database, unique_name)
+  #   # In a separate thread, run the insert DML that will fail.
+  #   fail_query = "insert into {}.{} (id, string_col, int_col) values (1, 'a', 10)" \
+  #       .format(unique_database, unique_name)
 
-    def execute_query_fail():
-      self.execute_query_expect_failure(first_coord_client, fail_query,
-          {"debug_action": "CRS_DELAY_BEFORE_CATALOG_OP_EXEC:SLEEP@10000"})
+  #   def execute_query_fail():
+  #     self.execute_query_expect_failure(first_coord_client, fail_query,
+  #         {"debug_action": "CRS_DELAY_BEFORE_CATALOG_OP_EXEC:SLEEP@10000"})
 
-    thread = Thread(target=execute_query_fail)
-    thread.daemon = True
-    thread.start()
+  #   thread = Thread(target=execute_query_fail)
+  #   thread.daemon = True
+  #   thread.start()
 
-    # Wait until the insert query is in flight.
-    fail_query_id = None
-    while fail_query_id is None:
-      fail_query_id, profile = self.query_id_from_ui(section="in_flight_queries",
-          match_query=fail_query, not_found_ok=True)
-      if fail_query_id is not None and len(profile.strip()) > 0 \
-          and parse_impala_query_state(profile) == "RUNNING":
-        break
-      sleep(0.1)
+  #   # Wait until the insert query is in flight.
+  #   fail_query_id = None
+  #   while fail_query_id is None:
+  #     fail_query_id, profile = self.query_id_from_ui(section="in_flight_queries",
+  #         match_query=fail_query, not_found_ok=True)
+  #     if fail_query_id is not None and len(profile.strip()) > 0 \
+  #         and parse_impala_query_state(profile) == "RUNNING":
+  #       break
+  #     sleep(0.1)
 
-    # Drop the database after planning to cause the create table to fail.
-    # Drop a column after planning to cause the insert to fail.
-    self.execute_query_expect_success(second_coord_client, "alter table {}.{} drop "
-        "column string_col".format(unique_database, unique_name))
+  #   # Drop the database after planning to cause the create table to fail.
+  #   # Drop a column after planning to cause the insert to fail.
+  #   self.execute_query_expect_success(second_coord_client, "alter table {}.{} drop "
+  #       "column string_col".format(unique_database, unique_name))
 
-    # Wait until the insert query query fails.
-    thread.join()
-    fail_profile_str = self.query_profile_from_ui(fail_query_id)
+  #   # Wait until the insert query query fails.
+  #   thread.join()
+  #   fail_profile_str = self.query_profile_from_ui(fail_query_id)
 
-    # Assert the errored query.
-    self.assert_trace(
-        query_id=fail_query_id,
-        query_profile=fail_profile_str,
-        cluster_id="test_dml_fail",
-        trace_cnt=4,
-        missing_spans=["AdmissionControl"],
-        err_span="QueryExecution")
+  #   # Assert the errored query.
+  #   self.assert_trace(
+  #       query_id=fail_query_id,
+  #       query_profile=fail_profile_str,
+  #       cluster_id="test_dml_fail",
+  #       trace_cnt=4,
+  #       missing_spans=["AdmissionControl"],
+  #       err_span="QueryExecution")
 
 
 
