@@ -30,7 +30,7 @@ from tests.util.query_profile_util import parse_db_user, parse_session_id, parse
     parse_query_type, parse_query_status, parse_impala_query_state, parse_query_id, \
     parse_retry_status, parse_original_query_id, parse_retried_query_id, \
     parse_num_rows_fetched, parse_num_rows_fetched_from_cache, parse_admission_result, \
-    parse_num_modified_rows, parse_num_deleted_rows
+    parse_num_modified_rows, parse_num_deleted_rows, parse_default_db
 from tests.util.retry import retry
 
 class TestOtelTrace(CustomClusterTestSuite):
@@ -98,8 +98,8 @@ class TestOtelTrace(CustomClusterTestSuite):
         span_err_msg = query_status
         in_error = True
       self.__assert_initspan_attrs(trace.child_spans, root_span_id, query_id, session_id,
-          cluster_id, db_user, "default-pool", "default", parse_sql(query_profile),
-          original_query_id)
+          cluster_id, db_user, "default-pool", parse_default_db(query_profile),
+          parse_sql(query_profile), original_query_id)
 
     # Assert Submitted span.
     if "Submitted" not in missing_spans:
@@ -111,15 +111,17 @@ class TestOtelTrace(CustomClusterTestSuite):
 
     # Assert Planning span.
     if "Planning" not in missing_spans:
+      status = "INITIALIZED"
       span_err_msg = ""
       if err_span == "Planning" or in_error:
         span_err_msg = query_status
+        status = "ERROR"
         in_error = True
       query_type = parse_query_type(query_profile)
       if query_type == "N/A":
         query_type = "UNKNOWN"
       self.__assert_planningspan_attrs(trace.child_spans, root_span_id, query_id,
-          query_type, span_err_msg)
+          query_type, span_err_msg, status)
 
     # Assert AdmissionControl span.
     if "AdmissionControl" not in missing_spans:
