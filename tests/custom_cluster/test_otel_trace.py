@@ -19,14 +19,14 @@ from __future__ import absolute_import, division, print_function
 
 from tests.common.custom_cluster_test_suite import CustomClusterTestSuite
 from tests.common.file_utils import wait_for_file_line_count
-from tests.common.impala_connection import ERROR, RUNNING, FINISHED
+from tests.common.impala_connection import ERROR, RUNNING, FINISHED, INITIALIZED
 from tests.common.test_vector import PROTOCOL, HS2, BEESWAX, ImpalaTestDimension
 from tests.util.otel_trace import parse_trace_file, ATTR_VAL_TYPE_STRING, \
     ATTR_VAL_TYPE_INT, ATTR_VAL_TYPE_BOOL
 from tests.util.query_profile_util import parse_db_user, parse_session_id, parse_sql, \
     parse_query_type, parse_query_status, parse_impala_query_state, parse_query_id, \
     parse_retry_status, parse_original_query_id, parse_retried_query_id, \
-    parse_num_rows_fetched, parse_admission_result
+    parse_num_rows_fetched, parse_admission_result, parse_default_db
 from tests.util.retry import retry
 
 
@@ -270,8 +270,8 @@ class TestOtelTrace(CustomClusterTestSuite):
         span_err_msg = query_status
         in_error = True
       self.__assert_initspan_attrs(trace.child_spans, root_span_id, query_id, session_id,
-          cluster_id, db_user, "default-pool", "default", parse_sql(query_profile),
-          original_query_id)
+          cluster_id, db_user, "default-pool", parse_default_db(query_profile),
+          parse_sql(query_profile), original_query_id)
 
     # Assert Submitted span.
     if "Submitted" not in missing_spans:
@@ -283,15 +283,17 @@ class TestOtelTrace(CustomClusterTestSuite):
 
     # Assert Planning span.
     if "Planning" not in missing_spans:
+      status = INITIALIZED
       span_err_msg = ""
       if err_span == "Planning" or in_error:
         span_err_msg = query_status
+        status = ERROR
         in_error = True
       query_type = parse_query_type(query_profile)
       if query_type == "N/A":
         query_type = "UNKNOWN"
       self.__assert_planningspan_attrs(trace.child_spans, root_span_id, query_id,
-          query_type, span_err_msg)
+          query_type, span_err_msg, status)
 
     # Assert AdmissionControl span.
     if "AdmissionControl" not in missing_spans:
@@ -487,7 +489,7 @@ class TestOtelTrace(CustomClusterTestSuite):
     # Locate the init span and assert.
     init_span = self.__find_span(spans, "Init", query_id)
 
-    self.__assert_scopespan_common(init_span, query_id, False, "Init", 8, "INITIALIZED",
+    self.__assert_scopespan_common(init_span, query_id, False, "Init", 8, INITIALIZED,
         root_span_id)
 
     self.__assert_attr(init_span.name, init_span.attributes, "QueryId", query_id)
@@ -507,10 +509,10 @@ class TestOtelTrace(CustomClusterTestSuite):
 
     submitted_span = self.__find_span(spans, "Submitted", query_id)
     self.__assert_scopespan_common(submitted_span, query_id, False, "Submitted", 0,
-        "INITIALIZED", root_span_id)
+        INITIALIZED, root_span_id)
 
   def __assert_planningspan_attrs(self, spans, root_span_id, query_id, query_type,
-      err_msg="", status="INITIALIZED"):
+      err_msg="", status=INITIALIZED):
     """
       Helper function that asserts the common and span-specific attributes in the
       planning execution span.
