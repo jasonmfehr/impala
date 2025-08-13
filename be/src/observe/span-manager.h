@@ -60,7 +60,7 @@ class SpanManager {
 public:
   SpanManager(
       opentelemetry::nostd::shared_ptr<opentelemetry::trace::Tracer> tracer,
-      const ClientRequestState* client_request_state);
+      ClientRequestState* client_request_state);
   ~SpanManager();
 
   // Adds an event to the currently active child span. If no child span is active,
@@ -107,7 +107,7 @@ private:
   std::unique_ptr<opentelemetry::trace::Scope> scope_;
 
   // ClientRequestState for the query this SpanManager is tracking.
-  const ClientRequestState* client_request_state_;
+  ClientRequestState* client_request_state_;
 
   // Convenience constant string the string representation of the Query ID for the query
   // this SpanManager is tracking.
@@ -126,13 +126,14 @@ private:
   ChildSpanType child_span_type_;
 
   // Helper method that builds a child span and populates it with common attributes plus
-  // the specified additional attributes. Does not take ownership of the child span mutex.
-  // Callers must already hold the child_span_mu_ lock.
+  // the specified additional attributes.
+  // Callers must hold child_span_mu_ but must not hold client_requst_state_->lock().
   void ChildSpanBuilder(const ChildSpanType& span_type,
       OtelAttributesMap additional_attributes = {}, bool running = false);
+  void ChildSpanBuilder(const ChildSpanType& span_type, bool running);
 
   // Internal helper functions to perform the actual work of ending child spans.
-  // Callers must already hold the child_span_mu_ lock.
+  // Callers must already hold child_span_mu_ and client_request_state_->lock().
   //
   // Parameters:
   //   cause - See comments on StartChildSpanClose().
@@ -144,14 +145,14 @@ private:
 
   // Properly closes the active child span by calling the appropriate End method for the
   // active child span type. If no child span is active, does nothing.
-  // Callers must already hold the child_span_mu_ lock.
+  // Callers must already hold child_span_mu_ and client_request_state_->lock().
   //
   // Parameters:
   //   cause - See comments on StartChildSpanClose().
   void EndActiveChildSpan(const Status* cause = nullptr);
 
   // Helper method to end a child span and populate its common attributes.
-  // Callers must already hold the child_span_mu_ lock.
+  // Callers must already hold child_span_mu_ and client_request_state_->lock().
   //
   // Parameters:
   //   cause - See comments on StartChildSpanClose().
