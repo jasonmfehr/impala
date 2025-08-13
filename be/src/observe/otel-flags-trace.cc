@@ -207,7 +207,7 @@ DEFINE_validator(otel_trace_retry_policy_backoff_multiplier, ge_one);
 static const string SPAN_PROCESSOR_HELP = "The span processor implementation to use for "
     "exporting spans to the OTel Collector. Supported values: '"
     + impala::SPAN_PROCESSOR_BATCH + "' and '" + impala::SPAN_PROCESSOR_SIMPLE + "'.";
-DEFINE_string(otel_trace_span_processor, impala::SPAN_PROCESSOR_BATCH.c_str(),
+DEFINE_string_hidden(otel_trace_span_processor, impala::SPAN_PROCESSOR_BATCH.c_str(),
     SPAN_PROCESSOR_HELP.c_str());
 DEFINE_validator(otel_trace_span_processor, [](const char* flagname,
     const string& value) {

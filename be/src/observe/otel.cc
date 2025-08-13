@@ -289,7 +289,7 @@ void shutdown_otel_tracer() {
   provider_.reset();
 }
 
-shared_ptr<SpanManager> build_span_manager(const ClientRequestState* crs) {
+shared_ptr<SpanManager> build_span_manager(ClientRequestState* crs) {
   DCHECK(provider_) << "OpenTelemetry tracer was not initialized.";
 
   return make_shared<SpanManager>(

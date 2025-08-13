@@ -1414,8 +1414,8 @@ Status ImpalaServer::ExecuteInternal(const TQueryCtx& query_ctx,
     if ((*query_handle)->otel_trace_query()) {
       (*query_handle)->otel_span_manager()->EndChildSpanPlanning();
     }
-
   }
+
   VLOG(2) << "Execution request: "
           << ThriftDebugString((*query_handle)->exec_request());
 
