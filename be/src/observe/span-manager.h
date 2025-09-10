@@ -116,9 +116,11 @@ private:
   std::shared_ptr<TimedSpan> root_;
 
   // TimedSpan instance for the current child span and the mutex to protect it.
-  // To ensure no deadlocks, locks must be acquired in the following order:
+  // To ensure no deadlocks, locks must be acquired in the following order (lower numbered
+  // locks must be acquired before higher numbered locks):
   // 1. SpanManager::child_span_mu_
   // 2. ClientRequestState::lock_
+  // 3. ClientRequestState::exec_state_lock_
   std::unique_ptr<TimedSpan> current_child_;
   std::mutex child_span_mu_;
 

@@ -433,9 +433,11 @@ void SpanManager::EndChildSpanClose() {
       root_->SetAttribute(ATTR_RETRIED_QUERY_ID,
           PrintId(client_request_state_->retried_id()));
     } else {
+      lock_guard<mutex> l(*(client_request_state_->exec_state_lock()));
+
       root_->SetAttribute(ATTR_STATE,
         ClientRequestState::ExecStateToString(client_request_state_->exec_state()));
-        root_->SetAttributeEmpty(ATTR_RETRIED_QUERY_ID);
+      root_->SetAttributeEmpty(ATTR_RETRIED_QUERY_ID);
     }
 
     if (UNLIKELY(client_request_state_->IsRetriedQuery())) {
@@ -504,6 +506,8 @@ inline void SpanManager::EndChildSpan(const Status* cause,
     }
 
     if (query_status->ok()) {
+      lock_guard<mutex> l(*(client_request_state_->exec_state_lock()));
+
       current_child_->SetAttributeEmpty(ATTR_ERROR_MSG);
       current_child_->SetAttribute(ATTR_STATUS,
         ClientRequestState::ExecStateToString(client_request_state_->exec_state()));

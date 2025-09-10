@@ -312,6 +312,7 @@ class ClientRequestState {
   }
   std::mutex* lock() { return &lock_; }
   std::mutex* fetch_rows_lock() { return &fetch_rows_lock_; }
+  std::mutex* exec_state_lock() { return &exec_state_lock_; }
 
   /// ExecState is stored using an AtomicEnum, so reads do not require holding lock_.
   ExecState exec_state() const { return exec_state_.Load(); }
