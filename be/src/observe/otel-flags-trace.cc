@@ -65,6 +65,12 @@ DEFINE_bool_hidden(otel_trace_beeswax, false, "Specifies whether or not to trace
     "submitted via the Beeswax protocol. This flag is hidden because tracing Beeswax "
     "queries is not supported.");
 
+#ifndef NDEBUG
+DEFINE_bool(otel_trace_exhaustive_dchecks, false, "Specifies whether or not to "
+    "enable exhaustive DCHECKs in OpenTelemetry code. These DCHECKs fail if spans are "
+    "not properly started and ended.");
+#endif
+
 //
 // Start of HTTP related flags.
 //
