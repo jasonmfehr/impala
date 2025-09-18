@@ -75,7 +75,6 @@ DECLARE_string(otel_trace_additional_headers);
 DECLARE_int32(otel_trace_batch_queue_size);
 DECLARE_int32(otel_trace_batch_max_batch_size);
 DECLARE_int32(otel_trace_batch_schedule_delay_ms);
-DECLARE_bool(otel_trace_beeswax);
 DECLARE_string(otel_trace_ca_cert_path);
 DECLARE_string(otel_trace_ca_cert_string);
 DECLARE_string(otel_trace_collector_url);
@@ -144,7 +143,7 @@ static inline bool otel_tls_enabled() {
 
 bool should_otel_trace_query(std::string_view sql,
     const TSessionType::type& session_type) {
-  if (LIKELY(!FLAGS_otel_trace_beeswax) && session_type == TSessionType::BEESWAX) {
+  if (UNLIKELY(session_type == TSessionType::BEESWAX)) {
     return false;
   }
 
@@ -198,12 +197,9 @@ bool should_otel_trace_query(std::string_view sql,
   return false;
 } // function should_otel_trace_query
 
-// Initializes an OtlpHttpExporter instance with configuration from global flags. The
-// OtlpHttpExporter instance implements the SpanExporter interface. The function parameter
-// `exporter` is an in-out parameter that will be populated with the created
-// OtlpHttpExporter instance. Returns Status::OK() on success, or an error Status if
-// configuration fails.
-static Status init_exporter_http(unique_ptr<SpanExporter>& exporter) {
+// Creates an OtlpHttpExporterOptions struct instance with configuration from global
+// startup flags.
+static OtlpHttpExporterOptions http_exporter_config() {
   // Configure OTLP HTTP exporter
   OtlpHttpExporterOptions opts;
   opts.url = FLAGS_otel_trace_collector_url;
@@ -228,15 +224,20 @@ static Status init_exporter_http(unique_ptr<SpanExporter>& exporter) {
 
   // TLS Configurations
   if (otel_tls_enabled()) {
+    // Set minimum TLS version to the value of the global ssl_minimum_version flag.
+    // Since this flag is in the format "tlv1.2" or "tlsv1.3", we need to
+    // convert it to the format expected by OtlpHttpExporterOptions by removing the
+    // "tlsv" prefix.
     if (FLAGS_otel_trace_tls_minimum_version.empty()) {
-      // Set minimum TLS version to the value of the global ssl_minimum_version flag.
-      // Since this flag is in the format "tlv1.2" or "tlsv1.3", we need to
-      // convert it to the format expected by OtlpHttpExporterOptions.
       if (!FLAGS_ssl_minimum_version.empty()) {
-        opts.ssl_min_tls = FLAGS_ssl_minimum_version.substr(4); // Remove "tlsv" prefix
+        opts.ssl_min_tls = FLAGS_ssl_minimum_version.substr(4);
+      } else {
+        LOG(WARNING) << "TLS is enabled for the OTel exporter, but neither the "
+            "'ssl_minimum_version' nor the 'otel_trace_tls_minimum_version' flags are "
+            "set.";
       }
     } else {
-      opts.ssl_min_tls = FLAGS_otel_trace_tls_minimum_version;
+      opts.ssl_min_tls = FLAGS_otel_trace_tls_minimum_version.substr(4);
     }
 
     opts.ssl_insecure_skip_verify = FLAGS_otel_trace_tls_insecure_skip_verify;
@@ -247,6 +248,10 @@ static Status init_exporter_http(unique_ptr<SpanExporter>& exporter) {
         FLAGS_otel_trace_ssl_ciphers;
     opts.ssl_cipher_suite = FLAGS_otel_trace_tls_cipher_suites.empty() ?
         FLAGS_tls_ciphersuites : FLAGS_otel_trace_tls_cipher_suites;
+
+    VLOG(2) << "OTel minimum TLS version set to '" << opts.ssl_min_tls << "'";
+    VLOG(2) << "OTel TLS 1.2 allowed ciphers set to '" << opts.ssl_cipher << "'";
+    VLOG(2) << "OTel TLS 1.3 allowed ciphers set to '" << opts.ssl_cipher_suite << "'";
   }
 
   // Additional HTTP headers
@@ -261,10 +266,8 @@ static Status init_exporter_http(unique_ptr<SpanExporter>& exporter) {
     }
   }
 
-  exporter = OtlpHttpExporterFactory::Create(opts);
-
-  return Status::OK();
-} // function init_exporter_http
+  return opts;
+} // function http_exporter_config
 
 // Initializes an OtlpFileExporter instance with configuration from global flags. The
 // OtlpFileExporter instance implements the SpanExporter interface. Returns a unique_ptr
@@ -315,7 +318,7 @@ Status init_otel_tracer() {
   unique_ptr<SpanExporter> exporter;
 
   if(FLAGS_otel_trace_exporter == OTEL_EXPORTER_OTLP_HTTP) {
-    RETURN_IF_ERROR(init_exporter_http(exporter));
+    exporter = OtlpHttpExporterFactory::Create(http_exporter_config());
   } else {
     exporter = init_exporter_file();
   }
@@ -367,10 +370,16 @@ shared_ptr<SpanManager> build_span_manager(ClientRequestState* crs) {
       provider_->GetTracer(SCOPE_SPAN_NAME, SCOPE_SPAN_SPEC_VERSION), crs);
 } // function build_span_manager
 
+#ifndef NDEBUG
 namespace test {
 bool otel_tls_enabled_for_testing() {
   return otel_tls_enabled();
 }
+
+OtlpHttpExporterOptions get_http_exporter_config() {
+  return http_exporter_config();
+}
 } // namespace test
+#endif
 
 } // namespace impala

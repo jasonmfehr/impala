@@ -21,6 +21,10 @@
 #include <string>
 #include <string_view>
 
+#ifndef NDEBUG
+#include <opentelemetry/exporters/otlp/otlp_http_exporter_options.h>
+#endif
+
 #include "common/status.h"
 #include "gen-cpp/Query_types.h"
 #include "observe/span-manager.h"
@@ -55,9 +59,15 @@ void shutdown_otel_tracer();
 // Builds a SpanManager instance for the given query.
 std::shared_ptr<SpanManager> build_span_manager(ClientRequestState*);
 
+#ifndef NDEBUG
 namespace test {
 // Testing helper function to provide access to the static otel_tls_enabled() function.
 bool otel_tls_enabled_for_testing();
+
+// Testing helper function to provide access to the static http_exporter_config()
+// function.
+opentelemetry::exporter::otlp::OtlpHttpExporterOptions get_http_exporter_config();
 } // namespace test
+#endif
 
 } // namespace impala

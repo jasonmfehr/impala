@@ -17,21 +17,39 @@
 
 #include "observe/otel.h"
 
+#include <chrono>
 #include <string>
 #include <string_view>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <gtest/gtest.h>
 #include "gutil/strings/substitute.h"
+#include <opentelemetry/exporters/otlp/otlp_http.h>
+#include <opentelemetry/exporters/otlp/otlp_http_exporter_options.h>
 
 #include "gen-cpp/Query_types.h"
 #include "testutil/scoped-flag-setter.h"
 
 using namespace std;
 using namespace impala;
+using namespace opentelemetry::exporter::otlp;
 
-DECLARE_bool(otel_trace_beeswax);
+DECLARE_bool(otel_debug);
+DECLARE_string(otel_trace_additional_headers);
+DECLARE_string(otel_trace_ca_cert_path);
+DECLARE_string(otel_trace_ca_cert_string);
 DECLARE_string(otel_trace_collector_url);
+DECLARE_double(otel_trace_retry_policy_initial_backoff_s);
+DECLARE_int32(otel_trace_retry_policy_max_attempts);
+DECLARE_int32(otel_trace_retry_policy_max_backoff_s);
+DECLARE_string(otel_trace_ssl_ciphers);
+DECLARE_int32(otel_trace_timeout_s);
+DECLARE_string(otel_trace_tls_cipher_suites);
+DECLARE_bool(otel_trace_tls_insecure_skip_verify);
+DECLARE_string(otel_trace_tls_minimum_version);
+DECLARE_string(ssl_cipher_list);
+DECLARE_string(ssl_minimum_version);
+DECLARE_string(tls_ciphersuites);
 
 TEST(OtelTest, QueriesTraced) {
   const auto runtest = [](const string_view sql_str) -> void {
@@ -113,14 +131,6 @@ TEST(OtelTest, QueriesTraced) {
   run_newline_test("INSERT", "INTO TABLE FOO");
   run_newline_test("INVALIDATE", "METADATA FOO");
   run_newline_test("WITH", "T1 AS SELECT * FROM FOO");
-
-  // Beeswax queries are traced when the otel_trace_beeswax flag is set.
-  {
-    auto trace_beeswax_setter =
-        ScopedFlagSetter<bool>::Make(&FLAGS_otel_trace_beeswax, true);
-
-    EXPECT_TRUE(should_otel_trace_query("SELECT * FROM foo", TSessionType::BEESWAX));
-  }
 }
 
 TEST(OtelTest, QueriesNotTraced) {
@@ -170,16 +180,11 @@ TEST(OtelTest, QueriesNotTraced) {
   runtest("--comment only\n");
   runtest("--comment only\n--comment only 2");
   runtest("--comment only\n--comment only 2\n");
-  // TODO: Move to the QueriesTraced test case one IMPALA-14370 is fixed.
+  // TODO: Move to the QueriesTraced test case once IMPALA-14370 is fixed.
   runtest(strings::Substitute("/*/ comment */select * from tbl"));
 
-  // Beeswax queries are not traced unless the otel_trace_beeswax flag is set.
-  {
-    auto trace_beeswax_setter =
-        ScopedFlagSetter<bool>::Make(&FLAGS_otel_trace_beeswax, false);
-
-    EXPECT_FALSE(should_otel_trace_query("SELECT * FROM foo", TSessionType::BEESWAX));
-  }
+  // Beeswax queries are not traced.
+  EXPECT_FALSE(should_otel_trace_query("SELECT * FROM foo", TSessionType::BEESWAX));
 }
 
 TEST(OtelTest, TLSEnabled) {
@@ -219,4 +224,113 @@ TEST(OtelTest, TLSNotEnabled) {
     // NOLINTNEXTLINE(clang-diagnostic-error-undeclared-identifier)
     EXPECT_FALSE(test::otel_tls_enabled_for_testing());
   }
+}
+
+// Assert the default values of the OtlpHttpExporterOptions struct used to configure the
+// OtlpHttpExporter.
+TEST(OtelTest, InitHttpDefaults) {
+  FLAGS_otel_trace_collector_url = "https://foo.com";
+  FLAGS_ssl_minimum_version = "tlsv1.0";
+  FLAGS_ssl_cipher_list = "ssl_ciphers";
+  FLAGS_tls_ciphersuites = "tls_ciphers";
+
+  OtlpHttpExporterOptions actual = test::get_http_exporter_config();
+
+  EXPECT_EQ("https://foo.com", actual.url);
+  EXPECT_EQ(HttpRequestContentType::kJson, actual.content_type);
+  EXPECT_EQ(false, actual.console_debug);
+  EXPECT_EQ(chrono::seconds(10), actual.timeout);
+  EXPECT_EQ(5, actual.retry_policy_max_attempts);
+  EXPECT_EQ(chrono::seconds(1), actual.retry_policy_initial_backoff);
+  EXPECT_EQ(chrono::duration<float>(5.0), actual.retry_policy_max_backoff);
+  EXPECT_EQ(2.0, actual.retry_policy_backoff_multiplier);
+  EXPECT_EQ("zlib", actual.compression);
+  EXPECT_EQ("1.0", actual.ssl_min_tls);
+  EXPECT_EQ("1.3", actual.ssl_max_tls);
+  EXPECT_EQ("ssl_ciphers", actual.ssl_cipher);
+  EXPECT_EQ("tls_ciphers", actual.ssl_cipher_suite);
+  EXPECT_EQ(false, actual.ssl_insecure_skip_verify);
+  EXPECT_EQ("", actual.ssl_ca_cert_path);
+  EXPECT_EQ("", actual.ssl_ca_cert_string);
+  EXPECT_EQ(0, actual.http_headers.size());
+}
+
+// Assert the flags that customize the values of the OtlpHttpExporterOptions struct used
+// to configure the OtlpHttpExporter.
+TEST(OtelTest, InitHttpOverrides) {
+  FLAGS_otel_trace_collector_url = "https://foo.com";
+  FLAGS_otel_trace_tls_minimum_version = "tlsv1.3";
+  FLAGS_otel_trace_timeout_s = 9;
+  FLAGS_otel_debug = true;
+  FLAGS_otel_trace_retry_policy_max_attempts = 8;
+  FLAGS_otel_trace_retry_policy_initial_backoff_s = 7.0;
+  FLAGS_otel_trace_retry_policy_max_backoff_s = 6;
+  FLAGS_otel_trace_ssl_ciphers = "override_ssl_ciphers";
+  FLAGS_otel_trace_tls_cipher_suites = "override_tls_ciphers";
+  FLAGS_otel_trace_tls_insecure_skip_verify = true;
+  FLAGS_otel_trace_ca_cert_path = "ca_cert_path";
+  FLAGS_otel_trace_ca_cert_string = "ca_cert_string";
+
+  OtlpHttpExporterOptions actual = test::get_http_exporter_config();
+
+  EXPECT_EQ("https://foo.com", actual.url);
+  EXPECT_EQ(true, actual.console_debug);
+  EXPECT_EQ(chrono::seconds(9), actual.timeout);
+  EXPECT_EQ(8, actual.retry_policy_max_attempts);
+  EXPECT_EQ(chrono::seconds(7), actual.retry_policy_initial_backoff);
+  EXPECT_EQ(chrono::seconds(6), actual.retry_policy_max_backoff);
+  EXPECT_EQ(2.0, actual.retry_policy_backoff_multiplier);
+  EXPECT_EQ("1.3", actual.ssl_min_tls);
+  EXPECT_EQ("override_ssl_ciphers", actual.ssl_cipher);
+  EXPECT_EQ("override_tls_ciphers", actual.ssl_cipher_suite);
+  EXPECT_EQ(true, actual.ssl_insecure_skip_verify);
+  EXPECT_EQ("ca_cert_path", actual.ssl_ca_cert_path);
+  EXPECT_EQ("ca_cert_string", actual.ssl_ca_cert_string);
+}
+
+// The otel_trace_additional_headers flag allows for specifying arbitrary HTTP headers
+// that are added to each HTTP request to the OTel collector. Assert one additional header
+// is correctly parsed.
+TEST(OtelTest, InitOneHttpHeader) {
+  FLAGS_otel_trace_additional_headers = "foo=bar";
+  OtlpHttpExporterOptions actual = test::get_http_exporter_config();
+
+  EXPECT_EQ(1, actual.http_headers.size());
+  const auto val = actual.http_headers.find("foo");
+  ASSERT_NE(actual.http_headers.cend(), val) << "Could not find header with key 'foo'";
+  EXPECT_EQ("bar", val->second);
+}
+
+// The otel_trace_additional_headers flag allows for specifying arbitrary HTTP headers
+// that are added to each HTTP request to the OTel collector. Assert multiple additional
+// headers (including the same header specified twice) are correctly parsed.
+TEST(OtelTest, InitMultipleHttpHeaders) {
+  FLAGS_otel_trace_additional_headers = "foo=bar1:::foo2=bar3:::foo=bar2:::foo3=bar4";
+  OtlpHttpExporterOptions actual = test::get_http_exporter_config();
+
+  EXPECT_EQ(4, actual.http_headers.size());
+
+  const auto val2 = actual.http_headers.find("foo2");
+  ASSERT_NE(actual.http_headers.cend(), val2) << "Could not find header with key 'foo2'";
+  EXPECT_EQ("bar3", val2->second);
+
+  const auto val3 = actual.http_headers.find("foo3");
+  ASSERT_NE(actual.http_headers.cend(), val3) << "Could not find header with key 'foo3'";
+  EXPECT_EQ("bar4", val3->second);
+
+  bool val1_found = false;
+  bool val2_found = false;
+
+  for (auto iter : actual.http_headers) {
+    if (iter.first == "foo") {
+      if (iter.second == "bar1") {
+        val1_found = true;
+      } else if (iter.second == "bar2") {
+        val2_found = true;
+      }
+    }
+  }
+
+  EXPECT_TRUE(val1_found) << "Did not find header with key 'foo' and value 'bar1'";
+  EXPECT_TRUE(val2_found) << "Did not find header with key 'foo' and value 'bar2'";
 }
