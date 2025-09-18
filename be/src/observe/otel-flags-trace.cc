@@ -34,6 +34,7 @@
 #include "kudu/util/faststring.h"
 #include "kudu/util/status.h"
 #include "observe/otel.h"
+#include "util/gflag-defaults.h"
 #include "util/gflag-validator-util.h"
 #include "util/openssl-util.h"
 
@@ -159,8 +160,9 @@ DEFINE_validator(otel_trace_ca_cert_string, [](const char* flagname,
 }); // flag otel_trace_ca_cert_string
 
 
-DEFINE_string(otel_trace_tls_minimum_version, "", "String containing the minimum allowed "
-    "TLS version, if not specified, defaults to the overall minimum TLS version.");
+DEFINE_string(otel_trace_tls_minimum_version, DEFAULT_MIN_SSL_VERSION, "String "
+    "containing the minimum allowed TLS version. If not specified or empty, defaults to "
+    "the overall minimum TLS version.");
 DEFINE_validator(otel_trace_tls_minimum_version, [](const char* flagname,
     const string& value) {
   if (value.empty() || value == impala::TLSVersions::TLSV1_2 || value == "tlsv1.3") {
@@ -171,14 +173,16 @@ DEFINE_validator(otel_trace_tls_minimum_version, [](const char* flagname,
   return false;
 }); // flag otel_trace_tls_minimum_version
 
-DEFINE_string(otel_trace_ssl_ciphers, "", "List of allowed TLS cipher suites when using "
-    "TLS 1.2, default to the value of Impala’s ssl_cipher_list startup flag.");
+DEFINE_string(otel_trace_ssl_ciphers, DEFAULT_TLS2_CIPHERSUITES, "List of allowed TLS cipher "
+    "suites when using TLS 1.2. If not specified or value is empty, defaults to the "
+    "value of Impala’s ssl_cipher_list startup flag.");
 
-DEFINE_string(otel_trace_tls_cipher_suites, "", "List of allowed TLS cipher suites when "
-    "using TLS 1.3, default to the value of Impala’s tls_ciphersuites startup flag.");
+DEFINE_string(otel_trace_tls_cipher_suites, DEFAULT_TLS3_CIPHERSUITES, "List of allowed TLS "
+    "cipher suites when using TLS 1.3. If not specified or empty, defaults to the value "
+    "of Impala’s tls_ciphersuites startup flag.");
 
 DEFINE_bool(otel_trace_tls_insecure_skip_verify, false, "If set to true, skips "
-    "verification of collector’s TLS certificate. This should only be set to false for "
+    "verification of collector’s TLS certificate. This should only be set to true for "
     "development / testing");
 //
 // End of TLS related flags.

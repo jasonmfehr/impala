@@ -83,6 +83,7 @@
 #include "util/common-metrics.h"
 #include "util/debug-util.h"
 #include "util/error-util.h"
+#include "util/gflag-defaults.h"
 #include "util/histogram-metric.h"
 #include "util/impalad-metrics.h"
 #include "util/jwt-util.h"
@@ -242,14 +243,13 @@ DEFINE_string(ssl_private_key_password_cmd, "", "A Unix command whose output ret
 // This defaults ssl_cipher_list to the same set of ciphers used by Kudu,
 // which is based on Mozilla's intermediate compatibility recommendations
 // from https://wiki.mozilla.org/Security/Server_Side_TLS
-DEFINE_string(ssl_cipher_list, SecurityDefaults::kDefaultTlsCiphers,
+DEFINE_string(ssl_cipher_list, DEFAULT_TLS2_CIPHERSUITES,
     "The cipher suite preferences to use for TLS-secured "
     "Thrift RPC connections. Uses the OpenSSL cipher preference list format. See man (1) "
     "ciphers for more information. If empty, the default cipher list for your platform "
     "is used");
 
-DEFINE_string(tls_ciphersuites,
-    kudu::security::SecurityDefaults::kDefaultTlsCipherSuites,
+DEFINE_string(tls_ciphersuites, DEFAULT_TLS3_CIPHERSUITES,
     "The TLSv1.3 cipher suites to use for TLS-secured Thrift RPC and KRPC connections. "
     "TLSv1.3 uses a new way to specify ciper suites that is independent of the older "
     "TLSv1.2 and below cipher lists. See 'man (1) ciphers' for more information. "
@@ -258,7 +258,7 @@ DEFINE_string(tls_ciphersuites,
 const string SSL_MIN_VERSION_HELP = "The minimum SSL/TLS version that Thrift "
     "services should use for both client and server connections. Supported versions are "
     "TLSv1, TLSv1.1, and TLSv1.2 (as long as the system OpenSSL library supports them)";
-DEFINE_string(ssl_minimum_version, "tlsv1.2", SSL_MIN_VERSION_HELP.c_str());
+DEFINE_string(ssl_minimum_version, DEFAULT_MIN_SSL_VERSION, SSL_MIN_VERSION_HELP.c_str());
 DEFINE_validator(ssl_minimum_version, [](const char* flagname, const string& value) {
    // empty is allowed if TLS is not configured
   if (value.empty()) {
