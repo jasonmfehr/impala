@@ -5,7 +5,13 @@
     "options": [
       "--force-rm",
       "--progress=plain",
-      "--add-host=impdev:127.0.0.1"
+      "--add-host=ip4.impala.test:127.0.0.1",
+      "--add-host=ip4:127.0.0.1",
+      "--add-host=ip6.impala.test:127.0.0.1",
+      "--add-host=ip6:127.0.0.1",
+      "--add-host=ip46.impala.test:127.0.0.1",
+      "--add-host=ip46:127.0.0.1",
+      "--add-host=buildkitsandbox:127.0.0.1"
     ]
   },
   "features": {
@@ -20,11 +26,12 @@
         "webfreak.debug",
         "vscjava.vscode-java-pack",
         "ms-python.python",
-        "alefragnani.Bookmarks",
         "mohsen1.prettify-json",
         "alefragnani.bookmarks",
         "zoma.vscode-auto-open-workspace",
-        "coolchyni.beyond-debug"
+        "coolchyni.beyond-debug",
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack"
       ]
     }
   }

@@ -1,6 +1,5 @@
 {
   "name": "Impala Dev",
-  "image": "jasonmfehr/impaladev:latest",
   "remoteUser": "impdev",
   "containerUser": "impdev",
   "workspaceFolder": "/home/impdev/impala"

@@ -1,8 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-/home/impdev/impala/.devcontainer-build/startup-script.sh
+echo "Setting up SSH..."
+/bin/bash -c 'sudo ssh-keygen -A; sudo service ssh start'
+echo "SSH setup complete."
+
+echo "Starting PostgreSQL..."
+sudo service postgresql start
+echo "PostgreSQL started."
+
+echo "Starting supporting services..."
+/bin/bash /home/impdev/impala/testdata/bin/run-all.sh
+echo "Supporting services started."
 
 echo "Initialization finished. Container is ready"
 sleep infinity
-
