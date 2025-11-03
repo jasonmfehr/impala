@@ -506,25 +506,28 @@ ssh localhost whoami
 #    ...
 #  ...ConnectionError: ('Connection aborted.', error(111, 'Connection refused'))
 # Prefer the FQDN first for rpc-mgr-kerberized-test as newer krb5 requires FQDN.
-add_if_not_there() {
-   grep -q "$2" $1 || echo "$2" | sudo tee -a $1
-}
-add_if_not_there "/etc/hosts" "127.0.0.1 $(hostname) $(hostname -s)"
+# add_if_not_there() {
+#    grep -q "$2" $1 || echo "$2" | sudo tee -a $1
+# }
+# add_if_not_there "/etc/hosts" "127.0.0.1 $(hostname) $(hostname -s)"
 
-# Add hostnames with multiple labels to allow matching wildcard TLS certificates.
-# Create names that map to v4/v6/dual localhost to help ipv6 testing.
-add_if_not_there "/etc/hosts" "127.0.0.1 ip4.impala.test ip46.impala.test"
-add_if_not_there "/etc/hosts" "::1       ip6.impala.test ip46.impala.test"
+# # Add hostnames with multiple labels to allow matching wildcard TLS certificates.
+# # Create names that map to v4/v6/dual localhost to help ipv6 testing.
+# add_if_not_there "/etc/hosts" "127.0.0.1 ip4.impala.test ip46.impala.test"
+# add_if_not_there "/etc/hosts" "::1       ip6.impala.test ip46.impala.test"
 
-#
-# In Docker, one can change /etc/hosts as above but not with sed -i. The error message is
-# "sed: cannot rename /etc/sedc3gPj8: Device or resource busy". The following lines are
-# basically sed -i but with cp instead of mv for -i part.
-NEW_HOSTS=$(mktemp)
-sed 's/127.0.1.1/127.0.0.1/g' /etc/hosts > "${NEW_HOSTS}"
-diff -u /etc/hosts "${NEW_HOSTS}" || true
-sudo cp "${NEW_HOSTS}" /etc/hosts
-rm "${NEW_HOSTS}"
+# #
+# # In Docker, one can change /etc/hosts as above but not with sed -i. The error message is
+# # "sed: cannot rename /etc/sedc3gPj8: Device or resource busy". The following lines are
+# # basically sed -i but with cp instead of mv for -i part.
+# NEW_HOSTS=$(mktemp)
+# sed 's/127.0.1.1/127.0.0.1/g' /etc/hosts > "${NEW_HOSTS}"
+# diff -u /etc/hosts "${NEW_HOSTS}" || true
+# sudo cp "${NEW_HOSTS}" /etc/hosts
+# rm "${NEW_HOSTS}"
+echo "=================================================================="
+cat /etc/hosts
+echo "=================================================================="
 
 sudo mkdir -p /var/lib/hadoop-hdfs
 sudo chown $(whoami) /var/lib/hadoop-hdfs/
