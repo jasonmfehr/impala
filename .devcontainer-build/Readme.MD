@@ -3,6 +3,10 @@
 ```
 export DEV_CTR=impaladev
 
+# Without docker volume
+docker run -d --name=${DEV_CTR} --entrypoint= jasonmfehr/impaladev:latest /bin/bash -c 'sudo ssh-keygen -A;sudo service ssh start;sudo service postgresql start;sleep infinity'; docker logs -f ${DEV_CTR}
+
+# With docker volume
 docker volume create vol-${DEV_CTR} && docker run -d --name=${DEV_CTR} --entrypoint= --volume vol-${DEV_CTR}:/home/impdev/impala jasonmfehr/impaladev:latest /bin/bash -c 'sudo ssh-keygen -A;sudo service ssh start;sudo service postgresql start;sleep infinity'; docker logs -f ${DEV_CTR}
 
 docker exec -it ${DEV_CTR} /bin/bash

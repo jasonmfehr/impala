@@ -4,7 +4,6 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 ARG USER_NAME=impdev
 ARG USER_HOME=/home/${USER_NAME}
-ARG USER_IMPALA_DIR=${USER_HOME}/impala
 
 # Available Locales are en_US.UTF-8, hu_HU.UTF-8, and hi_IN.UTF-8
 ARG LOCALE=en_US.UTF-8
@@ -15,6 +14,7 @@ ARG TZ="America/Los_Angeles"
 ARG IMPALA_BUILD_THREADS=12
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV IMPALA_HOME=${USER_HOME}/impala
 
 SHELL ["/bin/bash", "-c"]
 
@@ -37,9 +37,9 @@ RUN apt-get update \
     && echo "export IMPALA_LINKER=mold" >> ${USER_HOME}/.bashrc \
     && echo "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu" >> ${USER_HOME}/.bashrc \
     && echo "export LC_ALL=\"${LOCALE}\"" >> ${USER_HOME}/.bashrc \
-    && echo "if [[ -e \"\${IMPALA_HOME}/bin/set-classpath.sh\" ]]; then source \"\${IMPALA_HOME}/bin/set-classpath.sh\"; fi" >> ${USER_HOME}/.bashrc \
-    && echo "if [[ -e \"\${IMPALA_HOME}/bin/impala-config.sh\" ]]; then source \"\${IMPALA_HOME}/bin/impala-config.sh\"; fi" >> ${USER_HOME}/.bashrc \
-    && echo "if [[ -d \"\${IMPALA_HOME}\" ]]; then cd \${IMPALA_HOME}; fi" >> ${USER_HOME}/.bashrc \
+    && echo ". \"\${IMPALA_HOME}/bin/impala-config.sh\"" >> ${USER_HOME}/.bashrc \
+    && echo ". \"\${IMPALA_HOME}/bin/set-classpath.sh\"" >> ${USER_HOME}/.bashrc \
+    && echo "cd \${IMPALA_HOME}" >> ${USER_HOME}/.bashrc \
     && echo >> /etc/sysctl.conf \
     && echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf \
     && sysctl -p
@@ -47,20 +47,20 @@ RUN apt-get update \
 USER ${USER_UID}:${USER_GID}
 
 RUN --mount=type=bind,source=.,target=/tmp/impala \
-    cp -R /tmp/impala/ "${USER_IMPALA_DIR}" \
-    && ls -la "${USER_IMPALA_DIR}" \
+    cp -R /tmp/impala/ "${IMPALA_HOME}" \
+    && ls -la "${IMPALA_HOME}" \
     && mkdir "${USER_HOME}/.ssh" \
     && chmod 700 "${USER_HOME}/.ssh" \
     && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > ${USER_HOME}/.ssh/known_hosts \
-    && curl -Lo "${USER_IMPALA_DIR}/.git/hooks/commit-msg" https://gerrit.cloudera.org/tools/hooks/commit-msg \
-    && chmod 755 "${USER_IMPALA_DIR}/.git/hooks/commit-msg" \
-    && cd ${USER_IMPALA_DIR} \
+    && curl -Lo "${IMPALA_HOME}/.git/hooks/commit-msg" https://gerrit.cloudera.org/tools/hooks/commit-msg \
+    && chmod 755 "${IMPALA_HOME}/.git/hooks/commit-msg" \
+    && cd ${IMPALA_HOME} \
     && echo "[STATUS] - install virtualenv" \
     && pip3 install virtualenv \
     && echo "[STATUS] - starting system bootstrap" \
     && echo "yes" | ./bin/bootstrap_system.sh \
     && echo "[STATUS] - sourcing impala-config.sh" \
-    && source "${USER_IMPALA_DIR}/bin/impala-config.sh" \
+    && . "${IMPALA_HOME}/bin/impala-config.sh" \
     && echo "[STATUS] - build all" \
     && ./buildall.sh -noclean -skiptests \
     && echo "[STATUS] - starting create-test-configuration.sh" \

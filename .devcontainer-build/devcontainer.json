@@ -21,8 +21,14 @@
   "customizations": {
     "vscode": {
       "settings": {
-        "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
-        "telemetry.telemetryLevel": "off"
+        "cmake.cmakePath": "${localEnv:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${localEnv:IMPALA_CMAKE_VERSION}/bin/cmake",
+        "cmake.showSystemKits": false,
+        "cmake.sourceDirectory": "${workspaceFolder}",
+        "telemetry.telemetryLevel": "off",
+        "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx16G -Xms100m -Xlog:disable",
+        "java.compile.nullAnalysis.mode": "automatic",
+		    "java.configuration.updateBuildConfiguration": "automatic",
+		    "java.debug.settings.onBuildFailureProceed": true
       },
       "extensions": [
         "ms-vscode.cmake-tools",
