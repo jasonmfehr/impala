@@ -71,4 +71,3 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && cp .devcontainer-build/vscode.workspace impala.code-workspace
 
 ENTRYPOINT ["/home/impdev/impala/.devcontainer-build/entrypoint.sh"]
-

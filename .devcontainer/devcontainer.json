@@ -1,30 +1,8 @@
 {
+  "image": "jasonmfehr/impaladev:latest",
   "name": "Impala Dev",
   "remoteUser": "impdev",
   "containerUser": "impdev",
-  "workspaceMount": "type=volume,source=vol-impaladev14,target=/home/impdev/impala",
   "workspaceFolder": "/home/impdev/impala",
-  "updateRemoteUserUID": false,
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "ms-vscode.cmake-tools",
-        "llvm-vs-code-extensions.vscode-clangd",
-        "vadimcn.vscode-lldb",
-        "webfreak.debug",
-        "vscjava.vscode-java-pack",
-        "ms-python.python",
-        "mohsen1.prettify-json",
-        "alefragnani.bookmarks",
-        "coolchyni.beyond-debug",
-        "ms-vscode.cpptools",
-        "ms-vscode.cpptools-extension-pack"
-      ],
-      "settings": {
-        "remote.extensionKind": {
-          "ms-vscode.remote-ssh": ["ui"]
-        }
-      }
-    }
-  }
+  "updateRemoteUserUID": true
 }

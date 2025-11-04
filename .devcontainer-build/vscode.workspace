@@ -130,6 +130,10 @@
 		},
 		"java.compile.nullAnalysis.mode": "automatic",
 		"java.configuration.updateBuildConfiguration": "automatic",
-		"java.debug.settings.onBuildFailureProceed": true
+		"java.debug.settings.onBuildFailureProceed": true,
+		"cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
+		"cmake.showSystemKits": false,
+		"cmake.sourceDirectory": "${workspaceFolder}",
+		"telemetry.telemetryLevel": "off"
 	}
 }
