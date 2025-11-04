@@ -12,7 +12,7 @@ ARG LOCALE=en_US.UTF-8
 # Specifies the default timezone
 ARG TZ="America/Los_Angeles"
 
-ARG IMPALA_BUILD_THREADS=16
+ARG IMPALA_BUILD_THREADS=12
 
 ENV DEBIAN_FRONTEND=noninteractive
 
