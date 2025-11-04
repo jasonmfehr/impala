@@ -68,9 +68,7 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && git remote rm origin || true \
     && git remote rm upstream || true \
     && git remote add upstream https://github.com/apache/impala \
-    && cp .devcontainer-build/vscode.workspace impala.code-workspace \
-    && mkdir .vscode \
-    && cp .devcontainer-build/vscode.settings.json .vscode/settings.json
+    && cp .devcontainer-build/vscode.workspace impala.code-workspace
 
 ENTRYPOINT ["/home/impdev/impala/.devcontainer-build/entrypoint.sh"]
 

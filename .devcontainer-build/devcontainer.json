@@ -21,7 +21,6 @@
   "customizations": {
     "vscode": {
       "settings": {
-        "autoOpenWorkspace.enableAutoOpenAlwaysFirst": true,
         "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
         "telemetry.telemetryLevel": "off"
       },
@@ -34,7 +33,6 @@
         "ms-python.python",
         "mohsen1.prettify-json",
         "alefragnani.bookmarks",
-        "zoma.vscode-auto-open-workspace",
         "coolchyni.beyond-debug",
         "ms-vscode.cpptools",
         "ms-vscode.cpptools-extension-pack"

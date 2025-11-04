@@ -1,5 +1,0 @@
-{
-  "autoOpenWorkspace.enableAutoOpenAlwaysFirst": true,
-  "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
-  "telemetry.telemetryLevel": "off"
-}
