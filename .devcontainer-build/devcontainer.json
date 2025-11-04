@@ -14,11 +14,17 @@
       "--add-host=buildkitsandbox:127.0.0.1"
     ]
   },
+  "updateRemoteUserUID": false,
   "features": {
     "ghcr.io/devcontainers-extra/features/vscode-server:1": {}
   },
   "customizations": {
     "vscode": {
+      "settings": {
+        "autoOpenWorkspace.enableAutoOpenAlwaysFirst": true,
+        "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
+        "telemetry.telemetryLevel": "off"
+      },
       "extensions": [
         "ms-vscode.cmake-tools",
         "llvm-vs-code-extensions.vscode-clangd",

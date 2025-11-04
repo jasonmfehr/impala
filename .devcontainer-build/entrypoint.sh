@@ -10,8 +10,10 @@ sudo service postgresql start
 echo "PostgreSQL started."
 
 echo "Starting supporting services..."
+source ~/.bashrc
 /bin/bash /home/impdev/impala/testdata/bin/run-all.sh
 echo "Supporting services started."
 
+echo
 echo "Initialization finished. Container is ready"
 sleep infinity
