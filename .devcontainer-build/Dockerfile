@@ -48,19 +48,19 @@ USER ${USER_UID}:${USER_GID}
 
 RUN --mount=type=bind,source=.,target=/tmp/impala \
     cp -R /tmp/impala/ "${IMPALA_HOME}" \
-    && ls -la "${IMPALA_HOME}" \
-    && mkdir "${USER_HOME}/.ssh" \
-    && chmod 700 "${USER_HOME}/.ssh" \
-    && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > ${USER_HOME}/.ssh/known_hosts \
-    && curl -Lo "${IMPALA_HOME}/.git/hooks/commit-msg" https://gerrit.cloudera.org/tools/hooks/commit-msg \
-    && chmod 755 "${IMPALA_HOME}/.git/hooks/commit-msg" \
     && cd ${IMPALA_HOME} \
+    && ls -la \
+    && mkdir .ssh \
+    && chmod 700 .ssh \
+    && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > .ssh/known_hosts \
+    && curl -Lo .git/hooks/commit-msg https://gerrit.cloudera.org/tools/hooks/commit-msg \
+    && chmod 755 .git/hooks/commit-msg \
     && echo "[STATUS] - install virtualenv" \
     && pip3 install virtualenv \
     && echo "[STATUS] - starting system bootstrap" \
     && echo "yes" | ./bin/bootstrap_system.sh \
     && echo "[STATUS] - sourcing impala-config.sh" \
-    && . "${IMPALA_HOME}/bin/impala-config.sh" \
+    && . bin/impala-config.sh \
     && echo "[STATUS] - build all" \
     && ./buildall.sh -noclean -skiptests \
     && echo "[STATUS] - starting create-test-configuration.sh" \
@@ -68,6 +68,14 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && git remote rm origin || true \
     && git remote rm upstream || true \
     && git remote add upstream https://github.com/apache/impala \
-    && cp .devcontainer-build/vscode.workspace impala.code-workspace
+    && cp .devcontainer-build/vscode.workspace "${USER_HOME}/impala.code-workspace" \
+    && echo "[STATUS] - creating impala tar" \
+    && find infra/python/env-gcc* -print0 | xargs -0 tar -cf "${USER_HOME}/impala.tar" \
+    && find infra/python/deps -name '*.tar*' -print0 | xargs -0 tar -rf "${USER_HOME}/impala.tar" \
+    && tar -rf "${USER_HOME}/impala.tar" toolchain \
+    && gzip "${USER_HOME}/impala.tar" \
+    && cp .devcontainer-build/entrypoint.sh "${USER_HOME}/entrypoint.sh" \
+    && cd "${USER_HOME}" \
+    && rm -rf impala
 
-ENTRYPOINT ["/home/impdev/impala/.devcontainer-build/entrypoint.sh"]
+ENTRYPOINT "${USER_HOME}/entrypoint.sh"
