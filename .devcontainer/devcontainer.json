@@ -1,8 +1,10 @@
 {
   "image": "jasonmfehr/impaladev:latest",
   "name": "Impala Dev",
+  "workspaceMount": "type=volume,source=impaladevctr,target=/home/impdev/impala",
+  "workspaceFolder": "/home/impdev/impala",
   "remoteUser": "impdev",
   "containerUser": "impdev",
-  "workspaceFolder": "/home/impdev/impala",
-  "updateRemoteUserUID": true
+  "updateRemoteUserUID": false,
+  "onCreateCommand": "echo 'changing folder permissions'; sudo chown impdev:impdev /home/impdev/impala; tar -xf /home/impdev/impala.tar.gz -C /home/impdev/impala/; rm /home/impdev/impala.tar.gz; mv /home/impdev/impala.code-workspace /home/impdev/impala/"
 }
