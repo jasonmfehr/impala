@@ -12,9 +12,15 @@ ARG LOCALE=en_US.UTF-8
 ARG TZ="America/Los_Angeles"
 
 ARG IMPALA_BUILD_THREADS=12
+ARG IMPALA_CMAKE_VERSION
+ARG IMPALA_GCC_VERSION
+ARG TOOLCHAIN_PACKAGES_RELATIVE_PATH
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV IMPALA_HOME=${USER_HOME}/impala
+ENV IMPALA_CMAKE_VERSION=${IMPALA_CMAKE_VERSION}
+ENV IMPALA_GCC_VERSION=${IMPALA_GCC_VERSION}
+ENV IMPALA_TOOLCHAIN_PACKAGES_HOME=${IMPALA_HOME}/${TOOLCHAIN_PACKAGES_RELATIVE_PATH}
 
 SHELL ["/bin/bash", "-c"]
 
@@ -48,7 +54,7 @@ USER ${USER_UID}:${USER_GID}
 
 RUN --mount=type=bind,source=.,target=/tmp/impala \
     cp -R /tmp/impala/ "${IMPALA_HOME}" \
-    && cd ${IMPALA_HOME} \
+    && cd "${IMPALA_HOME}" \
     && ls -la \
     && mkdir .ssh \
     && chmod 700 .ssh \
@@ -62,20 +68,16 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && echo "[STATUS] - sourcing impala-config.sh" \
     && . bin/impala-config.sh \
     && echo "[STATUS] - build all" \
-    && ./buildall.sh -noclean -skiptests \
+    && ./buildall.sh -noclean -notests \
     && echo "[STATUS] - starting create-test-configuration.sh" \
     && ./bin/create-test-configuration.sh -create_metastore \
+    && rm -f be/build/debug/util/impala-profile-tool \
+    && git reflog expire --expire=30.days.ago --all \
+    && git gc --aggressive --prune=now \
     && git remote rm origin || true \
     && git remote rm upstream || true \
     && git remote add upstream https://github.com/apache/impala \
-    && cp .devcontainer-build/vscode.workspace "${USER_HOME}/impala.code-workspace" \
-    && echo "[STATUS] - creating impala tar" \
-    && find infra/python/env-gcc* -print0 | xargs -0 tar -cf "${USER_HOME}/impala.tar" \
-    && find infra/python/deps -name '*.tar*' -print0 | xargs -0 tar -rf "${USER_HOME}/impala.tar" \
-    && tar -rf "${USER_HOME}/impala.tar" toolchain \
-    && gzip "${USER_HOME}/impala.tar" \
-    && cp .devcontainer-build/entrypoint.sh "${USER_HOME}/entrypoint.sh" \
-    && cd "${USER_HOME}" \
-    && rm -rf impala
+    && mkdir -p "${IMPALA_HOME}/.vscode" \
+    && cp .devcontainer-build/cmake-kits.json "${IMPALA_HOME}/.vscode"
 
-ENTRYPOINT "${USER_HOME}/entrypoint.sh"
+ENTRYPOINT "${IMPALA_HOME}/.devcontainer-build/entrypoint.sh"

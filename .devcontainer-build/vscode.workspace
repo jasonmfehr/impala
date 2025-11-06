@@ -1,16 +1,16 @@
 {
 	"folders": [
 		{
+			"name": "be",
+			"path": "be"
+		},
+		{
 			"name": "bin",
 			"path": "bin"
 		},
 		{
 			"name": "common",
 			"path": "common"
-		},
-		{
-			"name": "be",
-			"path": "be"
 		},
 		{
 			"name": "fe",
@@ -132,6 +132,7 @@
 		"java.configuration.updateBuildConfiguration": "automatic",
 		"java.debug.settings.onBuildFailureProceed": true,
 		"cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
+		"cmake.additionalKits": ["${workspaceFolder}/.vscode/cmake-kits.json"],
 		"cmake.showSystemKits": false,
 		"cmake.sourceDirectory": "${workspaceFolder}",
 		"telemetry.telemetryLevel": "off"
