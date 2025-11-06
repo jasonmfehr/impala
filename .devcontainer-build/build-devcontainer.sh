@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-IMPALA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
+export IMPALA_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"/..
 
 if [[ -z "${PLATFORM:-}" ]]; then
   if [[ "$(uname -m)" == "x86_64" ]]; then
@@ -11,13 +11,12 @@ if [[ -z "${PLATFORM:-}" ]]; then
   fi
 fi
 
-. "${IMPALA_ROOT}/bin/impala-config.sh"
+ . bin/impala-config.sh --skip_java_detection
+ export IMPALA_TOOLCHAIN_PACKAGES_RELPATH="${IMPALA_TOOLCHAIN_PACKAGES_HOME#"${IMPALA_HOME}"}"
+
 devcontainer \
   build \
-  --workspace-folder="${IMPALA_ROOT}" \
+  --workspace-folder="${IMPALA_HOME}" \
   --config=".devcontainer-build/devcontainer.json" \
   --image-name="jasonmfehr/impaladev:latest" \
   --platform "${PLATFORM}" \
-  --build-arg "IMPALA_CMAKE_VERSION=${IMPALA_CMAKE_VERSION}" \
-  --build-arg "IMPALA_GCC_VERSION=${IMPALA_GCC_VERSION}" \
-  --build-arg "TOOLCHAIN_PACKAGES_RELATIVE_PATH=${IMPALA_TOOLCHAIN_PACKAGES_HOME#"${IMPALA_HOME}"}"

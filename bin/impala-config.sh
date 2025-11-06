@@ -34,6 +34,21 @@
 # this script because scripts outside this repository may need to be updated and that
 # is not practical at this time.
 
+# parse command line options
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    --skip_java_detection)
+      SKIP_JAVA_DETECTION=1
+      ;;
+    *)
+      echo "Unknown option: $1"
+      return 1
+      ;;
+  esac
+  shift
+done
+
 if ! [[ "'$IMPALA_HOME'" =~ [[:blank:]] ]]; then
   if [ -z "$IMPALA_HOME" ]; then
     if [[ ! -z "$ZSH_NAME" ]]; then
@@ -494,88 +509,95 @@ else
   export IMPALA_OZONE_URL=${CDP_OZONE_URL-}
 fi
 
-# It is important to have a coherent view of the JAVA_HOME and JAVA executable.
-# The JAVA_HOME should be determined first, then the JAVA executable should be
-# derived from JAVA_HOME. For development, it is useful to be able to specify
-# the JDK version as part of bin/impala-config-local.sh
-
-# Decision tree:
-# if IMPALA_JDK_VERSION is set, look for that version based on known locations
-# else if JAVA_HOME is set, use it
-# else look for system JDK
-
-# Set package variables for Docker builds and OS-specific detection.
-. "$IMPALA_HOME/bin/impala-config-java.sh"
-
-DETECTED_JAVA_HOME=${JAVA_HOME:-}
-if [[ -z "${IMPALA_JDK_VERSION:-}" ]]; then
-  # IMPALA_JDK_VERSION is empty or unset. Use JAVA_HOME or detect system default.
-  if [[ -z "${DETECTED_JAVA_HOME:-}" ]]; then
-    # Try to detect the system's JAVA_HOME
-    # If javac exists, then the system has a Java SDK (JRE does not have javac).
-    # Follow the symbolic links and use this to determine the system's JAVA_HOME.
-    DETECTED_JAVA_HOME="/usr/java/default"
-    if [ -n "$(which javac)" ]; then
-      DETECTED_JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))
-    fi
-  fi
+SKIP_JAVA_DETECTION=${SKIP_JAVA_DETECTION:-0}
+if [[ "${SKIP_JAVA_DETECTION}" == "1" ]]; then
+  echo "Skipping Java detection as requested."
+  JAVA_HOME="**JAVA DETECTION SKIPPED**"
+  IMPALA_JAVA_TARGET="**JAVA DETECTION SKIPPED**"
 else
-  # Now, we are looking for a specific version, and that will depend on the
-  # distribution. Currently, this is implemented for Redhat and Ubuntu.
-  DISTRIBUTION=Unknown
-  if [[ -f /etc/redhat-release ]]; then
-    echo "Identified Redhat image."
-    DISTRIBUTION=Redhat
+  # It is important to have a coherent view of the JAVA_HOME and JAVA executable.
+  # The JAVA_HOME should be determined first, then the JAVA executable should be
+  # derived from JAVA_HOME. For development, it is useful to be able to specify
+  # the JDK version as part of bin/impala-config-local.sh
+
+  # Decision tree:
+  # if IMPALA_JDK_VERSION is set, look for that version based on known locations
+  # else if JAVA_HOME is set, use it
+  # else look for system JDK
+
+  # Set package variables for Docker builds and OS-specific detection.
+  . "$IMPALA_HOME/bin/impala-config-java.sh"
+
+  DETECTED_JAVA_HOME=${JAVA_HOME:-}
+  if [[ -z "${IMPALA_JDK_VERSION:-}" ]]; then
+    # IMPALA_JDK_VERSION is empty or unset. Use JAVA_HOME or detect system default.
+    if [[ -z "${DETECTED_JAVA_HOME:-}" ]]; then
+      # Try to detect the system's JAVA_HOME
+      # If javac exists, then the system has a Java SDK (JRE does not have javac).
+      # Follow the symbolic links and use this to determine the system's JAVA_HOME.
+      DETECTED_JAVA_HOME="/usr/java/default"
+      if [ -n "$(which javac)" ]; then
+        DETECTED_JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))
+      fi
+    fi
   else
-    source /etc/lsb-release
-    if [[ $DISTRIB_ID == Ubuntu ]]; then
-      echo "Identified Ubuntu image."
-      DISTRIBUTION=Ubuntu
+    # Now, we are looking for a specific version, and that will depend on the
+    # distribution. Currently, this is implemented for Redhat and Ubuntu.
+    DISTRIBUTION=Unknown
+    if [[ -f /etc/redhat-release ]]; then
+      echo "Identified Redhat image."
+      DISTRIBUTION=Redhat
+    else
+      source /etc/lsb-release
+      if [[ $DISTRIB_ID == Ubuntu ]]; then
+        echo "Identified Ubuntu image."
+        DISTRIBUTION=Ubuntu
+      fi
+    fi
+    if [[ "${DISTRIBUTION}" == "Unknown" ]]; then
+      echo "ERROR: auto-detection of JAVA_HOME only supported for Ubuntu and RedHat."
+      echo "Set JAVA_HOME to use a specific location."
+      return 1
+    fi
+
+    JVMS_PATH=/usr/lib/jvm
+    if [[ "${DISTRIBUTION}" == "Ubuntu" ]]; then
+      JAVA_PACKAGE_NAME="java-${UBUNTU_JAVA_VERSION}-openjdk-${UBUNTU_PACKAGE_ARCH}"
+      DETECTED_JAVA_HOME="${JVMS_PATH}/${JAVA_PACKAGE_NAME}"
+    elif [[ "${DISTRIBUTION}" == "Redhat" ]]; then
+      DETECTED_JAVA_HOME="${JVMS_PATH}/java-${REDHAT_JAVA_VERSION}"
+    fi
+
+    if [[ ! -d "${DETECTED_JAVA_HOME}" ]]; then
+      echo "ERROR: Could not detect Java ${IMPALA_JDK_VERSION}."\
+          "${DETECTED_JAVA_HOME} is not a directory."
+      return 1
     fi
   fi
-  if [[ "${DISTRIBUTION}" == "Unknown" ]]; then
-    echo "ERROR: auto-detection of JAVA_HOME only supported for Ubuntu and RedHat."
-    echo "Set JAVA_HOME to use a specific location."
+
+  # Update JAVA_HOME to the detected JAVA_HOME if it exists.
+  if [ ! -d "${DETECTED_JAVA_HOME}" ]; then
+    echo "JAVA_HOME must be set to the location of your JDK!"
     return 1
   fi
-
-  JVMS_PATH=/usr/lib/jvm
-  if [[ "${DISTRIBUTION}" == "Ubuntu" ]]; then
-    JAVA_PACKAGE_NAME="java-${UBUNTU_JAVA_VERSION}-openjdk-${UBUNTU_PACKAGE_ARCH}"
-    DETECTED_JAVA_HOME="${JVMS_PATH}/${JAVA_PACKAGE_NAME}"
-  elif [[ "${DISTRIBUTION}" == "Redhat" ]]; then
-    DETECTED_JAVA_HOME="${JVMS_PATH}/java-${REDHAT_JAVA_VERSION}"
-  fi
-
-  if [[ ! -d "${DETECTED_JAVA_HOME}" ]]; then
-    echo "ERROR: Could not detect Java ${IMPALA_JDK_VERSION}."\
-        "${DETECTED_JAVA_HOME} is not a directory."
+  export JAVA_HOME="${DETECTED_JAVA_HOME}"
+  export JAVA="$JAVA_HOME/bin/java"
+  if [[ ! -e "$JAVA" ]]; then
+    echo "Could not find java binary at $JAVA" >&2
     return 1
   fi
-fi
+  # Target the Java version matching the JDK.
+  export IMPALA_JAVA_TARGET=$("$JAVA" -version 2>&1 | awk -F'[\".]' '/version/ {print $2}')
+  if [[ $IMPALA_JAVA_TARGET -eq 1 ]]; then
+    # Capture x from 1.x, i.e. Java 1.8 -> 8.
+    IMPALA_JAVA_TARGET=$("$JAVA" -version 2>&1 | awk -F'[\".]' '/version/ {print $3}')
+  fi
 
-# Update JAVA_HOME to the detected JAVA_HOME if it exists.
-if [ ! -d "${DETECTED_JAVA_HOME}" ]; then
-  echo "JAVA_HOME must be set to the location of your JDK!"
-  return 1
+  # Java libraries required by executables and java tests.
+  export LIB_JAVA=$(find "${JAVA_HOME}/" -name libjava.so | head -1)
+  export LIB_JSIG=$(find "${JAVA_HOME}/" -name libjsig.so | head -1)
+  export LIB_JVM=$(find "${JAVA_HOME}/" -name libjvm.so  | head -1)
 fi
-export JAVA_HOME="${DETECTED_JAVA_HOME}"
-export JAVA="$JAVA_HOME/bin/java"
-if [[ ! -e "$JAVA" ]]; then
-  echo "Could not find java binary at $JAVA" >&2
-  return 1
-fi
-# Target the Java version matching the JDK.
-export IMPALA_JAVA_TARGET=$("$JAVA" -version 2>&1 | awk -F'[\".]' '/version/ {print $2}')
-if [[ $IMPALA_JAVA_TARGET -eq 1 ]]; then
-  # Capture x from 1.x, i.e. Java 1.8 -> 8.
-  IMPALA_JAVA_TARGET=$("$JAVA" -version 2>&1 | awk -F'[\".]' '/version/ {print $3}')
-fi
-
-# Java libraries required by executables and java tests.
-export LIB_JAVA=$(find "${JAVA_HOME}/" -name libjava.so | head -1)
-export LIB_JSIG=$(find "${JAVA_HOME}/" -name libjsig.so | head -1)
-export LIB_JVM=$(find "${JAVA_HOME}/" -name libjvm.so  | head -1)
 
 #########################################################################################
 # Below here are variables that can be overridden by impala-config-*.sh and environment #
@@ -1283,9 +1305,10 @@ else
       | sort | uniq`
 fi
 
-# Check for minimum required Java version
-if [[ $IMPALA_JAVA_TARGET -le 7 ]]; then
-  cat << EOF
+if [[ "${SKIP_JAVA_DETECTION}" != "1" ]]; then
+  # Check for minimum required Java version
+  if [[ $IMPALA_JAVA_TARGET -le 7 ]]; then
+    cat << EOF
 
 WARNING: Your development environment is configured for Hadoop 3 and Java
 $IMPALA_JAVA_TARGET. Hadoop 3 requires at least Java 8. Your JAVA binary
@@ -1293,5 +1316,6 @@ currently points to $JAVA and reports the following version:
 
 EOF
   $JAVA -version
+fi
   echo
 fi

@@ -135,6 +135,8 @@
 		"cmake.additionalKits": ["${workspaceFolder}/.vscode/cmake-kits.json"],
 		"cmake.showSystemKits": false,
 		"cmake.sourceDirectory": "${workspaceFolder}",
-		"telemetry.telemetryLevel": "off"
+		"cmake.defaultActiveFolder": "${workspaceFolder}",
+		"cmake.autoSelectActiveFolder": false,
+		"cmake.enableAutomaticKitScan": false
 	}
 }

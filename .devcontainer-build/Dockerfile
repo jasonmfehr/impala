@@ -77,7 +77,7 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && git remote rm origin || true \
     && git remote rm upstream || true \
     && git remote add upstream https://github.com/apache/impala \
-    && mkdir -p "${IMPALA_HOME}/.vscode" \
-    && cp .devcontainer-build/cmake-kits.json "${IMPALA_HOME}/.vscode"
+    && mkdir -p "${USER_HOME}/.local/share/CMakeTools/" \
+    && cp .devcontainer-build/cmake-kits.json "${USER_HOME}/.local/share/CMakeTools/cmake-tools-kits.json" \
 
 ENTRYPOINT "${IMPALA_HOME}/.devcontainer-build/entrypoint.sh"

@@ -12,7 +12,12 @@
       "--add-host=ip46.impala.test:127.0.0.1",
       "--add-host=ip46:127.0.0.1",
       "--add-host=buildkitsandbox:127.0.0.1"
-    ]
+    ],
+    "args": {
+      "IMPALA_CMAKE_VERSION": "${localEnv:IMPALA_CMAKE_VERSION}",
+      "IMPALA_GCC_VERSION": "${localEnv:IMPALA_GCC_VERSION}",
+      "TOOLCHAIN_PACKAGES_RELATIVE_PATH": "${localEnv:IMPALA_TOOLCHAIN_PACKAGES_RELPATH}"
+    }
   },
   "updateRemoteUserUID": false,
   "features": {
@@ -21,14 +26,8 @@
   "customizations": {
     "vscode": {
       "settings": {
-        "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
-        "cmake.showSystemKits": false,
-        "cmake.sourceDirectory": "${workspaceFolder}",
-        "telemetry.telemetryLevel": "off",
-        "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx16G -Xms100m -Xlog:disable",
-        "java.compile.nullAnalysis.mode": "automatic",
-		    "java.configuration.updateBuildConfiguration": "automatic",
-		    "java.debug.settings.onBuildFailureProceed": true
+        "autoOpenWorkspace.enableAutoOpenAlwaysFirst": true,
+        "telemetry.telemetryLevel": "off"
       },
       "extensions": [
         "ms-vscode.cmake-tools",
@@ -41,7 +40,8 @@
         "alefragnani.bookmarks",
         "coolchyni.beyond-debug",
         "ms-vscode.cpptools",
-        "ms-vscode.cpptools-extension-pack"
+        "ms-vscode.cpptools-extension-pack",
+        "zoma.vscode-auto-open-workspace"
       ]
     }
   }
