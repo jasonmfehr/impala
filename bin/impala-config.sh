@@ -34,21 +34,6 @@
 # this script because scripts outside this repository may need to be updated and that
 # is not practical at this time.
 
-# parse command line options
-while [ $# -gt 0 ]
-do
-  case "$1" in
-    --skip_java_detection)
-      SKIP_JAVA_DETECTION=1
-      ;;
-    *)
-      echo "Unknown option: $1"
-      return 1
-      ;;
-  esac
-  shift
-done
-
 if ! [[ "'$IMPALA_HOME'" =~ [[:blank:]] ]]; then
   if [ -z "$IMPALA_HOME" ]; then
     if [[ ! -z "$ZSH_NAME" ]]; then

@@ -68,7 +68,7 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && echo "[STATUS] - sourcing impala-config.sh" \
     && . bin/impala-config.sh \
     && echo "[STATUS] - build all" \
-    && ./buildall.sh -noclean -notests \
+    && ./buildall.sh -notests \
     && echo "[STATUS] - starting create-test-configuration.sh" \
     && ./bin/create-test-configuration.sh -create_metastore \
     && rm -f be/build/debug/util/impala-profile-tool \
@@ -77,7 +77,8 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && git remote rm origin || true \
     && git remote rm upstream || true \
     && git remote add upstream https://github.com/apache/impala \
+    && cp .devcontainer-build/vscode.workspace "${IMPALA_HOME}/impala.code-workspace" \
     && mkdir -p "${USER_HOME}/.local/share/CMakeTools/" \
-    && cp .devcontainer-build/cmake-kits.json "${USER_HOME}/.local/share/CMakeTools/cmake-tools-kits.json" \
+    && cp .devcontainer-build/cmake-kits.json "${USER_HOME}/.local/share/CMakeTools/cmake-tools-kits.json"
 
 ENTRYPOINT "${IMPALA_HOME}/.devcontainer-build/entrypoint.sh"
