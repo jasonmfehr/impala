@@ -81,4 +81,4 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && mkdir -p "${USER_HOME}/.local/share/CMakeTools/" \
     && cp .devcontainer-build/cmake-kits.json "${USER_HOME}/.local/share/CMakeTools/cmake-tools-kits.json"
 
-ENTRYPOINT "${IMPALA_HOME}/.devcontainer-build/entrypoint.sh"
+ENTRYPOINT "${IMPALA_HOME}/.devcontainer/entrypoint.sh"

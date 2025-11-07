@@ -137,6 +137,8 @@
 		"cmake.sourceDirectory": "${workspaceFolder}",
 		"cmake.defaultActiveFolder": "${workspaceFolder}",
 		"cmake.autoSelectActiveFolder": false,
-		"cmake.enableAutomaticKitScan": false
+		"cmake.enableAutomaticKitScan": false,
+		"cmake.ignoreCMakeListsMissing": true,
+		"remote.autoForwardPorts": false
 	}
 }

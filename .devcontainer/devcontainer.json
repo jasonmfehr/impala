@@ -1,9 +1,10 @@
 {
   "image": "jasonmfehr/impaladev:latest",
   "name": "Impala Dev",
-  "workspaceMount": "type=volume,source=impaladevctr,target=/home/impdev/impala",
+  "workspaceMount": "type=volume,target=/home/impdev/impala",
   "workspaceFolder": "/home/impdev/impala",
   "remoteUser": "impdev",
   "containerUser": "impdev",
-  "updateRemoteUserUID": false
+  "updateRemoteUserUID": false,
+  "postStartCommand": "/home/impdev/impala/.devcontainer-build/entrypoint.sh"
 }
