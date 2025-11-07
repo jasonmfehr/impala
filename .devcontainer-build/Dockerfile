@@ -34,9 +34,6 @@ EXPOSE 5432
 # Ranger UI
 EXPOSE 6080
 
-# Jaeger UI
-EXPOSE 16686
-
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update \

@@ -7,6 +7,9 @@
   "containerUser": "impdev",
   "updateRemoteUserUID": false,
   "postStartCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
+  "forwardPorts": [
+    55888
+  ],
   "appPort": [
     "25000:25000",
     "25001:25001",
@@ -41,7 +44,6 @@
     "28008:28008",
     "28009:28009",
     "5432:5432",
-    "6080:6080",
-    "16686:16686"
+    "6080:6080"
   ]
 }
