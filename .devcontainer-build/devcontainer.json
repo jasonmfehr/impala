@@ -34,7 +34,6 @@
       },
       "extensions": [
         "ms-vscode.cmake-tools",
-        "llvm-vs-code-extensions.vscode-clangd",
         "vadimcn.vscode-lldb",
         "webfreak.debug",
         "vscjava.vscode-java-pack",
