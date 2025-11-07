@@ -68,12 +68,14 @@ RUN apt-get update \
 USER ${USER_UID}:${USER_GID}
 
 RUN --mount=type=bind,source=.,target=/tmp/impala \
-    cp -R /tmp/impala/ "${IMPALA_HOME}" \
+    mkdir "${USER_HOME}/.ssh" \
+    && chmod 700 "${USER_HOME}/.ssh" \
+    && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > "${USER_HOME}/.ssh/known_hosts" \
+    && echo "github.com github.infra.cloudera.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBIq4UUb+wKlwGnAoh04gzbGf63xOb1Sczuf2G6Sr4WoLm9a6cfEwspS1xi8k9TYyRYJZ90tnhLDCTrS0ZECyX4s=" >> "${USER_HOME}/.ssh/known_hosts" \
+    && chmod 600 "${USER_HOME}/.ssh/known_hosts" \
+    && cp -R /tmp/impala/ "${IMPALA_HOME}" \
     && cd "${IMPALA_HOME}" \
     && ls -la \
-    && mkdir .ssh \
-    && chmod 700 .ssh \
-    && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > .ssh/known_hosts \
     && curl -Lo .git/hooks/commit-msg https://gerrit.cloudera.org/tools/hooks/commit-msg \
     && chmod 755 .git/hooks/commit-msg \
     && echo "[STATUS] - install virtualenv" \
