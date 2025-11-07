@@ -19,6 +19,9 @@
       "TOOLCHAIN_PACKAGES_RELATIVE_PATH": "${localEnv:IMPALA_TOOLCHAIN_PACKAGES_RELPATH}"
     }
   },
+  "capAdd": [
+    "SYS_PTRACE"
+  ],
   "updateRemoteUserUID": false,
   "features": {
     "ghcr.io/devcontainers-extra/features/vscode-server:1": {}
