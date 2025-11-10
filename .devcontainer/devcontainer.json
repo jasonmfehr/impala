@@ -1,12 +1,18 @@
 {
   "image": "jasonmfehr/impaladev:latest",
-  "name": "Impala Dev",
+  "name": "ImpalaDev",
   "workspaceMount": "type=volume,target=/home/impdev/impala",
   "workspaceFolder": "/home/impdev/impala",
   "remoteUser": "impdev",
   "containerUser": "impdev",
   "updateRemoteUserUID": false,
+  "postCreateCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
   "postStartCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "32gb"
+  },
   "forwardPorts": [
     55888
   ],

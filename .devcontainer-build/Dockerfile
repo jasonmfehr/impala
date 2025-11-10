@@ -42,7 +42,7 @@ RUN apt-get update \
     && echo ${TZ} > /etc/timezone \
     && apt-get install -y ca-certificates \
     && update-ca-certificates \
-    && apt-get install -y sudo git binfmt-support openjdk-8-jdk psmisc vim locales curl wget openssh-server openssh-client python3-pip \
+    && apt-get install -y sudo git binfmt-support openjdk-8-jdk psmisc vim locales curl wget openssh-server openssh-client python3-pip emacs nano \
     && locale-gen en_US.UTF-8 hu_HU.UTF-8 hi_IN.UTF-8 \
     && addgroup --gid "${USER_GID}" ${USER_NAME} \
     && adduser --uid "${USER_UID}" --gid "${USER_GID}" --disabled-password --gecos '' --shell /bin/bash --home ${USER_HOME} ${USER_NAME} \
