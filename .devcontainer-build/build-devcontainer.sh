@@ -2,6 +2,7 @@
 set -euo pipefail
 
 export IMPALA_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export IMPALA_BUILD_THREADS="${IMPALA_BUILD_THREADS:-12}"
 
 if [[ -z "${PLATFORM:-}" ]]; then
   if [[ "$(uname -m)" == "x86_64" ]]; then
