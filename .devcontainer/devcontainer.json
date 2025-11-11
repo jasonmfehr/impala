@@ -10,8 +10,7 @@
   "postStartCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
   "hostRequirements": {
     "cpus": 4,
-    "memory": "16gb",
-    "storage": "32gb"
+    "memory": "16gb"
   },
   "forwardPorts": [
     55888

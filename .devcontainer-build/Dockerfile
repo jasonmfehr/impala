@@ -49,7 +49,6 @@ RUN apt-get update \
     && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     && echo >> ${USER_HOME}/.bashrc \
     && echo "export USER=${USER_NAME}" >> ${USER_HOME}/.bashrc \
-    && echo "export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> ${USER_HOME}/.bashrc \
     && echo "export IMPALA_HOME=\${HOME}/impala" >> ${USER_HOME}/.bashrc \
     && echo "export IMPALA_BUILD_THREADS=${IMPALA_BUILD_THREADS}" >> ${USER_HOME}/.bashrc \
     && echo "export IMPALA_LINKER=mold" >> ${USER_HOME}/.bashrc \
