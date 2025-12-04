@@ -153,6 +153,50 @@
         "name": "JavaSE-21",
         "path": "/usr/lib/jvm/java-21-openjdk",
       }
+    ],
+    "files.watcherExclude": {
+      "**/.git/objects/**": true,
+      "**/.git/subtree-cache/**": true,
+      "**/.hg/store/**": true,
+      "be/build/**": true,
+      "fe/build/**": true,
+      "infra/build/**": true,
+      "java/build/**": true,
+      "shell/build/**": true,
+      "testdata/build/**": true,
+      "tests/build/**": true,
+      "docs/build/**": true
+    }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Python Remote Tests",
+        "type": "python",
+        "request": "attach",
+        "connect": {
+          "host": "127.0.0.1",
+          "port": 5678
+        },
+        "justMyCode": false
+      },
+      {
+        "type": "java",
+        "name": "Coordinator 0 FE Debug",
+        "request": "attach",
+        "hostName": "localhost",
+        "port": 30000,
+        "projectName": "impala-frontend"
+      },
+      {
+        "type": "java",
+        "name": "JUnit FE Debug",
+        "request": "attach",
+        "hostName": "localhost",
+        "port": 8000,
+        "projectName": "impala-frontend"
+      }
     ]
   }
 }
