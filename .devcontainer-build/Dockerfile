@@ -64,6 +64,10 @@ RUN set -x \
     && echo "export IMPALA_LINKER=mold" >> ${USER_HOME}/.bashrc \
     && echo "export LD_LIBRARY_PATH=/usr/lib/$(uname -p)-linux-gnu" >> ${USER_HOME}/.bashrc \
     && echo "export LC_ALL=\"${LOCALE}\"" >> ${USER_HOME}/.bashrc \
+    && echo >> ${USER_HOME}/.bashrc \
+    && echo "get_current_branch() { local ref; ref=\$(git symbolic-ref --short HEAD 2>/dev/null); [ -n \"\$ref\" ] && echo \" [\$ref]\"; }" >> ${USER_HOME}/.bashrc \
+    && echo "export PS1='\\u:\\w\$(get_current_branch)\\\$ '" >> ${USER_HOME}/.bashrc \
+    && echo >> ${USER_HOME}/.bashrc \
     && echo "alias ga='git add'" >> ${USER_HOME}/.bashrc \
     && echo "alias gb='git branch'" >> ${USER_HOME}/.bashrc \
     && echo "alias gba='git branch -a'" >> ${USER_HOME}/.bashrc \
@@ -73,6 +77,7 @@ RUN set -x \
     && echo "alias gs='git status'" >> ${USER_HOME}/.bashrc \
     && echo "alias critique='pushd \"\${IMPALA_HOME}\" && ./bin/jenkins/critique-gerrit-review.py --dryrun; popd'" >> ${USER_HOME}/.bashrc \
     && echo "alias restart-minicluster='pushd \"\${IMPALA_HOME}\" && ./testdata/bin/run-all.sh; popd'" >> ${USER_HOME}/.bashrc \
+    && echo >> ${USER_HOME}/.bashrc \
     && echo "unset IMPALA_TOOLCHAIN_COMMIT_HASH" >> ${USER_HOME}/.bashrc \
     && echo ". \"\${IMPALA_HOME}/bin/impala-config.sh\"" >> ${USER_HOME}/.bashrc \
     && echo ". \"\${IMPALA_HOME}/bin/set-classpath.sh\"" >> ${USER_HOME}/.bashrc \
