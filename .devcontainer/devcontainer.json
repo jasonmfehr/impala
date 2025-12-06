@@ -1,13 +1,12 @@
 {
-  "image": "apache/impaladev:latest",
+  "image": "docker-sandbox.infra.cloudera.com/impaladev/devcontainer:latest-x86",
   "name": "ImpalaDev",
   "workspaceMount": "type=volume,target=/home/impdev/impala",
   "workspaceFolder": "/home/impdev/impala",
   "remoteUser": "impdev",
   "containerUser": "impdev",
   "updateRemoteUserUID": false,
-  "postCreateCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
-  "postStartCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
+  "postAttachCommand": "sleep 60;/home/impdev/impala/.devcontainer/entrypoint.sh",
   "runArgs": [
       "--add-host=ip4.impala.test:127.0.0.1",
       "--add-host=ip4:127.0.0.1",
