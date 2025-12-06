@@ -6,7 +6,7 @@
   "remoteUser": "impdev",
   "containerUser": "impdev",
   "updateRemoteUserUID": false,
-  "postAttachCommand": "sleep 60;/home/impdev/impala/.devcontainer/entrypoint.sh",
+  "postStartCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
   "runArgs": [
       "--add-host=ip4.impala.test:127.0.0.1",
       "--add-host=ip4:127.0.0.1",
