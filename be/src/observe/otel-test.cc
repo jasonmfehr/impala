@@ -76,6 +76,8 @@ TEST(OtelTest, QueriesTraced) {
   };
 
   runtest("SELECT * FROM foo");
+  runtest(" SELECT * FROM foo");
+  runtest("  SELECT * FROM foo");
   runtest("WITH alltypes_tiny1 AS (SELECT * FROM functional.alltypes)");
   runtest("INSERT INTO functional.alltypes (id) VALUES (99999)");
   runtest("CREATE TABLE foo.bar (id int, string_col string)");
@@ -95,7 +97,9 @@ TEST(OtelTest, QueriesTraced) {
   runtest("--comment1  \n  --comment2\nSELECT 1");
   runtest("--comment1  \n  --comment2  \n   SELECT 1");
   runtest("/*comment1*/SELECT 1");
+  runtest("/*comment1 /* comment-in-comment /*in comment*/ */ */SELECT 1");
   runtest("/*comment1*/ SELECT 1");
+  runtest("/*comment1*/SELECT 1");
   runtest("/*comment1*/\nSELECT 1");
   runtest("/*comment1*/  \n  SELECT 1");
   runtest("/*comment1*/  \n /* comment 2 */  \n SELECT 1");
@@ -119,6 +123,7 @@ TEST(OtelTest, QueriesTraced) {
   runtest("/*comment1*/SELECT `SELECT` from tbl");
   runtest("/*comment1*/  \n SELECT `SELECT` from tbl");
   runtest("/*comment1*/  --comment2 \n  SELECT `SELECT` from tbl");
+  runtest("/*/ comment */select * from tbl");
 
   auto run_newline_test = [&runtest](const string keyword, const string rest) -> void {
     runtest(strings::Substitute("$0\n$1", keyword, rest));
@@ -192,11 +197,13 @@ TEST(OtelTest, QueriesNotTraced) {
   runtest("/*comment1*/ /*comment 2 not terminated select 1");
   runtest("/*comment only*/");
   runtest("--comment only");
+  runtest(" --comment only");
   runtest("--comment only\n");
   runtest("--comment only\n--comment only 2");
   runtest("--comment only\n--comment only 2\n");
-  // TODO: Move to the QueriesTraced test case once IMPALA-14370 is fixed.
-  runtest(strings::Substitute("/*/ comment */select * from tbl"));
+  runtest("");
+  runtest(" ");
+  runtest("  ");
 
   // Beeswax queries are not traced.
   EXPECT_FALSE(should_otel_trace_query("SELECT * FROM foo", TSessionType::BEESWAX));

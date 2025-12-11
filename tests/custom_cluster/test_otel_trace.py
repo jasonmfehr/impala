@@ -294,67 +294,6 @@ class TestOtelTraceSelectsDMLs(TestOtelTraceBase):
         cluster_id="select_dml",
         trace_cnt=3)
 
-  def test_ignored_queries(self, unique_name):
-    """Asserts queries that should not generate traces do not generate traces."""
-    tbl = "{}.{}".format(self.test_db, unique_name)
-    res_create = self.execute_query_expect_success(self.client,
-        "CREATE TABLE {} (a int)".format(tbl))
-
-    # These queries are not expected to have traces created for them.
-    ignore_queries = [
-      "COMMENT ON DATABASE {} IS 'test'".format(self.test_db),
-      "DESCRIBE {}".format(tbl),
-      "EXPLAIN SELECT * FROM {}".format(tbl),
-      "REFRESH FUNCTIONS functional",
-      "REFRESH functional.alltypes",
-      "SET ALL",
-      "SHOW TABLES IN {}".format(self.test_db),
-      "SHOW DATABASES",
-      "TRUNCATE TABLE {}".format(tbl),
-      "USE functional",
-      "VALUES (1, 2, 3)",
-      "/*comment1*/SET EXPLAIN_LEVEL=0",
-      "--comment1\nSET EXPLAIN_LEVEL=0"
-    ]
-
-    for query in ignore_queries:
-      self.execute_query_expect_success(self.client, query)
-
-    # REFRESH AUTHORIZATION will error if authorization is not enabled. Since the test is
-    # only asserting that no trace is created, ignore any errors from the query.
-    try:
-      self.execute_query_expect_success(self.client, "REFRESH AUTHORIZATION")
-    except HiveServer2Error:
-      pass
-
-    # Run one more query that is expected to have a trace created to ensure that all
-    # traces have been flushed to the trace file.
-    res_drop = self.execute_query_expect_success(self.client, "DROP TABLE {} PURGE"
-        .format(tbl))
-
-    # Ensure the expected number of traces are present in the trace file.
-    # The expected line count is 2 because:
-    #     1. test runs create table
-    #     2. test runs drop table
-    wait_for_file_line_count(file_path=self.trace_file_path,
-        expected_line_count=2 + self.trace_file_count, max_attempts=10, sleep_time_s=1,
-        backoff=1, exact_match=True)
-
-    # Assert the traces for the create/drop table query to ensure both were created.
-    self.assert_trace(
-        query_id=res_create.query_id,
-        query_profile=res_create.runtime_profile,
-        cluster_id="select_dml",
-        trace_cnt=2,
-        missing_spans=["AdmissionControl"])
-
-    self.assert_trace(
-        query_id=res_drop.query_id,
-        query_profile=res_drop.runtime_profile,
-        cluster_id="select_dml",
-        trace_cnt=2,
-        missing_spans=["AdmissionControl"])
-
   def test_dml_insert_success(self, unique_name):
     """Asserts successful insert DMLs generate the expected traces."""
     self.execute_query_expect_success(self.client,

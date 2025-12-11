@@ -20,7 +20,6 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -104,9 +103,7 @@ DECLARE_string(ssl_minimum_version);
 
 // Constants
 static const string SCOPE_SPAN_NAME = "org.apache.impala.impalad.query";
-static const regex query_newline(
-    "(select|alter|compute|create|delete|drop|insert|invalidate|update|with)\\s*"
-    "(\n|\\s*\\\\*\\/)", regex::icase | regex::optimize | regex::nosubs);
+static const int LONGEST_SQL_KEYWORD = string("invalidate").length();
 
 // Holds the custom log handler for OpenTelemetry internal logs.
 static nostd::shared_ptr<LogHandler> otel_log_handler_;
@@ -115,17 +112,16 @@ static nostd::shared_ptr<LogHandler> otel_log_handler_;
 static const function<bool(std::string_view)> is_traceable_sql =
     [](std::string_view sql_str) -> bool {
       return
-          LIKELY(boost::algorithm::istarts_with(sql_str, "select ")
-              || boost::algorithm::istarts_with(sql_str, "alter ")
-              || boost::algorithm::istarts_with(sql_str, "compute ")
-              || boost::algorithm::istarts_with(sql_str, "create ")
-              || boost::algorithm::istarts_with(sql_str, "delete ")
-              || boost::algorithm::istarts_with(sql_str, "drop ")
-              || boost::algorithm::istarts_with(sql_str, "insert ")
-              || boost::algorithm::istarts_with(sql_str, "invalidate ")
-              || boost::algorithm::istarts_with(sql_str, "update ")
-              || boost::algorithm::istarts_with(sql_str, "with "))
-          || regex_search(sql_str.cbegin(), sql_str.cend(), query_newline);
+          LIKELY(boost::algorithm::istarts_with(sql_str, "select")
+              || boost::algorithm::istarts_with(sql_str, "alter")
+              || boost::algorithm::istarts_with(sql_str, "compute")
+              || boost::algorithm::istarts_with(sql_str, "create")
+              || boost::algorithm::istarts_with(sql_str, "delete")
+              || boost::algorithm::istarts_with(sql_str, "drop")
+              || boost::algorithm::istarts_with(sql_str, "insert")
+              || boost::algorithm::istarts_with(sql_str, "invalidate")
+              || boost::algorithm::istarts_with(sql_str, "update")
+              || boost::algorithm::istarts_with(sql_str, "with"));
     };
 
 namespace impala {
@@ -146,51 +142,47 @@ bool should_otel_trace_query(std::string_view sql,
     return false;
   }
 
-  if (LIKELY(is_traceable_sql(sql))) {
-    return true;
+  char sql_type[LONGEST_SQL_KEYWORD];
+  int process_index = 0;
+  int comment_count = 0;
+  bool in_single_line_comment = false;
+
+  for (int i=1; i<sql.length() && process_index < LONGEST_SQL_KEYWORD; i++) {
+    if (sql.at(i-1) == '/' && sql.at(i) == '*') {
+      // Multi-line comment started.
+      comment_count++;
+
+      // Skip one character ahead so the pattern '/*/' does not end the comment.
+      i++;
+    } else if(sql.at(i-1) == '*' && sql.at(i) == '/') {
+      // Multi-line comment ended.
+      DCHECK_GT(comment_count, 0);
+      comment_count--;
+    } else if(comment_count == 0 && sql.at(i-1) == '-' && sql.at(i-1) == '-') {
+      // Single line comment started.
+      in_single_line_comment = true;
+    } else if(in_single_line_comment && sql.at(i-1) == '\n') {
+      // Single line comment ended.
+      in_single_line_comment = false;
+    } else if(comment_count == 0 && !in_single_line_comment) {
+        // Not in a comment, ignore non-alphabetical characters.
+        if (sql.at(i-1) == ' ' || sql.at(i-1) == '\n') {
+          // Space or newline appears after the first SQL keyword.
+          if (is_traceable_sql(sql_type)) {
+            return true;
+          }
+        }
+
+        // Previous character is not in a comment, store it as long as it is alphabetical.
+        if (((int)sql.at(i-1) >= (int)'a' && sql.at(i-1) <= (int)'z')
+            || ((int)sql.at(i-1) >= (int)'A' && sql.at(i-1) <= (int)'Z')){
+          sql_type[process_index++] = sql.at(i-1);
+        }
+    }
   }
-
-  // Loop until all leading comments and whitespace are skipped.
-  while (true) {
-    if (boost::algorithm::istarts_with(sql, "/*")) {
-      // Handle leading inline comments
-      size_t end_comment = sql.find("*/");
-      if (end_comment != string_view::npos) {
-        sql = sql.substr(end_comment + 2);
-        continue;
-      }
-    } else if (boost::algorithm::istarts_with(sql, "--")) {
-      // Handle leading comment lines
-      size_t end_comment = sql.find("\n");
-      if (end_comment != string_view::npos) {
-        sql = sql.substr(end_comment + 1);
-        continue;
-      }
-    } else if (UNLIKELY(boost::algorithm::istarts_with(sql, " "))) {
-      // Handle leading whitespace. Since Impala removes leading whitespace from the SQL
-      // statement, this case only happens if the sql statement starts with inline
-      // comments or there is a leading space on the first non-comment line.
-      size_t end_comment = sql.find_first_not_of(" ");
-      if (end_comment != string_view::npos) {
-        sql = sql.substr(end_comment);
-        continue;
-      }
-    } else if (boost::algorithm::istarts_with(sql, "\n")) {
-      // Handline newlines after inline comments.
-      size_t end_comment = sql.find_first_not_of("\n");
-      if (end_comment != string_view::npos) {
-        sql = sql.substr(end_comment);
-        continue;
-      }
-    }
-
-    // Check if the SQL statement starts with any of the keywords we want to trace
-    if (LIKELY(is_traceable_sql(sql))) {
-      return true;
-    }
-
-    // No more patterns to check
-    break;
+  // Check if the SQL statement starts with any of the keywords we want to trace
+  if (LIKELY(is_traceable_sql(sql_type))) {
+    return true;
   }
 
   return false;
