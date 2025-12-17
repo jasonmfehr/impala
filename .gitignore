@@ -105,6 +105,9 @@ eclipse-classes/
 # Visual Studio Code artifacts
 *.code-workspace
 
+# Devcontainer Files
+.devcontainer-build/devcontainer-lock.json
+
 # Debugging
 ad-hoc.test
 nohup.out
