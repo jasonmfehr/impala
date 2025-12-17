@@ -73,7 +73,9 @@ EXCLUDE_FILE_PATTERNS = [
     re.compile(r".*/codegen/gen_ir_descriptions.py"),  # Many long strings.
     re.compile(r".*shell/ext-py/.*"),  # Third-party code.
     re.compile(r".*be/src/thirdparty/.*"),  # Third-party code.
-    re.compile(r".*/.*\.xml\.py")  # Long lines in config template files.
+    re.compile(r".*/.*\.xml\.py"),  # Long lines in config template files.
+    re.compile(r".*\.devcontainer-build/build-devcontainer.sh"),  # Long lines.
+    re.compile(r".*\.devcontainer/regen-ssh-keys.sh")  # Long lines.
 ]
 
 # Thrift files that are not used in communication between impalad and catalogd/statestore
