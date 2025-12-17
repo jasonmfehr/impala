@@ -1,0 +1,154 @@
+# Start Impala devcontainer customizations.
+export IMPALA_HOME="${HOME}/impala"
+export IMPALA_LINKER="mold"
+export LD_LIBRARY_PATH="/usr/lib/$(uname -p)-linux-gnu"
+export LC_ALL="${LOCALE}"
+export PATH="${PATH}:${IMPALA_HOME}/be/build/debug/service"
+
+get_current_branch() {
+  local ref
+  ref=$(git symbolic-ref --short HEAD 2>/dev/null)
+  [ -n "${ref}" ] && echo " [${ref}]"
+}
+export PS1="\\u:\\w\$(get_current_branch)\\\$ "
+
+setup-asf-gerrit-remote() {
+  GIT_CFG_USER="$(git config user.name)"
+  read -rp "Enter Github.com Username, press return to use default of '${GIT_CFG_USER}'> " GIT_USER
+  if [[ -z "${GIT_USER}" ]]; then
+    GIT_USER="${GIT_CFG_USER}"
+  fi
+
+  pushd "${IMPALA_HOME}"
+  git remote add asf-gerrit "ssh://${GIT_USER}@gerrit.cloudera.org:29418/Impala-ASF" 2>/dev/null
+  git remote set-url asf-gerrit "ssh://${GIT_USER}@gerrit.cloudera.org:29418/Impala-ASF"
+  echo
+  echo "asf-gerrit remote:"
+  git remote -v | grep asf-gerrit
+  echo
+  popd
+  echo
+  echo "Add this SSH public key to Gerrit: "
+  cat "${HOME}/.ssh/id_ed25519.pub"
+  echo
+}
+
+omake ()
+{
+  BASENAME="${1%.*}"
+  BASENAME=${BASENAME##*/}
+  MAKEFILE=$(grep -l "$BASENAME.cc.o:" $IMPALA_HOME/be/src/*/CMakeFiles/*.dir/build.make)
+  MAKEFILE=${MAKEFILE#$IMPALA_HOME/}
+  make DEBUG_NOOPT=1 -s -f $MAKEFILE ${MAKEFILE%/*}/$BASENAME.cc.o
+}
+
+mvn-debug-front-end() {
+  local target_test=${1}
+  if [[ -z ${target_test} ]]; then
+    echo "Error: undefined target test"
+  else
+    mvn \
+      -Dmaven.surefire.debug="-Xdebug \
+      -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=8000 \
+      -Xnoagent \
+      -Djava.compiler=NONE" \
+      -fae \
+      -Dtest="${target_test}" \
+      test
+  fi
+}
+
+mvn-run-front-end() {
+  local target_test=${1}
+  if [[ -z ${target_test} ]]; then
+    echo "Error: undefined target test"
+  else
+     mvn test -Dtest="${target_test}"
+  fi
+ }
+
+resolve-minidump() {
+  local log_dir="${1:-$IMPALA_LOGS_DIR/cluster}"
+  local minidump_file=$(grep "Wrote minidump to " "${log_dir}/impalad.ERROR" | rev | cut -d" " -f1 | rev)
+
+  echo "Resolving minidump: ${minidump_file}"
+  resolve_minidumps.py --minidump_file "${minidump_file}" --output_file /tmp/resolve.txt
+  cat /tmp/resolve.txt | head -n 100
+}
+
+alias ga="git add"
+alias gb="git branch"
+alias gba="git branch -a"
+alias gbv="git branch -v"
+alias gc="git commit -v"
+alias gd="git diff"
+alias grv="git remote -v"
+alias gs="git status"
+alias critique='pushd "${IMPALA_HOME}" && ./bin/jenkins/critique-gerrit-review.py --dryrun; popd'
+alias restart-minicluster='pushd "${IMPALA_HOME}" && ./testdata/bin/run-all.sh; popd'
+alias push-asf-gerrit-draft="git push asf-gerrit HEAD:refs/drafts/master"
+alias push-asf-gerrit-publish="git push asf-gerrit HEAD:refs/for/master"
+alias build-fe="pushd \${IMPALA_HOME} && make -j\${IMPALA_BUILD_THREADS} java; popd"
+alias build-be="pushd \${IMPALA_HOME} && make -j\${IMPALA_BUILD_THREADS} impalad; popd"
+alias build-all="pushd \${IMPALA_HOME} && ./buildall.sh -skiptests -noclean; popd"
+
+help() {
+  # Define colors
+  local CYAN='\033[0;36m'
+  local GREEN='\033[0;32m'
+  local YELLOW='\033[1;33m'
+  local BOLD='\033[1m'
+  local NC='\033[0m'
+
+  echo
+  echo
+  echo -e "${CYAN}${BOLD}Welcome to Impala Devcontainer${NC}"
+  echo "Here are some helpful commands to get you started:"
+  echo
+
+  echo -e "${GREEN}${BOLD}Dependency Management Commands${NC}"
+  echo -e "    * ${YELLOW}restart-minicluster${NC}: Starts or restarts all supporting services (HMS, HDFS, Kudu, etc)"
+  echo
+
+  echo -e "${GREEN}${BOLD}Build Commands${NC}"
+  echo -e "    * ${YELLOW}build-be${NC}:  Build the Impala backend code."
+  echo -e "    * ${YELLOW}build-fe${NC}:  Build the Impala frontend code."
+  echo -e "    * ${YELLOW}build-all${NC}: Build the entire Impala project (including frontend, backend, and test code) without clean or running tests."
+  echo -e "    * ${YELLOW}omake${NC}:     Build a single '.o' file. Pass only the file name without any extension. For example, 'omake rpc-trace'."
+  echo
+
+  echo -e "${GREEN}${BOLD}Test/Debugging Commands${NC}"
+  echo -e "    * ${YELLOW}mvn-debug-front-end${NC}: Runs JUnit tests in debug mode and waits for a debugger to connect. Use the 'JUnit FE Debug' debug configuration to connect to the waiting tests. Specify the tests to run as a comma separated string of class names or ClassName#testMethodName. Must be run from the 'fe' directory."
+  echo -e "    * ${YELLOW}mvn-run-front-end${NC}:   Runs JUnit tests. Specify the tests to run as a comma separated string of class names or ClassName#testMethodName. Must be run from the 'fe' directory."
+  echo -e "    * ${YELLOW}resolve-minidump${NC}:    Parses impalad.ERROR log file to locate a minidump file, resolves it to /tmp/resolve.txt, and prints the first 100 lines. By default, it looks in the ${IMPALA_LOGS_DIR}/cluster directory, but you can specify a different directory as the first argument."
+  echo
+
+  echo -e "${GREEN}${BOLD}Git Aliases${NC}"
+  echo -e "    * ${YELLOW}ga${NC}:  alias for 'git add'"
+  echo -e "    * ${YELLOW}gb${NC}:  alias for 'git branch'"
+  echo -e "    * ${YELLOW}gba${NC}: alias for 'git branch -a'"
+  echo -e "    * ${YELLOW}gbv${NC}: alias for 'git branch -v'"
+  echo -e "    * ${YELLOW}gc${NC}:  alias for 'git commit -v'"
+  echo -e "    * ${YELLOW}gd${NC}:  alias for 'git diff'"
+  echo -e "    * ${YELLOW}grv${NC}: alias for 'git remote -v'"
+  echo -e "    * ${YELLOW}gs${NC}:  alias for 'git status'"
+  echo
+
+  echo -e "${GREEN}${BOLD}Gerrit Commands:${NC}"
+  echo -e "    * ${YELLOW}critique${NC}:                Dry run the Jenkins critque Gerrit review."
+  echo -e "    * ${YELLOW}push-asf-gerrit-draft${NC}:   Pushes the current branch to Gerrit as a draft patch set."
+  echo -e "    * ${YELLOW}push-asf-gerrit-publish${NC}: Pushes the current branch to Gerrit as a published patch set."
+  echo -e "    * ${YELLOW}setup-asf-gerrit-remote${NC}: Configures the 'asf-gerrit' git remote to point to the Gerrit repository for Impala. The remote is added with the SSH URL, so make sure you have your SSH keys set up properly to push to Gerrit."
+  echo
+}
+
+unset IMPALA_TOOLCHAIN_COMMIT_HASH
+. "${IMPALA_HOME}/bin/impala-config.sh"
+. "${IMPALA_HOME}/bin/set-classpath.sh"
+cd "${IMPALA_HOME}"
+
+echo
+echo
+echo "Welcome to Impala Devcontainer. Type 'help' for a list of available shell commands."
+echo
+# End Impala devcontainer customizations.
