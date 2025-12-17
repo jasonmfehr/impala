@@ -103,6 +103,8 @@ eclipse-classes/
 
 # Visual Studio Code artifacts
 .vscode/
+impala.code-workspace
+java/build/
 
 # Debugging
 ad-hoc.test
