@@ -1,0 +1,195 @@
+/*
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+*/
+
+{
+  "folders": [
+    {"name": "be", "path": "be"},
+    {"name": "bin", "path": "bin"},
+    {"name": "common", "path": "common"},
+    {"name": "fe", "path": "fe"},
+    {"name": "infra", "path": "infra"},
+    {"name": "java", "path": "java"},
+    {"name": "shell", "path": "shell"},
+    {"name": "testdata", "path": "testdata"},
+    {"name": "tests", "path": "tests"},
+    {"name": "docs", "path": "docs"},
+    {"name": ".devcontainer", "path": ".devcontainer"}
+  ],
+  "settings": {
+    "security.workspace.trust.untrustedFiles": "open",
+    "window.confirmBeforeClose": "always",
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx16G -Xms100m -Xlog:disable",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.debug.settings.onBuildFailureProceed": true,
+    "java.configuration.runtimes": [
+      {
+        "default": true,
+        "name": "JavaSE-{{JAVA_VERSION}}",
+        "path": "/usr/lib/jvm/java-{{JAVA_VERSION}}-openjdk-amd64"
+      }
+    ],
+    "maven.executable.path": "/usr/local/bin/mvn",
+    "java.import.maven.enabled": true,
+    "editor.rulers": [
+      {
+        "column": 90,
+        "color": "#4d4d4d"
+      }
+    ],
+    "git.openRepositoryInParentFolders": "always",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.cppStandard": "c++17",
+    "cmake.cmakePath": "${env:IMPALA_TOOLCHAIN_PACKAGES_HOME}/cmake-${env:IMPALA_CMAKE_VERSION}/bin/cmake",
+    "cmake.showSystemKits": false,
+    "cmake.sourceDirectory": "${env:IMPALA_HOME}",
+    "cmake.defaultActiveFolder": "${env:IMPALA_HOME}",
+    "cmake.autoSelectActiveFolder": false,
+    "cmake.enableAutomaticKitScan": false,
+    "cmake.ignoreCMakeListsMissing": true,
+    "cmake.configureOnOpen": true,
+    "terminal.integrated.scrollback": 10000,
+    "terminal.integrated.cwd": "${env:IMPALA_HOME}",
+    "terminal.integrated.enableMultiLinePasteWarning": "never",
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    "files.watcherExclude": {
+      "**/.git/objects/**": true,
+      "**/.git/subtree-cache/**": true,
+      "**/.hg/store/**": true,
+      "be/build/**": true,
+      "fe/build/**": true,
+      "infra/build/**": true,
+      "java/build/**": true,
+      "shell/build/**": true,
+      "testdata/build/**": true,
+      "tests/build/**": true,
+      "docs/build/**": true
+    },
+    "search.exclude": {
+      "**/*.cmake": true,
+      "**/build.ninja": true,
+      "**/CMakeFiles": true,
+      "**/CMakeCache.txt": true,
+      "**/compile_commands.json": true,
+      "**/Makefile": true
+    },
+    "remote.autoForwardPorts": false,
+    "remote.SSH.defaultForwardedPorts": [
+      {
+        "name": "Ranger Web UI",
+        "remotePort": 6080,
+        "localPort": 6080
+      },
+      {
+        "name": "Jaeger Web UI",
+        "remotePort": 16686,
+        "localPort": 16686
+      },
+      {
+        "name": "Impala Daemon 1 HS2",
+        "remotePort": 21050,
+        "localPort": 21050
+      },
+      {
+        "name": "Impala Daemon 1 HS2-HTTP",
+        "remotePort": 28000,
+        "localPort": 28000
+      },
+      {
+        "name": "Impala Daemon 1 Web UI",
+        "remotePort": 25000,
+        "localPort": 25000
+      },
+      {
+        "name": "Impala Daemon 2 Web UI",
+        "remotePort": 25001,
+        "localPort": 25001
+      },
+      {
+        "name": "Impala Daemon 3 Web UI",
+        "remotePort": 25002,
+        "localPort": 25002
+      },
+      {
+        "name": "Impala Statestore Web UI",
+        "remotePort": 25010,
+        "localPort": 25010
+      },
+      {
+        "name": "Impala Catalog Web UI",
+        "remotePort": 25020,
+        "localPort": 25020
+      },
+    ],
+    "files.associations": {
+      "slist": "cpp", "functional": "cpp", "valarray": "cpp", "variant": "cpp", "iostream": "cpp", "cctype": "cpp", "clocale": "cpp", "cmath": "cpp", "csetjmp": "cpp", "csignal": "cpp",
+      "cstdarg": "cpp", "cstddef": "cpp", "cstdio": "cpp", "cstdlib": "cpp", "cstring": "cpp", "ctime": "cpp", "cwchar": "cpp", "cwctype": "cpp", "any": "cpp", "array": "cpp",
+      "atomic": "cpp", "strstream": "cpp", "bit": "cpp", "bitset": "cpp", "cfenv": "cpp", "charconv": "cpp", "chrono": "cpp", "cinttypes": "cpp", "codecvt": "cpp", "complex": "cpp",
+      "condition_variable": "cpp", "cstdint": "cpp", "cuchar": "cpp", "deque": "cpp", "forward_list": "cpp", "list": "cpp", "map": "cpp", "set": "cpp", "unordered_map": "cpp", "unordered_set": "cpp",
+      "vector": "cpp", "exception": "cpp", "algorithm": "cpp", "iterator": "cpp", "memory": "cpp", "memory_resource": "cpp", "numeric": "cpp", "optional": "cpp", "random": "cpp", "ratio": "cpp",
+      "regex": "cpp", "source_location": "cpp", "string": "cpp", "string_view": "cpp", "system_error": "cpp", "tuple": "cpp", "type_traits": "cpp", "utility": "cpp", "hash_map": "cpp", "hash_set": "cpp",
+      "fstream": "cpp", "future": "cpp", "initializer_list": "cpp", "iomanip": "cpp", "iosfwd": "cpp", "istream": "cpp", "limits": "cpp", "mutex": "cpp", "new": "cpp", "ostream": "cpp",
+      "scoped_allocator": "cpp", "shared_mutex": "cpp", "sstream": "cpp", "stdexcept": "cpp", "streambuf": "cpp", "thread": "cpp", "typeindex": "cpp", "typeinfo": "cpp",
+      "*.tcc": "cpp",
+      "*.ipp": "cpp",
+      "*.gen": "cpp",
+      "stack": "cpp",
+      "*.def": "cpp"
+    }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Python Remote Tests",
+        "type": "python",
+        "request": "attach",
+        "connect": {
+          "host": "127.0.0.1",
+          "port": 5678
+        },
+        "justMyCode": false
+      },
+      {
+        "type": "java",
+        "name": "Coordinator 0 FE Debug",
+        "request": "attach",
+        "hostName": "localhost",
+        "port": 30000,
+        "projectName": "impala-frontend"
+      },
+      {
+        "type": "java",
+        "name": "Catalog 0 Debug",
+        "request": "attach",
+        "hostName": "localhost",
+        "port": 30030,
+        "projectName": "impala-frontend"
+      },
+      {
+        "type": "java",
+        "name": "JUnit FE Debug",
+        "request": "attach",
+        "hostName": "localhost",
+        "port": 8000,
+        "projectName": "impala-frontend"
+      }
+    ]
+  }
+}
