@@ -32,6 +32,7 @@ under the License.
   "postStartCommand": "/home/impdev/impala/.devcontainer/entrypoint.sh",
   "postAttachCommand": "/home/impdev/impala/.devcontainer/configure-container.sh",
   "runArgs": [
+      "--rm",
       "--add-host=ip4.impala.test:127.0.0.1",
       "--add-host=ip4:127.0.0.1",
       "--add-host=ip46.impala.test:127.0.0.1",

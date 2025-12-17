@@ -63,6 +63,7 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update \
     && apt-get install -y ca-certificates \
     && update-ca-certificates \
+    && apt-get update \
     && apt-get install -y tzdata \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo ${TZ} > /etc/timezone \
@@ -108,8 +109,7 @@ RUN apt-get update \
 USER ${USER_UID}:${USER_GID}
 
 RUN --mount=type=bind,source=.,target=/tmp/impala \
-    set -x \
-    && mkdir "${USER_HOME}/.ssh" \
+    mkdir "${USER_HOME}/.ssh" \
     && chmod 700 "${USER_HOME}/.ssh" \
     && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > "${USER_HOME}/.ssh/known_hosts" \
     && ssh-keyscan -p 29418 gerrit.cloudera.org >> ~/.ssh/known_hosts >> "${USER_HOME}/.ssh/known_hosts" \
@@ -125,6 +125,7 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && . bin/impala-config.sh \
     && echo "[STATUS] - build all" \
     && ./buildall.sh -notests \
+    && rm -f be/build/debug/util/impala-profile-tool \
     && echo "[STATUS] - starting create-test-configuration.sh" \
     && ./bin/create-test-configuration.sh -create_metastore \
     && echo "[STATUS] - starting create_testdata.sh" \
@@ -147,13 +148,16 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
     && sudo service postgresql stop \
     && sudo service ssh stop \
     && echo "[STATUS] - finished testdata load" \
-    && rm -f be/build/debug/util/impala-profile-tool \
+    && echo "[STATUS] - cleaning/configuring local git repo" \
     && git reflog expire --expire=30.days.ago --all \
     && git gc --aggressive --prune=now \
     && git remote rm origin || true \
     && git remote rm upstream || true \
     && git remote add upstream https://github.com/apache/impala \
     && rm -f ${USER_HOME}/.gitconfig \
+    && echo "[STATUS] - prepopulating Impala shell virtual environment" \
+    && ./bin/impala-shell.sh --version \
+    && echo "[STATUS] - finished prepopulating Impala shell virtual environment" \
     && cp .devcontainer-build/vscode.workspace "${IMPALA_HOME}/impala.code-workspace" \
     && mkdir -p "${USER_HOME}/.local/share/CMakeTools/" \
     && cp .devcontainer-build/cmake-kits.json "${USER_HOME}/.local/share/CMakeTools/cmake-tools-kits.json" \
