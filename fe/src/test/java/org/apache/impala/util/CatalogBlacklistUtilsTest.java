@@ -17,79 +17,153 @@
 
 package org.apache.impala.util;
 
-import static org.junit.Assert.assertEquals;
+import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-
-import java.util.Set;
+import static org.junit.Assert.fail;
 
 import org.apache.impala.analysis.TableName;
 import org.apache.impala.catalog.Catalog;
+import org.apache.impala.common.AnalysisException;
+import org.apache.impala.service.BackendConfig;
+import org.apache.impala.thrift.TBackendGflags;
 import org.junit.Test;
 
 public class CatalogBlacklistUtilsTest {
 
   @Test
-  public void testParsingBlacklistedDbs() {
-    Set<String> blacklistedDbs;
+  public void testParsingBlacklistedDbsHappyPath() throws AnalysisException {
+    setBlacklist("db1,db2", "");
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db1"));
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db2"));
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("db3"));
 
-    blacklistedDbs = CatalogBlacklistUtils.parseBlacklistedDbs("db1,db2", null);
-    assertEquals(blacklistedDbs.size(), 2);
-    assertTrue(blacklistedDbs.contains("db1"));
-    assertTrue(blacklistedDbs.contains("db2"));
-
-    // Test spaces
-    blacklistedDbs = CatalogBlacklistUtils.parseBlacklistedDbs(" db1 , db2 ", null);
-    assertEquals(blacklistedDbs.size(), 2);
-    assertTrue(blacklistedDbs.contains("db1"));
-    assertTrue(blacklistedDbs.contains("db2"));
-    blacklistedDbs = CatalogBlacklistUtils.parseBlacklistedDbs(" ", null);
-    assertTrue(blacklistedDbs.isEmpty());
-
-    // Test lower/upper cases
-    blacklistedDbs = CatalogBlacklistUtils.parseBlacklistedDbs("DB1,Db2", null);
-    assertEquals(blacklistedDbs.size(), 2);
-    assertTrue(blacklistedDbs.contains("db1"));
-    assertTrue(blacklistedDbs.contains("db2"));
-
-    // Test abnormal inputs
-    blacklistedDbs = CatalogBlacklistUtils.parseBlacklistedDbs("db1,", null);
-    assertEquals(blacklistedDbs.size(), 1);
-    assertTrue(blacklistedDbs.contains("db1"));
+    CatalogBlacklistUtils.verifyDbName("db3");
+    try {
+      CatalogBlacklistUtils.verifyDbName("db1");
+      fail("Expected AnalysisException for blacklisted db");
+    } catch (AnalysisException e) {
+      assertThat(e.getMessage(), equalTo("Invalid db name: db1. It has been blacklisted "
+          + "using --blacklisted_dbs"));
+    }
   }
 
   @Test
-  public void testParsingBlacklistedTables() {
-    Set<TableName> blacklistedTables;
-
-    blacklistedTables = CatalogBlacklistUtils.parseBlacklistedTables(
-        "db3.foo,db3.bar", null);
-    assertEquals(blacklistedTables.size(), 2);
-    assertTrue(blacklistedTables.contains(new TableName("db3", "foo")));
-    assertTrue(blacklistedTables.contains(new TableName("db3", "bar")));
-
-    // Test spaces
-    blacklistedTables = CatalogBlacklistUtils.parseBlacklistedTables(
-        " db3 . foo , db3 . bar  ", null);
-    assertEquals(blacklistedTables.size(), 2);
-    assertTrue(blacklistedTables.contains(new TableName("db3", "foo")));
-    assertTrue(blacklistedTables.contains(new TableName("db3", "bar")));
-
-    // Test defaults
-    blacklistedTables = CatalogBlacklistUtils.parseBlacklistedTables("foo", null);
-    assertEquals(blacklistedTables.size(), 1);
-    assertTrue(blacklistedTables.contains(new TableName(Catalog.DEFAULT_DB, "foo")));
-
-    // Test lower/upper cases
-    blacklistedTables = CatalogBlacklistUtils.parseBlacklistedTables(
-        "DB3.Foo,db3.Bar", null);
-    assertEquals(blacklistedTables.size(), 2);
-    assertTrue(blacklistedTables.contains(new TableName("db3", "foo")));
-    assertTrue(blacklistedTables.contains(new TableName("db3", "bar")));
-
-    // Test abnormal inputs
-    blacklistedTables = CatalogBlacklistUtils.parseBlacklistedTables("db3.,.bar,,", null);
-    assertEquals(blacklistedTables.size(), 1);
-    assertTrue(blacklistedTables.contains(new TableName(Catalog.DEFAULT_DB, "bar")));
+  public void testParsingBlacklistedDbsNamesWithSpaces() {
+    setBlacklist(" db1 , db2 ", "");
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db1"));
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db2"));
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("db3"));
   }
+
+  @Test
+  public void testParsingBlacklistedDbsCaseInsensitiveNames() {
+    setBlacklist("DB1,Db2", "");
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db1"));
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db2"));
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("db3"));
+  }
+
+  @Test
+  public void testParsingBlacklistedDbsInvalidNames() {
+    setBlacklist("db1,", "");
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db1"));
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("db2"));
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("db3"));
+  }
+
+  @Test
+  public void testParsingBlacklistedTablesHappyPath() throws AnalysisException {
+    TableName foo = new TableName("db3", "foo");
+    TableName baz = new TableName("db3", "baz");
+    setBlacklist("", "db3.foo,db3.bar");
+
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted(foo.getDb(), foo.getTbl()));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted(foo));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "bar"));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted(new TableName("db3", "bar")));
+    assertFalse(CatalogBlacklistUtils.isTableBlacklisted(baz.getDb(), baz.getTbl()));
+    assertFalse(CatalogBlacklistUtils.isTableBlacklisted(baz));
+
+    CatalogBlacklistUtils.verifyTableName(baz);
+    try {
+      CatalogBlacklistUtils.verifyTableName(foo);
+      fail("Expected AnalysisException for blacklisted table");
+    } catch (AnalysisException e) {
+      assertThat(e.getMessage(), equalTo("Invalid table/view name: " + foo
+          + ". It has been blacklisted using --blacklisted_tables"));
+    }
+  }
+
+  @Test
+  public void testParsingBlacklistedTablesNamesWithInputSpaces() {
+    setBlacklist("", " db3 . foo , db3 . bar  ");
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "foo"));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "bar"));
+    assertFalse(CatalogBlacklistUtils.isTableBlacklisted("db3", "baz"));
+  }
+
+  @Test
+  public void testParsingBlacklistedTablesNamesWithoutDb() {
+    setBlacklist("", "foo");
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted(Catalog.DEFAULT_DB, "foo"));
+  }
+
+  @Test
+  public void testParsingBlacklistedTablesCaseInsensitiveNames() {
+    setBlacklist("", "DB3.Foo,db3.Bar");
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "foo"));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "bar"));
+  }
+
+  @Test
+  public void testParsingBlacklistedTablesInvalidNames() {
+    // Test abnormal inputs
+    setBlacklist("", "db3.,.bar,,");
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted(Catalog.DEFAULT_DB, "bar"));
+  }
+
+  @Test
+  public void testParsingBlacklistedDbsAndTables() {
+    setBlacklist("db1,db2", "db3.foo,db3.bar");
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db1"));
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("db2"));
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("db3"));
+
+
+    assertFalse(CatalogBlacklistUtils.isTableBlacklisted("db1", "foo"));
+    assertFalse(CatalogBlacklistUtils.isTableBlacklisted("db2", "bar"));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "foo"));
+    assertTrue(CatalogBlacklistUtils.isTableBlacklisted("db3", "bar"));
+    assertFalse(CatalogBlacklistUtils.isTableBlacklisted("db3", "baz"));
+  }
+
+  @Test
+  public void testWorkloadManagementEnabled() {
+    setBlacklist("sys", "", true);
+    assertFalse(CatalogBlacklistUtils.isDbBlacklisted("sys"));
+  }
+
+  @Test
+  public void testWorkloadManagementDisabled() {
+    setBlacklist("sys", "", false);
+    assertTrue(CatalogBlacklistUtils.isDbBlacklisted("sys"));
+  }
+
+  public static void setBlacklist(String blacklistedDbs, String blacklistedTables,
+      boolean enableWorkloadMgmt) {
+
+    TBackendGflags backendGflags = new TBackendGflags();
+    backendGflags.setBlacklisted_dbs(blacklistedDbs);
+    backendGflags.setBlacklisted_tables(blacklistedTables);
+    backendGflags.setEnable_workload_mgmt(enableWorkloadMgmt);
+    BackendConfig.create(backendGflags, false);
+    CatalogBlacklistUtils.reload();
+}
+
+  public static void setBlacklist(String blacklistedDbs, String blacklistedTables) {
+    setBlacklist(blacklistedDbs, blacklistedTables, false);
+  }
+
 }

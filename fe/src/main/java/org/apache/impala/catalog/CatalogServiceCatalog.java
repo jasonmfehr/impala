@@ -378,11 +378,6 @@ public class CatalogServiceCatalog extends Catalog {
 
   private AuthorizationManager authzManager_;
 
-  // Databases that will be skipped in loading.
-  private final Set<String> blacklistedDbs_;
-  // Tables that will be skipped in loading.
-  private final Set<TableName> blacklistedTables_;
-
   // Table properties that require file metadata reload
   private final Set<String> whitelistedTblProperties_;
 
@@ -422,10 +417,6 @@ public class CatalogServiceCatalog extends Catalog {
       String localLibraryPath, MetaStoreClientPool metaStoreClientPool)
       throws ImpalaException {
     super(metaStoreClientPool);
-    blacklistedDbs_ = CatalogBlacklistUtils.parseBlacklistedDbs(
-        BackendConfig.INSTANCE.getBlacklistedDbs(), LOG);
-    blacklistedTables_ = CatalogBlacklistUtils.parseBlacklistedTables(
-        BackendConfig.INSTANCE.getBlacklistedTables(), LOG);
     maxSkippedUpdatesLockContention_ = BackendConfig.INSTANCE
         .getBackendCfg().catalog_max_lock_skipped_topic_updates;
     Preconditions.checkState(maxSkippedUpdatesLockContention_ > 0,
@@ -577,12 +568,7 @@ public class CatalogServiceCatalog extends Catalog {
   }
 
   protected boolean isBlacklistedDbInternal(String loweredDbName) {
-    if (BackendConfig.INSTANCE.enableWorkloadMgmt()
-        && loweredDbName.equalsIgnoreCase(Db.SYS)) {
-      // Override 'sys' for Impala system tables.
-      return false;
-    }
-    return blacklistedDbs_.contains(loweredDbName);
+    return CatalogBlacklistUtils.isDbBlacklisted(loweredDbName);
   }
 
   /**
@@ -590,11 +576,12 @@ public class CatalogServiceCatalog extends Catalog {
    */
   public boolean isBlacklistedTable(TableName table) {
     Preconditions.checkNotNull(table);
-    if (table.getDb().equalsIgnoreCase(Db.SYS) && blacklistedDbs_.contains(Db.SYS)) {
-      // If we've overridden the database blacklist, only allow Impala system tables.
-      return !impalaSysTables.contains(table.getTbl());
-    }
-    return blacklistedTables_.contains(table);
+    // if (table.getDb().equalsIgnoreCase(Db.SYS) && blacklistedDbs_.contains(Db.SYS)) {
+    //   // If we've overridden the database blacklist, only allow Impala system tables.
+    //   return !impalaSysTables.contains(table.getTbl());
+    // }
+    // return blacklistedTables_.contains(table);
+    return CatalogBlacklistUtils.isTableBlacklisted(table);
   }
 
   /**
