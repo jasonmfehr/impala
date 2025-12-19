@@ -81,6 +81,7 @@ DISABLE_LOG_BUFFERING = 'disable_log_buffering'
 LOG_SYMLINKS = 'log_symlinks'
 WORKLOAD_MGMT = 'workload_mgmt'
 FORCE_RESTART = 'force_restart'
+IMPALAD_JVM_DEBUG_WAIT = 'impalad_jvm_debug_wait'
 
 # Args that accept additional formatting to supply temporary dir path.
 ACCEPT_FORMATTING = set([IMPALAD_ARGS, CATALOGD_ARGS, IMPALA_LOG_DIR])
@@ -158,7 +159,8 @@ class CustomClusterTestSuite(ImpalaTestSuite):
       impalad_timeout_s=None, expect_cores=None, reset_ranger=False,
       tmp_dir_placeholders=[],
       expect_startup_fail=False, disable_log_buffering=False, log_symlinks=False,
-      workload_mgmt=False, force_restart=False, custom_core_site_dir=None):
+      workload_mgmt=False, force_restart=False, custom_core_site_dir=None,
+      impalad_jvm_debug_wait=None):
     """Records arguments to be passed to a cluster by adding them to the decorated
     method's func_dict"""
     args = dict()
@@ -208,6 +210,8 @@ class CustomClusterTestSuite(ImpalaTestSuite):
       # When sharding tests, always restart the cluster to avoid issues with tests
       # that depend on a specific test order within a shard.
       args[FORCE_RESTART] = True
+    if impalad_jvm_debug_wait is not None:
+      args[IMPALAD_JVM_DEBUG_WAIT] = impalad_jvm_debug_wait
 
     def merge_args(args_first, args_last):
       result = args_first.copy()
@@ -357,6 +361,8 @@ class CustomClusterTestSuite(ImpalaTestSuite):
     else:
       # Default to False to ensure that the cluster is not restarted for every test.
       kwargs[FORCE_RESTART] = False
+    if IMPALAD_JVM_DEBUG_WAIT in args and args[IMPALAD_JVM_DEBUG_WAIT] is not None:
+      kwargs[IMPALAD_JVM_DEBUG_WAIT] = args[IMPALAD_JVM_DEBUG_WAIT]
 
     if args.get(EXPECT_CORES, False):
       # Make a note of any core files that already exist
@@ -569,7 +575,8 @@ class CustomClusterTestSuite(ImpalaTestSuite):
                             ignore_pid_on_log_rotation=False,
                             wait_for_backends=True,
                             log_symlinks=False,
-                            force_restart=True):
+                            force_restart=True,
+                            impalad_jvm_debug_wait=None):
     cls.impala_log_dir = impala_log_dir
     # We ignore TEST_START_CLUSTER_ARGS here. Custom cluster tests specifically test that
     # certain custom startup arguments work and we want to keep them independent of dev
@@ -580,6 +587,8 @@ class CustomClusterTestSuite(ImpalaTestSuite):
            '--num_coordinators=%d' % num_coordinators,
            '--log_dir=%s' % impala_log_dir,
            '--log_level=%s' % log_level]
+    if impalad_jvm_debug_wait is not None:
+      cmd.append('--impalad_jvm_debug_wait={}'.format(impalad_jvm_debug_wait))
 
     if ignore_pid_on_log_rotation:
       # IMPALA-12595: Ignore PID on log rotation for all custom cluster tests.
