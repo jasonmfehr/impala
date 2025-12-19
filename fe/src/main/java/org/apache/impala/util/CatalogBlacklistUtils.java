@@ -99,16 +99,28 @@ public class CatalogBlacklistUtils {
       // Override system DB for Impala system tables.
       return;
     }
-    if (BLACKLISTED_DBS.contains(dbName)) {
+    if (isDbBlacklisted(dbName)) {
       throw new AnalysisException("Invalid db name: " + dbName
           + ". It has been blacklisted using --blacklisted_dbs");
     }
   }
 
+  public static boolean isDbBlacklisted(String dbName) {
+    if (BackendConfig.INSTANCE.enableWorkloadMgmt() && dbName.equalsIgnoreCase(Db.SYS)) {
+      // Override system DB for Impala system tables.
+      return false;
+    }
+    return BLACKLISTED_DBS.contains(dbName);
+  }
+
   public static void verifyTableName(TableName table) throws AnalysisException {
-    if (BLACKLISTED_TABLES.contains(table)) {
+    if (isTableBlacklisted(table)) {
       throw new AnalysisException("Invalid table/view name: " + table
           + ". It has been blacklisted using --blacklisted_tables");
     }
+  }
+
+  public static boolean isTableBlacklisted(TableName table) {
+    return BLACKLISTED_TABLES.contains(table);
   }
 }

@@ -208,6 +208,14 @@ parser.add_option("--use_calcite_planner", default="False", type="choice",
 parser.add_option("--enable_ranger_authz", dest="enable_ranger_authz",
                   action="store_true", default=False,
                   help="If true, enable Ranger authorization in Impala cluster.")
+parser.add_option("--impalad_jvm_debug_wait", dest="impalad_jvm_debug_wait",
+                  action="append", type="int", default=[],
+                  help="Comma separate list of impalad indexes that will configure their "
+                  "JVMs to wait for a debugger to attach before starting.")
+parser.add_option("--catalogd_jvm_debug_wait", dest="catalogd_jvm_debug_wait",
+                  action="append", type="int", default=[],
+                  help="Comma separate list of catalogd indexes that will configure "
+                  "their JVMs to wait for a debugger to attach before starting.")
 
 # For testing: list of comma-separated delays, in milliseconds, that delay impalad catalog
 # replica initialization. The ith delay is applied to the ith impalad.
@@ -264,9 +272,11 @@ def print_actual_log_file(log_symlink, timeout=5):
         return
     sleep(1)
 
-def run_daemon_with_options(daemon_binary, args, output_file, jvm_debug_port=None):
+def run_daemon_with_options(daemon_binary, args, output_file, jvm_debug_port=None,
+    jvm_debug_suspend=None):
   """Wrapper around run_daemon() with options determined from command-line options."""
-  env_vars = {"JAVA_TOOL_OPTIONS": build_java_tool_options(jvm_debug_port)}
+  env_vars = {"JAVA_TOOL_OPTIONS": build_java_tool_options(jvm_debug_port,
+      jvm_debug_suspend)}
   if options.env_vars is not None:
     for kv in options.env_vars.split():
       k, v = kv.split('=')
@@ -275,7 +285,7 @@ def run_daemon_with_options(daemon_binary, args, output_file, jvm_debug_port=Non
       output_file=output_file)
 
 
-def build_java_tool_options(jvm_debug_port=None):
+def build_java_tool_options(jvm_debug_port=None, jvm_debug_suspend=None):
   """Construct the value of the JAVA_TOOL_OPTIONS environment variable to pass to
   daemons."""
   java_tool_options = ""
@@ -283,8 +293,10 @@ def build_java_tool_options(jvm_debug_port=None):
   if options.docker_network is not None:
     java_tool_options = "-XX:ErrorFile=/opt/impala/java-error/hs_err_pid_%p.log"
   if jvm_debug_port is not None:
+    jvm_debug_suspend = "n" if not jvm_debug_suspend else "y"
     java_tool_options = ("-agentlib:jdwp=transport=dt_socket,address={debug_port}," +
-        "server=y,suspend=n ").format(debug_port=jvm_debug_port) + java_tool_options
+        "server=y,suspend={suspend} ").format(debug_port=jvm_debug_port,
+        suspend=jvm_debug_suspend) + java_tool_options
   if options.jvm_args is not None:
     java_tool_options += " " + options.jvm_args
   return java_tool_options
@@ -833,8 +845,11 @@ class MiniClusterOperations(object):
       LOG.info("Starting Catalog Service logging to {0}".format(log_symlink))
       output_file = os.path.join(
           options.log_dir, "{service_name}-out.log".format(service_name=service_name))
+      jvm_debug_suspend = (options.catalogd_jvm_debug_wait is not None
+          and i in options.catalogd_jvm_debug_wait)
       run_daemon_with_options("catalogd", catalogd_arg_lists[i], output_file,
-          jvm_debug_port=DEFAULT_CATALOGD_JVM_DEBUG_PORT + i)
+          jvm_debug_port=DEFAULT_CATALOGD_JVM_DEBUG_PORT + i,
+          jvm_debug_suspend=jvm_debug_suspend)
       if not check_process_exists("catalogd", 10):
         raise RuntimeError("Unable to start catalogd. Check log or file permissions"
                            " for more details.")
@@ -873,8 +888,11 @@ class MiniClusterOperations(object):
       LOG.info("Starting Impala Daemon logging to {0}".format(log_symlink))
       output_file = os.path.join(
           options.log_dir, "{service_name}-out.log".format(service_name=service_name))
+      jvm_debug_suspend = (options.impalad_jvm_debug_wait is not None
+          and i in options.impalad_jvm_debug_wait)
       run_daemon_with_options("impalad", impalad_arg_lists[i - start_idx],
-          jvm_debug_port=DEFAULT_IMPALAD_JVM_DEBUG_PORT + i, output_file=output_file)
+          jvm_debug_port=DEFAULT_IMPALAD_JVM_DEBUG_PORT + i, output_file=output_file,
+          jvm_debug_suspend=jvm_debug_suspend)
       self.log_symlinks.append(log_symlink)
 
 
