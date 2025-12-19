@@ -178,9 +178,8 @@ class TestIcebergRestCatalogNoHms(IcebergRestCatalogTests):
 
   @RestServerProperties({'port': 9084})
   @CustomClusterTestSuite.with_args(
-     impalad_args="{} --blacklisted_dbs=ice".format(REST_STANDALONE_IMPALAD_ARGS),
-     catalogd_args="--blacklisted_dbs=ice",
-     start_args=NO_CATALOGD_STARTARGS)
+     impalad_args="{} --blacklisted_dbs=ice".format(MULTICATALOG_IMPALAD_ARGS),
+     catalogd_args="{} --blacklisted_dbs=ice".format(MULTICATALOG_CATALOGD_ARGS))
   @pytest.mark.execute_serially
   def test_rest_catalog_basic_blacklisted_db(self, vector):
     import pdb; pdb.set_trace()
