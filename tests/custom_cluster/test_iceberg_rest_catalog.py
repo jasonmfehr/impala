@@ -175,3 +175,24 @@ class TestIcebergRestCatalogNoHms(IcebergRestCatalogTests):
   def test_multiple_rest_catalogs_with_ambiguous_tables(self, vector):
     self.run_test_case('QueryTest/iceberg-multiple-rest-catalogs-ambiguous-name',
                        vector, use_db="ice")
+
+  @RestServerProperties({'port': 9084})
+  @CustomClusterTestSuite.with_args(
+     impalad_args="{} --blacklisted_dbs=ice".format(REST_STANDALONE_IMPALAD_ARGS),
+     catalogd_args="--blacklisted_dbs=ice",
+     start_args=NO_CATALOGD_STARTARGS)
+  @pytest.mark.execute_serially
+  def test_rest_catalog_basic_blacklisted_db(self, vector):
+    import pdb; pdb.set_trace()
+    self.run_test_case('QueryTest/iceberg-rest-catalog', vector, use_db="ice")
+
+  @RestServerProperties({'port': 9084})
+  @CustomClusterTestSuite.with_args(
+     impalad_args="{} --blacklisted_tables=ice.airports_parquet"
+         .format(REST_STANDALONE_IMPALAD_ARGS),
+     catalogd_args="--blacklisted_tables=ice.airports_parquet",
+     start_args=NO_CATALOGD_STARTARGS)
+  @pytest.mark.execute_serially
+  def test_rest_catalog_basic_blacklisted_table(self, vector):
+    import pdb; pdb.set_trace()
+    self.run_test_case('QueryTest/iceberg-rest-catalog', vector, use_db="ice")
