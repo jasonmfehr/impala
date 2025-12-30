@@ -1,0 +1,5 @@
+====
+---- QUERY
+show databases "ice";
+---- RESULTS:
+====

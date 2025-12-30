@@ -178,12 +178,13 @@ class TestIcebergRestCatalogNoHms(IcebergRestCatalogTests):
 
   @RestServerProperties({'port': 9084})
   @CustomClusterTestSuite.with_args(
-     impalad_args="{} --blacklisted_dbs=ice".format(MULTICATALOG_IMPALAD_ARGS),
-     catalogd_args="{} --blacklisted_dbs=ice".format(MULTICATALOG_CATALOGD_ARGS))
+     impalad_args="{} --blacklisted_dbs=ice".format(REST_STANDALONE_IMPALAD_ARGS),
+     start_args=NO_CATALOGD_STARTARGS)
+    #  catalogd_args="{} --blacklisted_dbs=ice".format(MULTICATALOG_CATALOGD_ARGS))
   @pytest.mark.execute_serially
   def test_rest_catalog_basic_blacklisted_db(self, vector):
-    import pdb; pdb.set_trace()
-    self.run_test_case('QueryTest/iceberg-rest-catalog', vector, use_db="ice")
+    self.run_test_case('QueryTest/iceberg-rest-catalog-blacklist-db', vector,
+        use_db="default")
 
   @RestServerProperties({'port': 9084})
   @CustomClusterTestSuite.with_args(
@@ -193,5 +194,14 @@ class TestIcebergRestCatalogNoHms(IcebergRestCatalogTests):
      start_args=NO_CATALOGD_STARTARGS)
   @pytest.mark.execute_serially
   def test_rest_catalog_basic_blacklisted_table(self, vector):
+    import pdb; pdb.set_trace()
+    self.run_test_case('QueryTest/iceberg-rest-catalog', vector, use_db="ice")
+
+  @RestServerProperties({'port': 9084})
+  @CustomClusterTestSuite.with_args(
+     impalad_args=REST_STANDALONE_IMPALAD_ARGS,
+     start_args=NO_CATALOGD_STARTARGS)
+  @pytest.mark.execute_serially
+  def test_jason(self, vector):
     import pdb; pdb.set_trace()
     self.run_test_case('QueryTest/iceberg-rest-catalog', vector, use_db="ice")
