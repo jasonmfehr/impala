@@ -22,11 +22,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <thread>
 
-#include <boost/bind.hpp>
-
-#include "common/atomic.h"
+#include "common/logging.h"
 #include "common/status.h"
 #include "util/thread.h"
 
@@ -64,8 +61,8 @@ namespace impala {
 //
 //   ABORT_IF_ERROR(ticker.Start());
 //
+//   unique_lock<mutex> l(mu);
 //   while(true) {
-//     unique_lock<mutex> l(mu);
 //     cv.wait(l, ticker.WakeupGuard());
 //     *wakeup_guard = false;
 //
@@ -76,23 +73,47 @@ template <typename DurationType, typename IndicatorType>
 class Ticker {
   public:
     Ticker(DurationType interval, std::condition_variable& cv,
-        std::mutex& lock, std::shared_ptr<IndicatorType> indicator,
-        IndicatorType wakeup_value) : interval_(interval), cv_(cv), lock_(lock),
-        indicator_(indicator), wakeup_value_(wakeup_value) {}
+        std::mutex& mu, std::shared_ptr<IndicatorType> indicator,
+        IndicatorType wakeup_value) : interval_(interval), cv_(cv), mu_(mu),
+        indicator_(indicator), wakeup_value_(wakeup_value) {
+      DCHECK(indicator_) << "indicator shared_ptr must be initialized";
+    }
 
-    Status Start(const std::string& category, const std::string& name) {
-      return Thread::Create(category, name, &Ticker::run, this, &my_thread_);
+    const Status Start(const std::string& category, const std::string& name) {
+      std::lock_guard<std::mutex> l(looper_mu_);
+      const Status stat = Thread::Create(category, name, &Ticker::run, this, &my_thread_);
+
+      if (stat.ok()) {
+        is_running_ = true;
+      }
+
+      return stat;
     }
 
     // Specify that the next iteration of this ticker be the last. This function does not
-    // block nor does it cause the ticker to wake up earlier than scheduled.
+    // block nor does it cause the ticker to wake up earlier than scheduled. Call Join()
+    // to wait for the ticker to fully stop.
     void RequestStop() {
-      stop_requested_.Store(true);
+      std::lock_guard l(looper_mu_);
+      stop_requested_ = true;
+    }
+
+    // Specify that the ticker stop as soon as possible. If the ticker is sleeping, it
+    // will be woken up to process the stop request.
+    // Does not block after notifying the ticker to stop. Call Join() to wait for the
+    // ticker to fully stop.
+    void RequestImmediateStop() {
+      RequestStop();
+      looper_.notify_all();
     }
 
     // Wait for the ticker to exit after it's final iteration.
     void Join() {
-      my_thread_->Join();
+      std::unique_lock<std::mutex> l(looper_mu_);
+      if (is_running_ && my_thread_) {
+        l.unlock();
+        my_thread_->Join();
+      }
     }
 
     // Provides a default implementation for the condition variable predicate lambda.
@@ -103,25 +124,38 @@ class Ticker {
   protected:
     const DurationType interval_;
     std::condition_variable& cv_;
-    std::mutex& lock_;
+    std::mutex& mu_;
     std::shared_ptr<IndicatorType> indicator_;
     const IndicatorType wakeup_value_;
 
   private:
     std::unique_ptr<Thread> my_thread_;
-    AtomicBool stop_requested_;
+    std::mutex looper_mu_;
+    std::condition_variable looper_;
+    bool stop_requested_ = false;
+    bool is_running_ = false;
 
     void run() {
-      while (!stop_requested_.Load()) {
-        std::this_thread::sleep_for(interval_);
+      std::unique_lock<std::mutex> looper_lock(looper_mu_);
+
+      while (true) {
+        const std::chrono::time_point<std::chrono::steady_clock> next_wakeup =
+            std::chrono::steady_clock::now() + interval_;
+        looper_.wait_until(looper_lock, next_wakeup);
+
+        if (stop_requested_) {
+          break;
+        }
 
         {
-          std::lock_guard<std::mutex> l(lock_);
+          std::lock_guard<std::mutex> l(mu_);
           *indicator_ = wakeup_value_;
         }
 
         cv_.notify_all();
       }
+
+      is_running_ = false;
     }
 }; // class Ticker
 
