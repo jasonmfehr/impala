@@ -74,11 +74,14 @@ class Ticker {
   public:
     Ticker(DurationType interval, std::condition_variable& cv,
         std::mutex& mu, std::shared_ptr<IndicatorType> indicator,
-        IndicatorType wakeup_value) : interval_(interval), cv_(cv), mu_(mu),
-        indicator_(indicator), wakeup_value_(wakeup_value) {
+        IndicatorType wakeup_value) : indicator_(indicator), interval_(interval), cv_(cv),
+        mu_(mu), wakeup_value_(wakeup_value) {
       DCHECK(indicator_) << "indicator shared_ptr must be initialized";
     }
 
+    // Starts the ticker loop by spinning up a separate thread. Sets is_running_ to true
+    // if the thread was successfully created. The category and name parameters are passed
+    // to the Thread::Create() function.
     const Status Start(const std::string& category, const std::string& name) {
       std::lock_guard<std::mutex> l(looper_mu_);
       const Status stat = Thread::Create(category, name, &Ticker::run, this, &my_thread_);
@@ -90,24 +93,19 @@ class Ticker {
       return stat;
     }
 
-    // Specify that the next iteration of this ticker be the last. This function does not
-    // block nor does it cause the ticker to wake up earlier than scheduled. Call Join()
-    // to wait for the ticker to fully stop.
-    void RequestStop() {
-      std::lock_guard l(looper_mu_);
-      stop_requested_ = true;
-    }
-
     // Specify that the ticker stop as soon as possible. If the ticker is sleeping, it
     // will be woken up to process the stop request.
     // Does not block after notifying the ticker to stop. Call Join() to wait for the
     // ticker to fully stop.
-    void RequestImmediateStop() {
-      RequestStop();
+    void Stop() {
+      {
+        std::lock_guard l(looper_mu_);
+        stop_requested_ = true;
+      }
       looper_.notify_all();
     }
 
-    // Wait for the ticker to exit after it's final iteration.
+    // Join the thread running the ticker loop.
     void Join() {
       std::unique_lock<std::mutex> l(looper_mu_);
       if (is_running_ && my_thread_) {
@@ -117,24 +115,44 @@ class Ticker {
     }
 
     // Provides a default implementation for the condition variable predicate lambda.
-    std::function<bool()> WakeupGuard() {
-      return [this]{ return *indicator_ == wakeup_value_; };
+    operator bool() {
+      return *indicator_ == wakeup_value_;
     }
 
   protected:
-    const DurationType interval_;
-    std::condition_variable& cv_;
-    std::mutex& mu_;
+    // Shared pointer to the indicator variable that signals the condition variable cv_
+    // was notified by this ticker and thus the condition variable is not experiencing a
+    // spurious wakeup.
     std::shared_ptr<IndicatorType> indicator_;
-    const IndicatorType wakeup_value_;
 
   private:
+    // Duration between ticks of this ticker. Initialized in the constructor.
+    const DurationType interval_;
+
+    // Condition variable to notify on each tick by calling the condition variable's
+    // notify_all() function and the mutex to protect that condition variable.
+    std::condition_variable& cv_;
+    std::mutex& mu_;
+
+    // When this ticker is notifying the condition variable, it sets the indicator_ shared
+    // pointer to this value.
+    const IndicatorType wakeup_value_;
+
+    // Thread that runs the ticker loop.
     std::unique_ptr<Thread> my_thread_;
-    std::mutex looper_mu_;
+
+    // Condition variable and mutex used by the ticker loop to periodically wake up.
     std::condition_variable looper_;
+    std::mutex looper_mu_;
+
+    // Specifies this ticker should stop.
     bool stop_requested_ = false;
+
+    // Set to true if the Start() function was called and the ticker loop thread
+    // successfully started.
     bool is_running_ = false;
 
+    // The function to perform the ticker loop.
     void run() {
       std::unique_lock<std::mutex> looper_lock(looper_mu_);
 

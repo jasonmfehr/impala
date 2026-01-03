@@ -510,7 +510,7 @@ void ImpalaServer::ShutdownWorkloadManagement() {
     LOG(INFO) << "Workload management is shutting down";
 
     // Stop the Ticker that periodically notifies the completed queries processing thread.
-    _completed_queries_ticker->RequestImmediateStop();
+    _completed_queries_ticker->Stop();
     _completed_queries_ticker->Join();
 
     // Wake up the completed queries processing thread so it can drain the in-memory
@@ -713,7 +713,7 @@ void ImpalaServer::WorkloadManagementWorker(const Version& target_schema_version
         lock_guard<mutex> l2(workload_mgmt_state_mu_);
         // To guard against spurious wakeups, this predicate ensures there are
         // completed queries queued up before waking up the thread.
-        return (_completed_queries_ticker->WakeupGuard()() && !_completed_queries.empty())
+        return (*_completed_queries_ticker && !_completed_queries.empty())
             || _maxRecordsExceeded(_completed_queries.size())
             || UNLIKELY(workload_mgmt_state_ == WorkloadManagementState::SHUTTING_DOWN);
       });

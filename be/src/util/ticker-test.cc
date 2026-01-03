@@ -49,14 +49,14 @@ TEST(TickerTest, TickerSecondsBoolHappyPath) {
 
   while (cntr < 3) {
     unique_lock<mutex> l(mu);
-    cv.wait(l, fixture.WakeupGuard());
+    cv.wait(l, [&fixture]() -> bool { return fixture; });
     fixture.ResetWakeupGuard();
     cntr++;
   }
 
   sw.Stop();
 
-  fixture.RequestStop();
+  fixture.Stop();
   fixture.Join();
 
   EXPECT_EQ(cntr, 3);
@@ -81,14 +81,14 @@ TEST(TickerTest, TickerHappyPath) {
 
   while (cntr < 100) {
     unique_lock<mutex> l(mu);
-    cv.wait(l, fixture.WakeupGuard());
+    cv.wait(l, [&fixture]() -> bool { return fixture; });
     *wakeup_guard = "";
     cntr++;
   }
 
   sw.Stop();
 
-  fixture.RequestStop();
+  fixture.Stop();
   fixture.Join();
 
   EXPECT_EQ(cntr, 100);
@@ -114,14 +114,14 @@ TEST(TickerTest, TickerNoWakeupGuardReset) {
 
   while (cntr < 10) {
     unique_lock<mutex> l(mu);
-    cv.wait(l, fixture.WakeupGuard());
+    cv.wait(l, [&fixture]() -> bool { return fixture; });
     // No wakeup guard reset here.
     cntr++;
   }
 
   sw.Stop();
 
-  fixture.RequestStop();
+  fixture.Stop();
   fixture.Join();
 
   EXPECT_EQ(cntr, 10);
@@ -138,7 +138,7 @@ TEST(TickerTest, TickerStopWithoutStart) {
   shared_ptr<string> wakeup_guard = make_shared<string>("");
   Ticker<chrono::milliseconds, string> fixture(chrono::milliseconds(5), cv, mu,
       wakeup_guard, "wakeup");
-  fixture.RequestImmediateStop();
+  fixture.Stop();
   fixture.Join();
 }
 
@@ -163,7 +163,7 @@ TEST(TickerTest, TickerStopLongInterval) {
   sw.Start();
   ABORT_IF_ERROR(fixture.Start("category", "ticker-stop-long-interval"));
   SleepForMs(250);
-  fixture.RequestImmediateStop();
+  fixture.Stop();
   fixture.Join();
   sw.Stop();
 
