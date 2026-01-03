@@ -58,7 +58,6 @@
 #include "util/sql-util.h"
 #include "util/stopwatch.h"
 #include "util/string-util.h"
-#include "util/ticker.h"
 #include "workload_mgmt/workload-management.h"
 
 using namespace impala;
@@ -437,10 +436,6 @@ static condition_variable _completed_queries_cv;
 /// Coordinate shutdown of the completed queries queue processing thread.
 static condition_variable _completed_queries_shutdown_cv;
 
-/// Ticker that wakes up at set intervals to process the queued completed queries. Uses
-/// the _completed_queries_mu to synchonize access to the _completed_queries list.
-static unique_ptr<TickerSecondsBool> _completed_queries_ticker;
-
 /// Determine if the maximum number of queued completed queries has been exceeded.
 ///
 /// Return:
@@ -508,10 +503,6 @@ void ImpalaServer::ShutdownWorkloadManagement() {
   if (workload_mgmt_state_ == WorkloadManagementState::RUNNING) {
     workload_mgmt_state_ = WorkloadManagementState::SHUTTING_DOWN;
     LOG(INFO) << "Workload management is shutting down";
-
-    // Stop the Ticker that periodically notifies the completed queries processing thread.
-    _completed_queries_ticker->Stop();
-    _completed_queries_ticker->Join();
 
     // Wake up the completed queries processing thread so it can drain the in-memory
     // completed queries queue.
@@ -662,12 +653,9 @@ void ImpalaServer::WorkloadManagementWorker(const Version& target_schema_version
                 << "coordinator shutdown was initiated.";
       return; // Note: early return
     }
-
-    _completed_queries_ticker = make_unique<TickerSecondsBool>(
-        FLAGS_query_log_write_interval_s, _completed_queries_cv, _completed_queries_mu);
-    ABORT_IF_ERROR(
-        _completed_queries_ticker->Start("impala-server", "completed-queries-ticker"));
   }
+
+  const chrono::seconds write_interval_s(FLAGS_query_log_write_interval_s);
 
   // Non-values portion of the sql DML to insert records into the completed queries
   // tables. This portion of the statement is constant and thus is only generated once.
@@ -709,15 +697,15 @@ void ImpalaServer::WorkloadManagementWorker(const Version& target_schema_version
     MonotonicStopWatch timer;
     {
       unique_lock<mutex> l(_completed_queries_mu);
-      _completed_queries_cv.wait(l, [this] {
+      _completed_queries_cv.wait_for(l, write_interval_s, [this] {
         lock_guard<mutex> l2(workload_mgmt_state_mu_);
         // To guard against spurious wakeups, this predicate ensures there are
         // completed queries queued up before waking up the thread.
-        return (*_completed_queries_ticker && !_completed_queries.empty())
-            || _maxRecordsExceeded(_completed_queries.size())
+        LOG(INFO) << "Workload management worker woke up to check for completed queries" << endl;
+        return LIKELY(!_completed_queries.empty())
+            || UNLIKELY(_maxRecordsExceeded(_completed_queries.size()))
             || UNLIKELY(workload_mgmt_state_ == WorkloadManagementState::SHUTTING_DOWN);
       });
-      _completed_queries_ticker->ResetWakeupGuard();
 
       DebugActionNoFail(FLAGS_debug_actions, "WM_SHUTDOWN_DELAY");
 
