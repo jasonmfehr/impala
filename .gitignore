@@ -43,7 +43,8 @@ CPackConfig.cmake
 CPackSourceConfig.cmake
 _CPack_Packages
 install_manifest.txt
-package/build/
+*/build
+/build
 
 # Build timestamp files
 .*timestamp
