@@ -205,6 +205,7 @@ set (SRC_FILES
   NetworkTest.thrift
   MetricDefs.thrift
   Metrics.thrift
+  Observe.thrift
   PlanNodes.thrift
   Planner.thrift
   Partitions.thrift

@@ -60,6 +60,7 @@ set(SRC_FILES
   MetricDefs_types.cpp
   NetworkTest_types.cpp
   NetworkTestService.cpp
+  Observe_types.cpp
   PlanNodes_types.cpp
   Results_types.cpp
   Partitions_types.cpp

@@ -26,6 +26,7 @@ include "Descriptors.thrift"
 include "Results.thrift"
 include "CatalogObjects.thrift"
 include "LineageGraph.thrift"
+include "Observe.thrift"
 
 // Enum for schema resolution strategies. A schema resolution strategy
 // determines how columns/fields are looked up in the data files.
@@ -995,6 +996,8 @@ struct TQueryCtx {
 
   // 128-bit hash representing query option values that affect query results.
   31: optional TQueryOptionsHash query_options_result_hash
+
+  32: optional Observe.TOtelTrace current_trace
 }
 
 

@@ -104,6 +104,7 @@
 #include "gen-cpp/ImpalaService.h"
 #include "gen-cpp/ImpalaService_types.h"
 #include "gen-cpp/Frontend_types.h"
+#include "gen-cpp/Observe_types.h"
 
 #include "common/names.h"
 
@@ -1339,6 +1340,14 @@ Status ImpalaServer::Execute(TQueryCtx* query_ctx,
   string stmt = replace_all_copy(query_ctx->client_request.stmt, "\n", " ");
   Redact(&stmt);
   query_ctx->client_request.__set_redacted_stmt((const string) stmt);
+
+   if ((*query_handle)->otel_trace_query()) {
+    TOtelTrace t;
+    t.__set_trace_id(std::string((*query_handle)->otel_span_manager()->GetTraceId()));
+    t.__set_active_span_id(
+        std::string((*query_handle)->otel_span_manager()->GetRootSpanId()));
+    query_ctx->__set_current_trace(t);
+   }
 
   bool registered_query = false;
   Status status = ExecuteInternal(*query_ctx, external_exec_request, session_state,

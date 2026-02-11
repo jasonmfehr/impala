@@ -98,6 +98,15 @@ public:
   void EndChildSpanQueryExecution();
   void EndChildSpanClose();
 
+  // Returns the trace ID of the trace managed by this SpanManager. This is a convenience
+  // method that simply returns the trace ID of the root span. Since the root span is
+  // created in the ctor, this method can be called at any time during the SpanManager's
+  // lifetime.
+  std::string_view GetTraceId() const;
+
+  // Returns the span ID of the root span.
+  std::string_view GetRootSpanId() const;
+
 private:
   // Tracer instance used to construct spans.
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Tracer> tracer_;
