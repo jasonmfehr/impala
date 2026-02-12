@@ -2954,6 +2954,7 @@ public class Frontend {
 
     // Parse stmt and collect/load metadata to populate a stmt-local table cache
     ParsedStatement parsedStmt = compilerFactory.createParsedStatement(queryCtx);
+    // LOG.warn("Parsed Statement: {}", parsedStmt.getTopLevelNode().getClass().getCanonicalName());
 
     User user = new User(TSessionStateUtil.getEffectiveUser(queryCtx.session));
     StmtMetadataLoader metadataLoader = new StmtMetadataLoader(
@@ -3011,6 +3012,12 @@ public class Frontend {
     // need to re-fetch the parsedStatement because analysisResult can rewrite the
     // statement.
     parsedStmt = analysisResult.getParsedStmt();
+    LOG.warn("Statement Type:\n    IsSet: {}\n    IsSetOp: {}\n    IsQuery: {}\n    IsShowTables: {}",
+        analysisResult.isSetStmt(),
+        analysisResult.isSetOperationStmt(),
+        analysisResult.isQueryStmt(),
+        analysisResult.isShowTablesStmt()
+    );
 
     Preconditions.checkState(analysisResult.getException() == null);
     if (!planCtx.compilationState_.disableAuthorization()) {

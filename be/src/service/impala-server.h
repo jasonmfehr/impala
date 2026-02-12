@@ -788,7 +788,7 @@ class ImpalaServer : public ImpalaServiceIf,
       const bool include_in_query_log = true) WARN_UNUSED_RESULT;
 
   /// Implements Execute() logic, but doesn't unregister query on error.
-  Status ExecuteInternal(const TQueryCtx& query_ctx,
+  Status ExecuteInternal(TQueryCtx& query_ctx,
       const TExecRequest* external_exec_request,
       const std::shared_ptr<SessionState>& session_state, bool* registered_query,
       QueryHandle* query_handle);
