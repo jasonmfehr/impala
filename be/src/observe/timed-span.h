@@ -35,6 +35,7 @@ namespace impala {
 
 typedef std::unordered_map<opentelemetry::nostd::string_view,
     opentelemetry::common::AttributeValue> OtelAttributesMap;
+typedef std::chrono::time_point<std::chrono::high_resolution_clock> time_point;
 
 // Proxy class for an OpenTelemetry Span that automatically adds attributes for start
 // time, end time, and total span duration.
@@ -85,13 +86,18 @@ public:
   // return nullptr.
   const std::string& TraceId() const;
 
+  // Returns the Unix Nanosecond time when the span was started. Note this may differ
+  // from the value of the span start time that was set by the OTel SDK.
+  // TODO: Switch this from a time_point to a chrono::duration of the time_points epoch time.
+  const time_point& StartTime() const;
+
   // Returns the OpenTelemetry span context.
   opentelemetry::trace::SpanContext GetContext() const { return span_->GetContext(); }
 
 private:
   const opentelemetry::nostd::string_view start_time_attribute_name_;
   const opentelemetry::nostd::string_view duration_attribute_name_;
-  const int64_t start_time_;
+  time_point start_time_;
 
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> span_;
   std::string span_id_;

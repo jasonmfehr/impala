@@ -19,6 +19,7 @@
 
 #include <unistd.h>
 #include <algorithm>
+#include <chrono>
 #include <exception>
 #include <sstream>
 #include <string_view>
@@ -1368,9 +1369,11 @@ Status ImpalaServer::ExecuteInternal(TQueryCtx& query_ctx,
 
   if ((*query_handle)->otel_trace_query()) {
     TOtelTrace t;
-    t.__set_trace_id(std::string((*query_handle)->otel_span_manager()->GetTraceId()));
+    t.__set_trace_id(std::string((*query_handle)->otel_span_manager()->TraceId()));
     t.__set_active_span_id(
-        std::string((*query_handle)->otel_span_manager()->GetRootSpanId()));
+        std::string((*query_handle)->otel_span_manager()->RootSpanId()));
+    t.__set_trace_start_time(std::chrono::duration_cast<std::chrono::nanoseconds>(
+          (*query_handle)->otel_span_manager()->TraceStartTime().time_since_epoch()).count());
     query_ctx.__set_current_trace(t);
 
     (*query_handle)->otel_span_manager()->EndChildSpanInit();

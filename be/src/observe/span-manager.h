@@ -102,10 +102,13 @@ public:
   // method that simply returns the trace ID of the root span. Since the root span is
   // created in the ctor, this method can be called at any time during the SpanManager's
   // lifetime.
-  std::string_view GetTraceId() const;
+  std::string_view TraceId() const;
 
   // Returns the span ID of the root span.
-  std::string_view GetRootSpanId() const;
+  std::string_view RootSpanId() const;
+
+  // Returns the point in time when the root span was started.
+  const time_point& TraceStartTime() const;
 
 private:
   // Tracer instance used to construct spans.

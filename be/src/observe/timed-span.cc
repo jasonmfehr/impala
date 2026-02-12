@@ -64,8 +64,7 @@ TimedSpan::TimedSpan(const nostd::shared_ptr<trace::Tracer>& tracer,
     const nostd::string_view& duration_attribute_name, OtelAttributesMap&& attributes,
     trace::SpanKind span_kind, const shared_ptr<TimedSpan>& root) :
     start_time_attribute_name_(start_time_attribute_name),
-    duration_attribute_name_(duration_attribute_name),
-    start_time_(get_epoch_milliseconds()) {
+    duration_attribute_name_(duration_attribute_name) {
 
   trace::StartSpanOptions options;
   options.kind = span_kind;
@@ -75,23 +74,26 @@ TimedSpan::TimedSpan(const nostd::shared_ptr<trace::Tracer>& tracer,
     options.parent = context::Context().SetValue(trace::kIsRootSpanKey, true);
   }
 
-  attributes.insert_or_assign(start_time_attribute_name_,
-      static_cast<int64_t>(start_time_));
-
   span_ = tracer->StartSpan(
     name,
     attributes,
     options);
 
-    trace_id_ = id_to_string(span_->GetContext().trace_id().Id());
-    span_id_ = id_to_string(span_->GetContext().span_id().Id());
+  start_time_ = chrono::high_resolution_clock::now();
+  span_->SetAttribute(start_time_attribute_name_,
+      static_cast<int64_t>(chrono::duration_cast<chrono::milliseconds>(
+          start_time_.time_since_epoch()).count()));
+  trace_id_ = id_to_string(span_->GetContext().trace_id().Id());
+  span_id_ = id_to_string(span_->GetContext().span_id().Id());
 } // constructor TimedSpan
 
 void TimedSpan::End() {
   const int64_t end_time = get_epoch_milliseconds();
 
   span_->SetAttribute("EndTime", end_time);
-  span_->SetAttribute(duration_attribute_name_, (end_time - start_time_));
+  span_->SetAttribute(duration_attribute_name_, (end_time - static_cast<int64_t>(
+        chrono::duration_cast<chrono::milliseconds>(
+        start_time_.time_since_epoch()).count())));
 
   span_->End();
 } // function End
@@ -121,5 +123,9 @@ const string& TimedSpan::SpanId() const {
 const string& TimedSpan::TraceId() const {
   return trace_id_;
 } // function TraceId
+
+const time_point& TimedSpan::StartTime() const {
+  return start_time_;
+} // function StartTime
 
 } // namespace impala

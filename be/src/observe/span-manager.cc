@@ -479,15 +479,20 @@ void SpanManager::EndChildSpanClose() {
   }
 } // function EndChildSpanClose
 
-string_view SpanManager::GetTraceId() const {
-  DCHECK(root_ != nullptr) << "Cannot get trace ID from null root span.";
+string_view SpanManager::TraceId() const {
+  DCHECK(root_ != nullptr);
   return root_->TraceId();
-} // function GetTraceId
+} // function TraceId
 
-string_view SpanManager::GetRootSpanId() const {
-  DCHECK(root_ != nullptr) << "Cannot get span ID from null root span.";
+string_view SpanManager::RootSpanId() const {
+  DCHECK(root_ != nullptr);
   return root_->SpanId();
-} // function GetRootSpanId
+} // function RootSpanId
+
+const time_point& SpanManager::TraceStartTime() const {
+  DCHECK(root_ != nullptr);
+  return root_->StartTime();
+}
 
 inline void SpanManager::ChildSpanBuilder(const ChildSpanType& span_type,
     OtelAttributesMap&& additional_attributes, bool running) {

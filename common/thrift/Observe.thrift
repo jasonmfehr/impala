@@ -27,4 +27,7 @@ struct TOtelTrace {
   // OpenTelemetry assigned id of the current active span (tcan be used as the parent span
   // of new child spans).
   2: required string active_span_id
+
+  // Time the trace started (in Unix Nanosecond format).
+  3: required i64 trace_start_time
 }
