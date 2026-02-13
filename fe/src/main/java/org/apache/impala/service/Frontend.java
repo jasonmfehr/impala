@@ -2992,9 +2992,10 @@ public class Frontend {
     // Analyze and authorize stmt
     AnalysisContext analysisCtx = new AnalysisContext(queryCtx, authzFactory_, timeline);
 
-    LOG.warn("Frontend Query Information:\n    trace_id='{}'\n    span_id='{}'\n    query_id='{}'\n    cluster_id='{}'\n    coordinator='{}'\n    query_string='{}'\n    request_pool='{}'\n    session_id='{}'\n    user_name='{}'\n    default_db='{}'",
+    LOG.warn("Frontend Query Information:\n    trace_id='{}'\n    span_id='{}'\n    start_time='{}'\n    query_id='{}'\n    cluster_id='{}'\n    coordinator='{}'\n    query_string='{}'\n    request_pool='{}'\n    session_id='{}'\n    user_name='{}'\n    default_db='{}'",
         queryCtx.isSetCurrent_trace() ? queryCtx.getCurrent_trace().getTrace_id() : "N/A",
         queryCtx.isSetCurrent_trace() ? queryCtx.getCurrent_trace().getActive_span_id() : "N/A",
+        queryCtx.isSetCurrent_trace() ? queryCtx.getCurrent_trace().getTrace_start_time() : "N/A",
         PrintId(queryCtx.getQuery_id()),
         "TBD",
         queryCtx.getCoord_hostname() + ":" + queryCtx.getCoord_ip_address().getPort(),

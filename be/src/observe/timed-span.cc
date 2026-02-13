@@ -79,10 +79,10 @@ TimedSpan::TimedSpan(const nostd::shared_ptr<trace::Tracer>& tracer,
     attributes,
     options);
 
-  start_time_ = chrono::high_resolution_clock::now();
+  start_time_ = chrono::system_clock::now().time_since_epoch();
   span_->SetAttribute(start_time_attribute_name_,
       static_cast<int64_t>(chrono::duration_cast<chrono::milliseconds>(
-          start_time_.time_since_epoch()).count()));
+          start_time_).count()));
   trace_id_ = id_to_string(span_->GetContext().trace_id().Id());
   span_id_ = id_to_string(span_->GetContext().span_id().Id());
 } // constructor TimedSpan
@@ -93,7 +93,7 @@ void TimedSpan::End() {
   span_->SetAttribute("EndTime", end_time);
   span_->SetAttribute(duration_attribute_name_, (end_time - static_cast<int64_t>(
         chrono::duration_cast<chrono::milliseconds>(
-        start_time_.time_since_epoch()).count())));
+        start_time_).count())));
 
   span_->End();
 } // function End
@@ -124,7 +124,7 @@ const string& TimedSpan::TraceId() const {
   return trace_id_;
 } // function TraceId
 
-const time_point& TimedSpan::StartTime() const {
+const chrono::system_clock::duration& TimedSpan::StartTime() const {
   return start_time_;
 } // function StartTime
 

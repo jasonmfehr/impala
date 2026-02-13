@@ -130,7 +130,6 @@ ClientRequestState::ClientRequestState(const TQueryCtx& query_ctx, Frontend* fro
     // initialize OpenTelemetry for this query
     VLOG(2) << "Initializing OpenTelemetry for query " << PrintId(query_id());
     otel_span_manager_ = build_span_manager(this);
-    otel_span_manager_->StartChildSpanInit();
   }
 
   bool is_external_fe = session_type() == TSessionType::EXTERNAL_FRONTEND;

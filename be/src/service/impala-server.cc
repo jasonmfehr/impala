@@ -1373,10 +1373,9 @@ Status ImpalaServer::ExecuteInternal(TQueryCtx& query_ctx,
     t.__set_active_span_id(
         std::string((*query_handle)->otel_span_manager()->RootSpanId()));
     t.__set_trace_start_time(std::chrono::duration_cast<std::chrono::nanoseconds>(
-          (*query_handle)->otel_span_manager()->TraceStartTime().time_since_epoch()).count());
+          (*query_handle)->otel_span_manager()->TraceStartTime()).count());
     query_ctx.__set_current_trace(t);
 
-    (*query_handle)->otel_span_manager()->EndChildSpanInit();
     (*query_handle)->otel_span_manager()->StartChildSpanSubmitted();
   }
 

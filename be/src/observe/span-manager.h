@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -108,7 +109,7 @@ public:
   std::string_view RootSpanId() const;
 
   // Returns the point in time when the root span was started.
-  const time_point& TraceStartTime() const;
+  const std::chrono::system_clock::duration& TraceStartTime() const;
 
 private:
   // Tracer instance used to construct spans.

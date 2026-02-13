@@ -489,7 +489,7 @@ string_view SpanManager::RootSpanId() const {
   return root_->SpanId();
 } // function RootSpanId
 
-const time_point& SpanManager::TraceStartTime() const {
+const chrono::system_clock::duration& SpanManager::TraceStartTime() const {
   DCHECK(root_ != nullptr);
   return root_->StartTime();
 }
