@@ -42,3 +42,11 @@ add_library(OtelTests STATIC
 add_dependencies(OtelTests gen-deps)
 
 ADD_UNIFIED_BE_LSAN_TEST(otel-test OtelTest.*)
+
+add_library(OtelParsersTest STATIC
+  otel-parsers-test.cc
+)
+
+add_dependencies(OtelParsersTest gen-deps)
+
+ADD_UNIFIED_BE_LSAN_TEST(otel-parsers-test OtelParsersTest.*)

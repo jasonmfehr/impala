@@ -29,7 +29,6 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
-#include <gutil/strings/split.h>
 #include <opentelemetry/exporters/otlp/otlp_file_exporter.h>
 #include <opentelemetry/exporters/otlp/otlp_file_exporter_factory.h>
 #include <opentelemetry/exporters/otlp/otlp_file_exporter_options.h>
@@ -58,6 +57,7 @@
 #include "common/version.h"
 #include "gen-cpp/Query_types.h"
 #include "observe/otel-log-handler.h"
+#include "observe/otel-parsers.h"
 #include "observe/span-manager.h"
 #include "service/client-request-state.h"
 
@@ -246,16 +246,11 @@ static OtlpHttpExporterOptions http_exporter_config() {
   }
 
   // Additional HTTP headers
-  if (!FLAGS_otel_trace_additional_headers.empty()) {
-    for (auto header : strings::Split(FLAGS_otel_trace_additional_headers, ":::")) {
-      auto pos = header.find('=');
-      const string key = trim_copy(header.substr(0, pos).as_string());
-      const string value = trim_copy(header.substr(pos + 1).as_string());
-
-      VLOG(2) << "Adding additional OTel header: " << key << " = " << value;
-      opts.http_headers.emplace(key, value);
-    }
-  }
+  parse_otel_additional_headers(FLAGS_otel_trace_additional_headers,
+      [&opts](const string& key, const string& value) {
+        VLOG(2) << "Adding additional OTel header: " << key << " = " << value;
+        opts.http_headers.emplace(key, value);
+      });
 
   return opts;
 } // function http_exporter_config

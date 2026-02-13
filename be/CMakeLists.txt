@@ -618,6 +618,7 @@ set (UNIFIED_TEST_LIBS
   GUtilTests
   IoTests
   OtelTests
+  OtelParsersTest
   RpcTests
   RuntimeTests
   SchedulingTests

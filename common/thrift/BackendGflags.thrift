@@ -363,4 +363,59 @@ struct TBackendGflags {
   166: required i32 max_stmt_metadata_loader_threads
 
   167: required bool disable_hms_sync_by_default
+
+  // OpenTelemetry trace flags
+  168: required bool otel_trace_enabled
+
+  169: required string otel_trace_exporter
+
+  170: required string otel_trace_collector_url
+
+  171: required map<string, string> otel_trace_additional_headers
+
+  172: required bool otel_trace_compression
+
+  173: required i32 otel_trace_timeout_s
+
+  174: required string otel_trace_ca_cert_path
+
+  175: required string otel_trace_ca_cert_string
+
+  176: required string otel_trace_tls_minimum_version
+
+  177: required string otel_trace_ssl_ciphers
+
+  178: required string otel_trace_tls_cipher_suites
+
+  179: required bool otel_trace_tls_insecure_skip_verify
+
+  180: required i32 otel_trace_retry_policy_max_attempts
+
+  181: required double otel_trace_retry_policy_initial_backoff_s
+
+  182: required i32 otel_trace_retry_policy_max_backoff_s
+
+  183: required double otel_trace_retry_policy_backoff_multiplier
+
+  184: required string otel_trace_span_processor
+
+  185: required i32 otel_trace_batch_queue_size
+
+  186: required i32 otel_trace_batch_schedule_delay_ms
+
+  187: required i32 otel_trace_batch_max_batch_size
+
+  188: required bool otel_debug
+
+  189: required string otel_file_pattern
+
+  190: required string otel_file_alias_pattern
+
+  191: required i32 otel_file_flush_interval_ms
+
+  192: required i32 otel_file_flush_count
+
+  193: required i32 otel_file_max_file_size
+
+  194: required i32 otel_file_max_file_count
 }

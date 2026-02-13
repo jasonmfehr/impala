@@ -632,4 +632,85 @@ public class BackendConfig {
   public void setDisableHmsSyncByDefault(boolean disableHmsSyncByDefault) {
     backendCfg_.disable_hms_sync_by_default = disableHmsSyncByDefault;
   }
+
+  // OpenTelemetry trace flags
+  public boolean isOtelTraceEnabled() {
+    return backendCfg_.otel_trace_enabled;
+  }
+
+  public String getOtelTraceExporter() {
+    return backendCfg_.otel_trace_exporter;
+  }
+
+  public String getOtelTraceCollectorUrl() {
+    return backendCfg_.otel_trace_collector_url;
+  }
+
+  public String getOtelTraceAdditionalHeaders() {
+    return backendCfg_.otel_trace_additional_headers;
+  }
+
+  public boolean isOtelTraceCompressionEnabled() {
+    return backendCfg_.otel_trace_compression;
+  }
+
+  public int getOtelTraceTimeoutSecs() {
+    return backendCfg_.otel_trace_timeout_s;
+  }
+
+  public String getOtelTraceCaCertPath() {
+    return backendCfg_.otel_trace_ca_cert_path;
+  }
+
+  public String getOtelTraceCaCertString() {
+    return backendCfg_.otel_trace_ca_cert_string;
+  }
+
+  public String getOtelTraceTlsMinimumVersion() {
+    return backendCfg_.otel_trace_tls_minimum_version;
+  }
+
+  public String getOtelTraceSslCiphers() {
+    return backendCfg_.otel_trace_ssl_ciphers;
+  }
+
+  public String getOtelTraceTlsCipherSuites() {
+    return backendCfg_.otel_trace_tls_cipher_suites;
+  }
+
+  public boolean isOtelTraceTlsInsecureSkipVerify() {
+    return backendCfg_.otel_trace_tls_insecure_skip_verify;
+  }
+
+  public int getOtelTraceRetryPolicyMaxAttempts() {
+    return backendCfg_.otel_trace_retry_policy_max_attempts;
+  }
+
+  public double getOtelTraceRetryPolicyInitialBackoffSecs() {
+    return backendCfg_.otel_trace_retry_policy_initial_backoff_s;
+  }
+
+  public int getOtelTraceRetryPolicyMaxBackoffSecs() {
+    return backendCfg_.otel_trace_retry_policy_max_backoff_s;
+  }
+
+  public double getOtelTraceRetryPolicyBackoffMultiplier() {
+    return backendCfg_.otel_trace_retry_policy_backoff_multiplier;
+  }
+
+  public String getOtelTraceSpanProcessor() {
+    return backendCfg_.otel_trace_span_processor;
+  }
+
+  public int getOtelTraceBatchQueueSize() {
+    return backendCfg_.otel_trace_batch_queue_size;
+  }
+
+  public int getOtelTraceBatchScheduleDelayMs() {
+    return backendCfg_.otel_trace_batch_schedule_delay_ms;
+  }
+
+  public int getOtelTraceBatchMaxBatchSize() {
+    return backendCfg_.otel_trace_batch_max_batch_size;
+  }
 }
