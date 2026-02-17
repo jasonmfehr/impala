@@ -1029,6 +1029,8 @@ class ImpalaTestSuite(BaseTestSuite):
     # Revert target_impalad_clients back to default database.
     for impalad_client in target_impalad_clients:
       ImpalaTestSuite.__change_client_database(impalad_client, db_name='default')
+      impalad_client.close()
+
 
   def get_query_lineage(self, query_id, lineage_dir):
     """Walks through the lineage files in lineage_dir to look for a given query_id.
