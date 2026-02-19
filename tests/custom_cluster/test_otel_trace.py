@@ -20,12 +20,22 @@ from datetime import datetime
 from random import choice
 from string import ascii_lowercase
 from time import sleep
+from types import SimpleNamespace
 
+from thrift.protocol import TBinaryProtocol
+from thrift.transport.TSocket import TSocket
+from thrift.transport.TTransport import TBufferedTransport
+
+from impala_thrift_gen.ImpalaService import ImpalaHiveServer2Service
+from impala_thrift_gen.TCLIService import TCLIService
 from impala.error import HiveServer2Error
 from tests.common.custom_cluster_test_suite import CustomClusterTestSuite
 from tests.common.file_utils import count_lines, wait_for_file_line_count
-from tests.common.impala_connection import ERROR, FINISHED, PENDING, RUNNING
+from tests.common.impala_connection import \
+    ERROR, FINISHED, PENDING, RUNNING, MinimalHS2Connection
+from tests.common.impala_test_suite import IMPALAD_HS2_HOST_PORT
 from tests.common.test_vector import BEESWAX, ImpalaTestDimension
+from tests.util.cancel_util import FetchingThread
 from tests.util.otel_trace import assert_trace
 from tests.util.query_profile_util import parse_query_id, parse_retry_status
 from tests.util.retry import retry
@@ -46,13 +56,14 @@ class TestOtelTraceBase(CustomClusterTestSuite):
     self.trace_file_count = count_lines(self.trace_file_path, True)
 
   def assert_trace(self, query_id, query_profile, cluster_id, trace_cnt=1, err_span="",
-      missing_spans=[], async_close=False, exact_trace_cnt=False):
+      missing_spans=[], async_close=False, exact_trace_cnt=False,
+      adm_result_missing=False):
     """Helper method to assert a trace exists in the trace file with the required inputs
        for log file path, trace file path, and trace file line count (that was determined
        before the test ran)."""
     assert_trace(self.build_log_path("impalad", "INFO"), self.trace_file_path,
         self.trace_file_count, query_id, query_profile, cluster_id, trace_cnt, err_span,
-        missing_spans, async_close, exact_trace_cnt)
+        missing_spans, async_close, exact_trace_cnt, adm_result_missing)
 
 
 @CustomClusterTestSuite.with_args(
@@ -103,7 +114,7 @@ class TestOtelTraceSelectsDMLs(TestOtelTraceBase):
         cluster_id="select_dml")
 
   def test_invalid_sql(self):
-    """Asserts that queries with invalid SQL still generate the expected traces."""
+    """Asserts that queries with invalid SQL do not generate traces."""
     query = "SELECT * FROM functional.alltypes WHERE field_does_not_exist=1"
     self.execute_query_expect_failure(self.client, query)
 
@@ -112,13 +123,13 @@ class TestOtelTraceSelectsDMLs(TestOtelTraceBase):
     query_id, profile = self.query_id_from_ui(section="completed_queries",
         match_query=query)
 
-    self.assert_trace(
-        query_id=query_id,
-        query_profile=profile,
-        cluster_id="select_dml",
-        trace_cnt=1,
-        err_span="Planning",
-        missing_spans=["AdmissionControl", "QueryExecution"])
+    # Run a second query that will succeed to ensure all traces have been flushed.
+    self.execute_query_expect_success(self.client, "select 1")
+
+    # Assert only the second query had a trace generated for it
+    wait_for_file_line_count(file_path=self.trace_file_path,
+        expected_line_count=1 + self.trace_file_count, max_attempts=10, sleep_time_s=1,
+        backoff=1, exact_match=True)
 
   def test_cte_query_success(self):
     """Test that OpenTelemetry tracing is working by running a simple query that uses a
@@ -442,6 +453,76 @@ class TestOtelTraceSelectsDMLs(TestOtelTraceBase):
         r"\/opentelemetry-cpp-\d+.\d+.\d+\/exporters\/otlp\/src\/otlp_file_client.cc\" "
         r"line=\"\d+\"", -1)
 
+  def test_hs2_getcolums(self):
+    """Asserts HS2 metadata operations do not cause crashes."""
+    host, port = IMPALAD_HS2_HOST_PORT.split(":")
+    socket = TSocket(host, port)
+    transport = TBufferedTransport(socket)
+    protocol = TBinaryProtocol.TBinaryProtocol(transport)
+    hs2_client = ImpalaHiveServer2Service.Client(protocol)
+
+    session_handle = None
+    operation_handle = None
+
+    try:
+      transport.open()
+
+      # Open a new HS2 session.
+      open_resp = hs2_client.OpenSession(TCLIService.TOpenSessionReq())
+      assert open_resp.status.statusCode in (
+          TCLIService.TStatusCode.SUCCESS_STATUS,
+          TCLIService.TStatusCode.SUCCESS_WITH_INFO_STATUS)
+      session_handle = open_resp.sessionHandle
+
+      # Run a GetColumns() operation.
+      get_cols_req = TCLIService.TGetColumnsReq(
+          sessionHandle=session_handle,
+          schemaName="functional",
+          tableName="alltypes")
+      get_cols_resp = hs2_client.GetColumns(get_cols_req)
+      assert get_cols_resp.status.statusCode in (
+          TCLIService.TStatusCode.SUCCESS_STATUS,
+          TCLIService.TStatusCode.SUCCESS_WITH_INFO_STATUS)
+      operation_handle = get_cols_resp.operationHandle
+      assert operation_handle is not None
+    finally:
+      if operation_handle is not None:
+        hs2_client.CloseOperation(TCLIService.TCloseOperationReq(
+            operationHandle=operation_handle))
+      if session_handle is not None:
+        hs2_client.CloseSession(TCLIService.TCloseSessionReq(
+            sessionHandle=session_handle))
+      if transport.isOpen():
+        transport.close()
+      socket.close()
+
+  def test_hs2_query_cancel(self):
+    """Asserts that ending a query through HS2 operations while it is in admission control
+    does not cause crashes and generates the expected trace with an error span for the
+    cancellation."""
+    with MinimalHS2Connection(IMPALAD_HS2_HOST_PORT) as test_client:
+      debug_action = "SCHEDULER_SCHEDULE:SLEEP@2000"
+      thread = FetchingThread(test_client,
+          "select * from functional_parquet.alltypes",
+          {"debug_action": debug_action},
+          SimpleNamespace(dataset="functional", file_format="parquet",
+              compression_codec="none"))
+      thread.execute_async()
+      thread.start()
+      self.assert_impalad_log_contains_eventually(level="INFO", period_s=0.1,
+          line_regex=r"Debug Action: {}".format(debug_action))
+      thread.cancel_query()
+      thread.join()
+
+      self.assert_trace(
+          query_id=thread.query_id,
+          query_profile=thread.get_runtime_profile(),
+          cluster_id="select_dml",
+          trace_cnt=1,
+          missing_spans=["QueryExecution"],
+          err_span="AdmissionControl",
+          adm_result_missing=True)
+
 
 class TestOtelTraceSelectQueued(TestOtelTraceBase):
   """Tests that require setting additional startup flags to assert admission control
@@ -665,8 +746,8 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
           missing_spans=["AdmissionControl"])
 
   def test_ddl_create_alter_table(self, vector, unique_name):
-    """Tests that traces are created for a successful create table, a successful alter
-       table, and a failed alter table (adding a column that already exists)."""
+    """Tests that traces are created for a successful create and alter table, and not
+       created for a failed alter table (adding a column that already exists)."""
     create_result = self.execute_query_expect_success(self.client,
         "CREATE TABLE {}.{} (id int, string_col string, int_col int)"
         .format(self.test_db, unique_name),
@@ -681,8 +762,8 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
     self.execute_query_expect_failure(self.client, fail_query,
         {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
 
-    fail_query_id, fail_profile = self.query_id_from_ui(section="completed_queries",
-        match_query=fail_query)
+    # Execute one more query to ensure all traces have been flushed to the trace file.
+    self.execute_query_expect_success(self.client, "SELECT 1")
 
     self.assert_trace(
         query_id=create_result.query_id,
@@ -697,14 +778,6 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
         cluster_id="trace_ddl",
         trace_cnt=3,
         missing_spans=["AdmissionControl"])
-
-    self.assert_trace(
-        query_id=fail_query_id,
-        query_profile=fail_profile,
-        cluster_id="trace_ddl",
-        trace_cnt=3,
-        missing_spans=["AdmissionControl", "QueryExecution"],
-        err_span="Planning")
 
   def test_ddl_createtable_fail(self, vector, unique_name):
     """Asserts a failed create table generates the expected trace."""
@@ -803,6 +876,18 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
     """Asserts invalidate metadata queries generate the expected traces."""
     result = self.execute_query_expect_success(self.client,
         "INVALIDATE METADATA functional.alltypes",
+        {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+    self.assert_trace(
+        query_id=result.query_id,
+        query_profile=result.runtime_profile,
+        cluster_id="trace_ddl",
+        trace_cnt=1,
+        missing_spans=["AdmissionControl"])
+
+  def test_invalidate_metadata_global(self, vector):
+    """Asserts global invalidate metadata queries generate the expected traces."""
+    result = self.execute_query_expect_success(self.client, "INVALIDATE METADATA",
         {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
 
     self.assert_trace(

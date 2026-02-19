@@ -192,6 +192,16 @@ public class AnalysisContext {
 
     public boolean isTestCaseStmt() { return stmt_ instanceof CopyTestCaseStmt; }
 
+    public boolean isValuesStmt() { return stmt_ instanceof ValuesStmt; }
+
+    public boolean isInvalidateMetadata() {
+      return stmt_ instanceof ResetMetadataStmt && stmt_ != null
+          && (((ResetMetadataStmt) stmt_).getAction()
+              == ResetMetadataStmt.Action.INVALIDATE_METADATA_ALL ||
+              ((ResetMetadataStmt) stmt_).getAction()
+                  == ResetMetadataStmt.Action.INVALIDATE_METADATA_TABLE);
+    }
+
     private boolean isDdlStmt() {
       return isCreateTableLikeStmt() || isCreateTableStmt() ||
           isCreateViewStmt() || isCreateDbStmt() || isDropDbStmt() ||
