@@ -22,12 +22,12 @@ set(LIBRARY_OUTPUT_PATH "${BUILD_OUTPUT_ROOT_DIRECTORY}/observe")
 set(EXECUTABLE_OUTPUT_PATH "${BUILD_OUTPUT_ROOT_DIRECTORY}/observe")
 
 add_library(Observe
+  buffered-span.cc
   otel-flags.cc
   otel-flags-trace.cc
   otel-log-handler.cc
   otel.cc
   span-manager.cc
-  timed-span.cc
 )
 add_dependencies(Observe gen-deps)
 

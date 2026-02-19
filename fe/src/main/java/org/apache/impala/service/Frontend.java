@@ -262,6 +262,7 @@ import org.apache.kudu.client.KuduClient;
 import org.apache.kudu.client.KuduException;
 import org.apache.kudu.client.KuduTransaction;
 import org.apache.thrift.TException;
+import org.apache.thrift.TSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -2990,49 +2991,64 @@ public class Frontend {
   private TExecRequest doCreateExecRequest(CompilerFactory compilerFactory,
       PlanCtx planCtx, List<String> warnings, EventSequence timeline)
       throws ImpalaException {
+    ParsedStatement parsedStmt;
+    AnalysisResult analysisResult;
+    StmtTableCache stmtTableCache;
+
     TQueryCtx queryCtx = planCtx.getQueryContext();
+    try {
+      // Parse stmt and collect/load metadata to populate a stmt-local table cache
+      parsedStmt = compilerFactory.createParsedStatement(queryCtx);
 
-    // Parse stmt and collect/load metadata to populate a stmt-local table cache
-    ParsedStatement parsedStmt = compilerFactory.createParsedStatement(queryCtx);
+      User user = new User(TSessionStateUtil.getEffectiveUser(queryCtx.session));
+      StmtMetadataLoader metadataLoader = new StmtMetadataLoader(
+          this, queryCtx.session.database, timeline, user, queryCtx.getQuery_id());
 
-    User user = new User(TSessionStateUtil.getEffectiveUser(queryCtx.session));
-    StmtMetadataLoader metadataLoader = new StmtMetadataLoader(
-        this, queryCtx.session.database, timeline, user, queryCtx.getQuery_id());
+      //TODO (IMPALA-8788): should load table write ids in transaction context.
+      stmtTableCache = metadataLoader.loadTables(parsedStmt);
 
-    //TODO (IMPALA-8788): should load table write ids in transaction context.
-    StmtTableCache stmtTableCache = metadataLoader.loadTables(parsedStmt);
-    if (queryCtx.client_request.query_options.isSetDebug_action()) {
-        DebugUtils.executeDebugAction(
-            queryCtx.client_request.query_options.getDebug_action(),
-            DebugUtils.LOAD_TABLES_DELAY);
+      if (queryCtx.client_request.query_options.isSetDebug_action()) {
+          DebugUtils.executeDebugAction(
+              queryCtx.client_request.query_options.getDebug_action(),
+              DebugUtils.LOAD_TABLES_DELAY);
+      }
+
+      // Add referenced tables to frontend profile
+      FrontendProfile.getCurrent().addInfoString("Referenced Tables",
+          stmtTableCache.tables.keySet()
+              .stream()
+              .map(TableName::toString)
+              .collect(Collectors.joining(", ")));
+
+      // Add the catalog versions and loaded timestamps.
+      FrontendProfile.getCurrent().addInfoString("Original Table Versions",
+          stmtTableCache.tables.values().stream()
+              .map(t -> String.join(", ", t.getFullName(),
+                  Long.toString(t.getCatalogVersion()),
+                  Long.toString(t.getLastLoadedTimeMs()),
+                  new Date(t.getLastLoadedTimeMs()).toString()))
+              .collect(Collectors.joining("\n")));
+
+      // Add the catalog service id that shows where the metadata comes (usually from the
+      // current active catalogd).
+      FrontendProfile.getCurrent().addInfoString("Catalog Service ID",
+          PrintId(stmtTableCache.catalog.getCatalogServiceId()));
+
+      // Analyze and authorize stmt
+      AnalysisContext analysisCtx = new AnalysisContext(queryCtx, authzFactory_,
+          timeline);
+      analysisResult = analysisCtx.analyzeAndAuthorize(compilerFactory, parsedStmt,
+          stmtTableCache, authzChecker_.get(),
+          planCtx.compilationState_.disableAuthorization());
+    } catch (ImpalaException | RuntimeException e) {
+      updateQueryOtelTracing(queryCtx.getQuery_id(), false);
+      throw e;
     }
 
-    // Add referenced tables to frontend profile
-    FrontendProfile.getCurrent().addInfoString("Referenced Tables",
-        stmtTableCache.tables.keySet()
-            .stream()
-            .map(TableName::toString)
-            .collect(Collectors.joining(", ")));
+    // If OpenTelemetry traces are being generated for queries, notify the backend if this
+    // query should be traced.
+    updateQueryOtelTracing(queryCtx.getQuery_id(), analysisResult);
 
-    // Add the catalog versions and loaded timestamps.
-    FrontendProfile.getCurrent().addInfoString("Original Table Versions",
-        stmtTableCache.tables.values().stream()
-            .map(t -> String.join(", ", t.getFullName(),
-                Long.toString(t.getCatalogVersion()),
-                Long.toString(t.getLastLoadedTimeMs()),
-                new Date(t.getLastLoadedTimeMs()).toString()))
-            .collect(Collectors.joining("\n")));
-
-    // Add the catalog service id that shows where the metadata comes (usually from the
-    // current active catalogd).
-    FrontendProfile.getCurrent().addInfoString("Catalog Service ID",
-        PrintId(stmtTableCache.catalog.getCatalogServiceId()));
-
-    // Analyze and authorize stmt
-    AnalysisContext analysisCtx = new AnalysisContext(queryCtx, authzFactory_, timeline);
-    AnalysisResult analysisResult = analysisCtx.analyzeAndAuthorize(compilerFactory,
-        parsedStmt, stmtTableCache, authzChecker_.get(),
-        planCtx.compilationState_.disableAuthorization());
     // need to re-fetch the parsedStatement because analysisResult can rewrite the
     // statement.
     parsedStmt = analysisResult.getParsedStmt();
@@ -3278,6 +3294,42 @@ public class Frontend {
         }
       }
       throw e;
+    }
+  }
+
+  private void updateQueryOtelTracing(final TUniqueId queryId,
+      final AnalysisResult analysisResult) throws AnalysisException {
+    if (BackendConfig.INSTANCE.isOtelTraceEnabled()) {
+      updateQueryOtelTracing(queryId,
+          !analysisResult.isExplainStmt()
+          && !analysisResult.isValuesStmt()
+          && (
+              analysisResult.isAlterDbStmt()
+              || analysisResult.isAlterTableStmt()
+              || analysisResult.isComputeStatsStmt()
+              || analysisResult.isCreateDbStmt()
+              || analysisResult.isCreateTableAsSelectStmt()
+              || analysisResult.isCreateTableLikeStmt()
+              || analysisResult.isCreateTableStmt()
+              || analysisResult.isCreateViewStmt()
+              || analysisResult.isDeleteStmt()
+              || analysisResult.isDropDbStmt()
+              || analysisResult.isDropTableOrViewStmt()
+              || analysisResult.isInsertStmt()
+              || analysisResult.isInvalidateMetadata()
+              || analysisResult.isQueryStmt()
+              || analysisResult.isUpdateStmt()));
+    }
+  }
+
+  private void updateQueryOtelTracing(final TUniqueId queryId, boolean shouldTrace)
+      throws AnalysisException {
+    try {
+      FeSupport.NativeUpdateQueryOtelTracing(new TSerializer().serialize(queryId),
+          shouldTrace);
+    } catch (TException e) {
+      throw new AnalysisException("Failed to serialize query id '" +  PrintId(queryId)
+          + "' for OpenTelemetry tracing.", e);
     }
   }
 

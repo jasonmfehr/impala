@@ -3685,6 +3685,18 @@ void ImpalaServer::GetAllConnectionContexts(
   GetConnectionContextList(connection_contexts);
 }
 
+void ImpalaServer::DoTraceQuery(const TUniqueId& query_id, bool do_trace) {
+  ClientRequestState* crs = GetQueryDriver(query_id)->GetActiveClientRequestState();
+
+  VLOG(2) << "DoTraceQuery: " << (do_trace ? "true" : "false");
+  if (crs != nullptr && crs->otel_trace_query()) {
+    crs->otel_span_manager()->TraceQuery(do_trace);
+    if (!do_trace) {
+      crs->otel_span_manager().reset();
+    }
+  }
+}
+
 TUniqueId ImpalaServer::RandomUniqueID() {
   uuid conn_uuid;
   {

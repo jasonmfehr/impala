@@ -19,8 +19,8 @@
 
 #include <memory>
 #include <mutex>
-#include <ostream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <opentelemetry/nostd/shared_ptr.h>
@@ -28,23 +28,12 @@
 #include <opentelemetry/trace/tracer.h>
 
 #include "common/status.h"
-#include "observe/timed-span.h"
+#include "observe/buffered-span.h"
 
 namespace impala {
 
 // Forward declaration to break cyclical imports.
 class ClientRequestState;
-
-// Enum defining the child span types.
-enum class ChildSpanType {
-  NONE = 0,
-  INIT = 1,
-  SUBMITTED = 2,
-  PLANNING = 3,
-  ADMISSION_CONTROL = 4,
-  QUERY_EXEC = 5,
-  CLOSE = 6
-};
 
 // Manages the root and child spans for a single query. Provides convenience methods to
 // start each child span with the appropriate name/attributes and to end each child span.
@@ -98,7 +87,81 @@ public:
   void EndChildSpanQueryExecution();
   void EndChildSpanClose();
 
+  // Returns true if the root span has been initialized and also has ended.
+  const bool HasEnded() const;
+
+  // Sets whether the query associated with this SpanManager should be traced.
+  // This function must be called during planning after the Planning child span has
+  // started but before it has ended.
+  void TraceQuery(bool do_trace);
+
 private:
+  // Enum defining the child span types.
+  enum class ChildSpanType {
+    NONE = 0,
+    INIT = 1,
+    SUBMITTED = 2,
+    PLANNING = 3,
+    ADMISSION_CONTROL = 4,
+    QUERY_EXEC = 5,
+    CLOSE = 6
+  }; // enum ChildSpanType
+
+  // Struct to hold a BufferedSpan instance of child span and the corresponding end
+  // function that populates the appropriate attributes and submits the span.
+  struct ChildSpanEntry {
+    using EndFuncType = void (SpanManager::*)(const Status*);
+
+    std::unique_ptr<BufferedSpan> span;
+    EndFuncType end_func;
+
+    explicit ChildSpanEntry(EndFuncType _end_func) : end_func(std::move(_end_func)) {}
+  }; // struct ChildSpanEntry
+
+  // Converts a ChildSpanType enum value to its string representation.
+  static constexpr char const* CHILD_SPAN_NAMES[] = { "None", "Init", "Submitted",
+      "Planning", "AdmissionControl", "QueryExecution", "Close"};
+  inline std::string to_string(const ChildSpanType& val) {
+    return CHILD_SPAN_NAMES[static_cast<int>(val)];
+  }
+
+  // Helper method that builds a child span and populates it with common attributes plus
+  // the specified additional attributes.
+  // Callers must hold child_span_mu_ but MUST NOT HOLD client_requst_state_->lock().
+  inline BufferedSpan* ChildSpanBuilder(const ChildSpanType& span_type,
+      BufferedSpan::BufferedAttributesMap&& additional_attributes = {},
+      bool running = false);
+  inline BufferedSpan* ChildSpanBuilder(const ChildSpanType& span_type, bool running);
+
+  // Internal helper functions to perform the actual work of ending child spans.
+  // Callers must already hold child_span_mu_ and client_request_state_->lock().
+  //
+  // Parameters:
+  //   cause - See comments on StartChildSpanClose().
+  inline void DoEndChildSpanInit(const Status* cause = nullptr);
+  inline void DoEndChildSpanSubmitted(const Status* cause = nullptr);
+  inline void DoEndChildSpanPlanning(const Status* cause = nullptr);
+  inline void DoEndChildSpanAdmissionControl(const Status* cause = nullptr);
+  inline void DoEndChildSpanQueryExecution(const Status* cause = nullptr);
+  inline void DoEndChildSpanClose(const Status* cause = nullptr);
+
+  // Helper method to end a child span and populate its common attributes.
+  // Callers must already hold child_span_mu_ and client_request_state_->lock().
+  //
+  // Parameters:
+  //   cause - See comments on StartChildSpanClose().
+  //   additional_attributes - Span specific attributes that will be set on the span
+  //                           before ending it.
+  inline void EndChildSpan(const ChildSpanType& span_type, const Status* cause = nullptr,
+      const BufferedSpan::BufferedAttributesMap& additional_attributes = {},
+      bool submit = false);
+
+  // Returns true if the Close child span is active.
+  // Callers must already hold the child_span_mu_ lock.
+  inline bool IsClosing() {
+    return UNLIKELY(child_spans_.at(ChildSpanType::CLOSE).span);
+  }
+
   // Tracer instance used to construct spans.
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Tracer> tracer_;
 
@@ -112,64 +175,23 @@ private:
   // this SpanManager is tracking.
   const std::string query_id_;
 
-  // TimedSpan instances for the root span. Only modified in the ctor, dtor, and
-  // EndChildSpanClose functions.
-  std::shared_ptr<TimedSpan> root_;
-
   // TimedSpan instance for the current child span and the mutex to protect it.
   // To ensure no deadlocks, locks must be acquired in the following order. Note that
   // ClientRequestState::lock_ only needs to be held when interacting with the
   // client_request_state_ variable. It should not be held otherwise.
   // 1. SpanManager::child_span_mu_
   // 2. ClientRequestState::lock_
-  std::unique_ptr<TimedSpan> current_child_;
-  std::mutex child_span_mu_;
+  std::unique_ptr<BufferedSpan> span_root_;
+  std::unordered_map<ChildSpanType, ChildSpanEntry> child_spans_;
+  mutable std::mutex child_span_mu_;
 
-  // Span type of the current childspan. Will be ChildSpanType::NONE if no child span is
-  // active.
-  ChildSpanType child_span_type_;
+  // Indicator set when this SpanManager represents a query that should not have an
+  // OpenTelemetry trace created for it.
+  bool do_trace_ = false;
 
-  // Helper method that builds a child span and populates it with common attributes plus
-  // the specified additional attributes.
-  // Callers must hold child_span_mu_ but MUST NOT HOLD client_requst_state_->lock().
-  inline void ChildSpanBuilder(const ChildSpanType& span_type,
-      OtelAttributesMap&& additional_attributes = {}, bool running = false);
-  inline void ChildSpanBuilder(const ChildSpanType& span_type, bool running);
-
-  // Internal helper functions to perform the actual work of ending child spans.
-  // Callers must already hold child_span_mu_ and client_request_state_->lock().
-  //
-  // Parameters:
-  //   cause - See comments on StartChildSpanClose().
-  inline void DoEndChildSpanInit(const Status* cause = nullptr);
-  inline void DoEndChildSpanSubmitted(const Status* cause = nullptr);
-  inline void DoEndChildSpanPlanning(const Status* cause = nullptr);
-  inline void DoEndChildSpanAdmissionControl(const Status* cause = nullptr);
-  inline void DoEndChildSpanQueryExecution(const Status* cause = nullptr);
-
-  // Properly closes the active child span by calling the appropriate End method for the
-  // active child span type. If no child span is active, does nothing.
-  // Callers must already hold child_span_mu_ and client_request_state_->lock().
-  //
-  // Parameters:
-  //   cause - See comments on StartChildSpanClose().
-  inline void EndActiveChildSpan(const Status* cause = nullptr);
-
-  // Helper method to end a child span and populate its common attributes.
-  // Callers must already hold child_span_mu_ and client_request_state_->lock().
-  //
-  // Parameters:
-  //   cause - See comments on StartChildSpanClose().
-  //   additional_attributes - Span specific attributes that will be set on the span
-  //                           before ending it.
-  inline void EndChildSpan(const Status* cause = nullptr,
-      const OtelAttributesMap& additional_attributes = {});
-
-  // Returns true if the Close child span is active.
-  // Callers must already hold the child_span_mu_ lock.
-  inline bool IsClosing() {
-      return UNLIKELY(current_child_ &&  child_span_type_ == ChildSpanType::CLOSE);
-  }
+  // Indicator set when a root span is created for this SpanManager. Will be false if the
+  // associated query will not be traced.
+  bool started_ = false;
 };  // class SpanManager
 
 } // namespace impala

@@ -103,7 +103,7 @@ class TestOtelTraceSelectsDMLs(TestOtelTraceBase):
         cluster_id="select_dml")
 
   def test_invalid_sql(self):
-    """Asserts that queries with invalid SQL still generate the expected traces."""
+    """Asserts that queries with invalid SQL do not generate traces."""
     query = "SELECT * FROM functional.alltypes WHERE field_does_not_exist=1"
     self.execute_query_expect_failure(self.client, query)
 
@@ -112,13 +112,13 @@ class TestOtelTraceSelectsDMLs(TestOtelTraceBase):
     query_id, profile = self.query_id_from_ui(section="completed_queries",
         match_query=query)
 
-    self.assert_trace(
-        query_id=query_id,
-        query_profile=profile,
-        cluster_id="select_dml",
-        trace_cnt=1,
-        err_span="Planning",
-        missing_spans=["AdmissionControl", "QueryExecution"])
+    # Run a second query that will succeed to ensure all traces have been flushed.
+    self.execute_query_expect_success(self.client, "select 1")
+
+    # Assert only the second query had a trace generated for it
+    wait_for_file_line_count(file_path=self.trace_file_path,
+        expected_line_count=1 + self.trace_file_count, max_attempts=10, sleep_time_s=1,
+        backoff=1, exact_match=True)
 
   def test_cte_query_success(self):
     """Test that OpenTelemetry tracing is working by running a simple query that uses a
@@ -665,8 +665,8 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
           missing_spans=["AdmissionControl"])
 
   def test_ddl_create_alter_table(self, vector, unique_name):
-    """Tests that traces are created for a successful create table, a successful alter
-       table, and a failed alter table (adding a column that already exists)."""
+    """Tests that traces are created for a successful create and alter table, and not
+       created for a failed alter table (adding a column that already exists)."""
     create_result = self.execute_query_expect_success(self.client,
         "CREATE TABLE {}.{} (id int, string_col string, int_col int)"
         .format(self.test_db, unique_name),
@@ -681,8 +681,8 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
     self.execute_query_expect_failure(self.client, fail_query,
         {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
 
-    fail_query_id, fail_profile = self.query_id_from_ui(section="completed_queries",
-        match_query=fail_query)
+    # Execute one more query to ensure all traces have been flushed to the trace file.
+    self.execute_query_expect_success(self.client, "SELECT 1")
 
     self.assert_trace(
         query_id=create_result.query_id,
@@ -697,14 +697,6 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
         cluster_id="trace_ddl",
         trace_cnt=3,
         missing_spans=["AdmissionControl"])
-
-    self.assert_trace(
-        query_id=fail_query_id,
-        query_profile=fail_profile,
-        cluster_id="trace_ddl",
-        trace_cnt=3,
-        missing_spans=["AdmissionControl", "QueryExecution"],
-        err_span="Planning")
 
   def test_ddl_createtable_fail(self, vector, unique_name):
     """Asserts a failed create table generates the expected trace."""
@@ -803,6 +795,18 @@ class TestOtelTraceDDLs(TestOtelTraceBase):
     """Asserts invalidate metadata queries generate the expected traces."""
     result = self.execute_query_expect_success(self.client,
         "INVALIDATE METADATA functional.alltypes",
+        {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
+
+    self.assert_trace(
+        query_id=result.query_id,
+        query_profile=result.runtime_profile,
+        cluster_id="trace_ddl",
+        trace_cnt=1,
+        missing_spans=["AdmissionControl"])
+
+  def test_invalidate_metadata_global(self, vector):
+    """Asserts global invalidate metadata queries generate the expected traces."""
+    result = self.execute_query_expect_success(self.client, "INVALIDATE METADATA",
         {"ENABLE_ASYNC_DDL_EXECUTION": vector.get_value('async_ddl')})
 
     self.assert_trace(

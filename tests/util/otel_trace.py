@@ -579,11 +579,11 @@ def __assert_scopespan_common(span, query_id, is_root, name, attributes_count,
 
 def __find_span_log(log_file_path, span_name, query_id):
   """
-    Finds the start span log entry for the given span name and query id in the Impalad
+    Finds the end span log entry for the given span name and query id in the Impalad
     logs. This log line contains the trace id and span id for the span which are used
     as the expected values when asserting the span properties in the trace file.
   """
-  span_regex = r'Started \'{}\' span trace_id="(.*?)" span_id="(.*?)" query_id="{}"' \
+  span_regex = r'Submitted \'{}\' span trace_id="(.*?)" span_id="(.*?)" query_id="{}"' \
       .format(span_name, query_id)
 
   max_retries = 10

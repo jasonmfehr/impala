@@ -125,8 +125,8 @@ ClientRequestState::ClientRequestState(const TQueryCtx& query_ctx, Frontend* fro
     fetch_rows_timeout_us_(MICROS_PER_MILLI * query_options().fetch_rows_timeout_ms),
     parent_driver_(query_driver) {
 
-  if (FLAGS_otel_trace_enabled && should_otel_trace_query(sql_stmt(),
-    query_ctx.session.session_type)) {
+  if (FLAGS_otel_trace_enabled
+      && should_otel_trace_query(query_ctx.session.session_type)) {
     // initialize OpenTelemetry for this query
     VLOG(2) << "Initializing OpenTelemetry for query " << PrintId(query_id());
     otel_span_manager_ = build_span_manager(this);
