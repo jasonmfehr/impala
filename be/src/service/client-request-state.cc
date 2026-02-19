@@ -125,10 +125,10 @@ ClientRequestState::ClientRequestState(const TQueryCtx& query_ctx, Frontend* fro
     fetch_rows_timeout_us_(MICROS_PER_MILLI * query_options().fetch_rows_timeout_ms),
     parent_driver_(query_driver) {
 
-  if (FLAGS_otel_trace_enabled && should_otel_trace_query(sql_stmt(),
-    query_ctx.session.session_type)) {
+  if (FLAGS_otel_trace_enabled && should_otel_trace_query(
+      query_ctx_.session.session_type, query_ctx_.client_request)) {
     // initialize OpenTelemetry for this query
-    VLOG(2) << "Initializing OpenTelemetry for query " << PrintId(query_id());
+    VLOG(2) << "Initializing OpenTelemetry trace for query " << PrintId(query_id());
     otel_span_manager_ = build_span_manager(this);
     otel_span_manager_->StartChildSpanInit();
   }
@@ -717,12 +717,15 @@ void ClientRequestState::FinishExecQueryOrDmlRequest() {
 
   if (otel_trace_query() && !IsCTAS()) {
     otel_span_manager_->EndChildSpanAdmissionControl(admit_status);
-    otel_span_manager_->StartChildSpanQueryExecution();
   }
 
   {
     lock_guard<mutex> l(lock_);
     if (!UpdateQueryStatus(admit_status).ok()) return;
+  }
+
+  if (otel_trace_query() && !IsCTAS()) {
+    otel_span_manager_->StartChildSpanQueryExecution();
   }
 
   DCHECK(schedule_.get() != nullptr);
