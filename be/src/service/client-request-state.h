@@ -548,8 +548,11 @@ class ClientRequestState {
   /// Returns the OpenTelemetry SpanManager for this query.
   std::shared_ptr<SpanManager> otel_span_manager() { return otel_span_manager_; }
 
-  /// Returns true if OpenTelemetry tracing is enabled for this query.
-  inline bool otel_trace_query() const { return otel_span_manager_.get() != nullptr; }
+  /// Returns true if OpenTelemetry tracing is enabled for this query and the trace
+  /// has not yet ended.
+  inline bool otel_trace_query() const {
+    return otel_span_manager_.get() != nullptr && !otel_span_manager_->HasEnded();
+  }
 
  protected:
   /// Updates the end_time_us_ of this query if it isn't set. The end time is determined
