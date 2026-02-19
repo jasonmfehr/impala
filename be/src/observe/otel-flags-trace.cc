@@ -21,8 +21,6 @@
 #include <regex>
 #include <string>
 
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/trim.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gutil/strings/split.h>
@@ -220,9 +218,7 @@ DEFINE_string_hidden(otel_trace_span_processor, impala::SPAN_PROCESSOR_BATCH.c_s
     impala::SPAN_PROCESSOR_SIMPLE).c_str());
 DEFINE_validator(otel_trace_span_processor, [](const char* flagname,
     const string& value) {
-  const std::string trimmed = boost::algorithm::trim_copy(value);
-  return boost::iequals(trimmed, impala::SPAN_PROCESSOR_BATCH)
-      || boost::iequals(trimmed, impala::SPAN_PROCESSOR_SIMPLE);
+  return value == impala::SPAN_PROCESSOR_BATCH || value == impala::SPAN_PROCESSOR_SIMPLE;
 });
 
 DEFINE_int32(otel_trace_batch_queue_size, batch_opts.max_queue_size, "The maximum "

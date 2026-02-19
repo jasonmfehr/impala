@@ -20,6 +20,8 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -55,6 +57,7 @@
 
 #include "common/compiler-util.h"
 #include "common/version.h"
+#include "gen-cpp/Observe_types.h"
 #include "gen-cpp/Query_types.h"
 #include "observe/otel-log-handler.h"
 #include "observe/otel-parsers.h"
@@ -69,6 +72,7 @@ using namespace opentelemetry::sdk::trace;
 using namespace std;
 
 // OTel related flags
+DECLARE_bool(otel_trace_enabled);
 DECLARE_string(otel_trace_additional_headers);
 DECLARE_int32(otel_trace_batch_queue_size);
 DECLARE_int32(otel_trace_batch_max_batch_size);
@@ -97,6 +101,7 @@ DECLARE_bool(otel_trace_tls_insecure_skip_verify);
 DECLARE_string(otel_trace_tls_minimum_version);
 
 // Other flags
+DECLARE_bool(is_coordinator);
 DECLARE_string(ssl_cipher_list);
 DECLARE_string(tls_ciphersuites);
 DECLARE_string(ssl_minimum_version);
@@ -124,17 +129,124 @@ static const function<bool(std::string_view)> is_traceable_sql =
               || boost::algorithm::istarts_with(sql_str, "with"));
     };
 
+static std::map<std::string, std::string> parse_additional_headers() {
+  std::map<std::string, std::string> headers;
+
+	if (!FLAGS_otel_trace_additional_headers.empty()) {
+    for (auto header : strings::Split(FLAGS_otel_trace_additional_headers, ":::")) {
+      auto pos = header.find('=');
+      const std::string key = boost::algorithm::trim_copy(
+          header.substr(0, pos).as_string());
+      const std::string value = boost::algorithm::trim_copy(
+          header.substr(pos + 1).as_string());
+
+      headers.emplace(key, value);
+    }
+  }
+
+  return headers;
+} // function parse_additional_headers
+
+
 namespace impala {
+
+static TOtelExporterType::type parse_exporter_type() {
+  return FLAGS_otel_trace_exporter == OTEL_EXPORTER_FILE ?
+      TOtelExporterType::FILE : TOtelExporterType::OTLP_HTTP;
+} // function parse_exporter_type
+
+static TOtelSpanProcessorType::type parse_span_processor_type() {
+  return FLAGS_otel_trace_span_processor == SPAN_PROCESSOR_BATCH ?
+      TOtelSpanProcessorType::BATCH : TOtelSpanProcessorType::SIMPLE;
+} // function parse_span_processor_type
+
+static std::unique_ptr<TOtelConfigs> otel_configs_;
+static std::shared_mutex otel_configs_mutex_;
+static std::unique_ptr<TOtelTraceConfigs> otel_trace_configs_;
+static std::shared_mutex otel_trace_configs_mutex_;
+
+void init_otel_configs() {
+  std::lock_guard l(otel_configs_mutex_);
+
+  if (!otel_configs_) {
+    otel_configs_ = std::make_unique<TOtelConfigs>();
+
+    otel_configs_->__set_otel_debug(FLAGS_otel_debug);
+    otel_configs_->__set_otel_file_pattern(FLAGS_otel_file_pattern);
+    otel_configs_->__set_otel_file_alias_pattern(FLAGS_otel_file_alias_pattern);
+    otel_configs_->__set_otel_file_flush_interval_us(std::chrono::microseconds(
+        std::chrono::milliseconds(FLAGS_otel_file_flush_interval_ms)).count());
+    otel_configs_->__set_otel_file_flush_count(FLAGS_otel_file_flush_count);
+    otel_configs_->__set_otel_file_max_file_size(FLAGS_otel_file_max_file_size);
+    otel_configs_->__set_otel_file_max_file_count(FLAGS_otel_file_max_file_count);
+  }
+} // function init_otel_configs
+
+const TOtelConfigs& get_otel_configs() {
+  init_otel_configs();
+
+  {
+    std::shared_lock l(otel_configs_mutex_);
+    return *otel_configs_;
+  }
+} // function get_otel_configs
+
+void init_otel_trace_configs() {
+  std::lock_guard l(otel_trace_configs_mutex_);
+
+  if (!otel_trace_configs_) {
+    otel_trace_configs_ = std::make_unique<TOtelTraceConfigs>();
+
+    otel_trace_configs_->__set_base_configs(get_otel_configs());
+    otel_trace_configs_->__set_enabled(otel_trace_enabled());
+    otel_trace_configs_->__set_exporter(parse_exporter_type());
+    otel_trace_configs_->__set_collector_url(FLAGS_otel_trace_collector_url);
+    otel_trace_configs_->__set_additional_headers(parse_additional_headers());
+    otel_trace_configs_->__set_compression(FLAGS_otel_trace_compression);
+    otel_trace_configs_->__set_timeout_s(FLAGS_otel_trace_timeout_s);
+    otel_trace_configs_->__set_ca_cert_path(FLAGS_otel_trace_ca_cert_path);
+    otel_trace_configs_->__set_ca_cert_string(FLAGS_otel_trace_ca_cert_string);
+    otel_trace_configs_->__set_tls_minimum_version(FLAGS_otel_trace_tls_minimum_version);
+    otel_trace_configs_->__set_ssl_ciphers(FLAGS_otel_trace_ssl_ciphers);
+    otel_trace_configs_->__set_tls_cipher_suites(FLAGS_otel_trace_tls_cipher_suites);
+    otel_trace_configs_->__set_tls_insecure_skip_verify(
+        FLAGS_otel_trace_tls_insecure_skip_verify);
+    otel_trace_configs_->__set_retry_policy_max_attempts(
+        FLAGS_otel_trace_retry_policy_max_attempts);
+    otel_trace_configs_->__set_retry_policy_initial_backoff_s(
+        FLAGS_otel_trace_retry_policy_initial_backoff_s);
+    otel_trace_configs_->__set_retry_policy_max_backoff_s(
+        FLAGS_otel_trace_retry_policy_max_backoff_s);
+    otel_trace_configs_->__set_retry_policy_backoff_multiplier(
+        FLAGS_otel_trace_retry_policy_backoff_multiplier);
+    otel_trace_configs_->__set_span_processor(parse_span_processor_type());
+    otel_trace_configs_->__set_batch_queue_size(FLAGS_otel_trace_batch_queue_size);
+    otel_trace_configs_->__set_batch_schedule_delay_ms(
+        FLAGS_otel_trace_batch_schedule_delay_ms);
+    otel_trace_configs_->__set_batch_max_batch_size(
+        FLAGS_otel_trace_batch_max_batch_size);
+    otel_trace_configs_->__set_tls_enabled(
+        boost::algorithm::istarts_with(FLAGS_otel_trace_collector_url, "https://"));
+  }
+} // function init_otel_trace_configs
+
+const TOtelTraceConfigs& get_otel_trace_configs() {
+  init_otel_trace_configs();
+
+  {
+    std::shared_lock l(otel_trace_configs_mutex_);
+    return *otel_trace_configs_;
+  }
+} // function get_otel_trace_configs
+
+bool otel_trace_enabled() {
+  return FLAGS_is_coordinator && FLAGS_otel_trace_enabled;
+} // function otel_trace_enabled
 
 // TraceProvider is a singleton that provides access to the OpenTelemetry TracerProvider.
 // Not shared globally via opentelemetry::trace::Provider::SetTracerProvider to enforce
 // all tracing to go through the Impala-specific code interfaces to OpenTelemetry tracing.
 static unique_ptr<trace::TracerProvider> provider_;
-
-// Returns true if any TLS configuration flags are set for the OTel exporter.
-static inline bool otel_tls_enabled() {
-  return boost::algorithm::istarts_with(FLAGS_otel_trace_collector_url, "https://");
-} // function otel_tls_enabled
 
 bool should_otel_trace_query(std::string_view sql,
     const TSessionType::type& session_type) {
@@ -193,33 +305,34 @@ bool should_otel_trace_query(std::string_view sql,
 static OtlpHttpExporterOptions http_exporter_config() {
   // Configure OTLP HTTP exporter
   OtlpHttpExporterOptions opts;
-  opts.url = FLAGS_otel_trace_collector_url;
+  opts.url = get_otel_trace_configs().collector_url;
   opts.content_type = HttpRequestContentType::kJson;
-  opts.timeout = chrono::seconds(FLAGS_otel_trace_timeout_s);
+  opts.timeout = chrono::seconds(get_otel_trace_configs().timeout_s);
   opts.console_debug = FLAGS_otel_debug;
 
   // Retry settings
-  opts.retry_policy_max_attempts = FLAGS_otel_trace_retry_policy_max_attempts;
+  opts.retry_policy_max_attempts = get_otel_trace_configs().retry_policy_max_attempts;
   opts.retry_policy_initial_backoff =
-      chrono::duration<float>(FLAGS_otel_trace_retry_policy_initial_backoff_s);
-  if (FLAGS_otel_trace_retry_policy_max_backoff_s > 0) {
+      chrono::duration<float>(get_otel_trace_configs().retry_policy_initial_backoff_s);
+  if (get_otel_trace_configs().retry_policy_max_backoff_s > 0) {
     opts.retry_policy_max_backoff = chrono::duration<float>(
-        chrono::seconds(FLAGS_otel_trace_retry_policy_max_backoff_s));
+        chrono::seconds(get_otel_trace_configs().retry_policy_max_backoff_s));
   }
-  opts.retry_policy_backoff_multiplier = FLAGS_otel_trace_retry_policy_backoff_multiplier;
+  opts.retry_policy_backoff_multiplier =
+      get_otel_trace_configs().retry_policy_backoff_multiplier;
 
   // Compression Type
-  if (FLAGS_otel_trace_compression) {
+  if (get_otel_trace_configs().compression) {
     opts.compression = "zlib";
   }
 
   // TLS Configurations
-  if (otel_tls_enabled()) {
+  if (get_otel_trace_configs().tls_enabled) {
     // Set minimum TLS version to the value of the global ssl_minimum_version flag.
     // Since this flag is in the format "tlv1.2" or "tlsv1.3", we need to
     // convert it to the format expected by OtlpHttpExporterOptions by removing the
     // "tlsv" prefix.
-    if (FLAGS_otel_trace_tls_minimum_version.empty()) {
+    if (get_otel_trace_configs().tls_minimum_version.empty()) {
       if (!FLAGS_ssl_minimum_version.empty()) {
         opts.ssl_min_tls = FLAGS_ssl_minimum_version.substr(4);
       } else {
@@ -228,17 +341,17 @@ static OtlpHttpExporterOptions http_exporter_config() {
             "set.";
       }
     } else {
-      opts.ssl_min_tls = FLAGS_otel_trace_tls_minimum_version.substr(4);
+      opts.ssl_min_tls = get_otel_trace_configs().tls_minimum_version.substr(4);
     }
 
-    opts.ssl_insecure_skip_verify = FLAGS_otel_trace_tls_insecure_skip_verify;
-    opts.ssl_ca_cert_path = FLAGS_otel_trace_ca_cert_path;
-    opts.ssl_ca_cert_string = FLAGS_otel_trace_ca_cert_string;
+    opts.ssl_insecure_skip_verify = get_otel_trace_configs().tls_insecure_skip_verify;
+    opts.ssl_ca_cert_path = get_otel_trace_configs().ca_cert_path;
+    opts.ssl_ca_cert_string = get_otel_trace_configs().ca_cert_string;
     opts.ssl_max_tls = "1.3";
-    opts.ssl_cipher = FLAGS_otel_trace_ssl_ciphers.empty() ? FLAGS_ssl_cipher_list :
-        FLAGS_otel_trace_ssl_ciphers;
-    opts.ssl_cipher_suite = FLAGS_otel_trace_tls_cipher_suites.empty() ?
-        FLAGS_tls_ciphersuites : FLAGS_otel_trace_tls_cipher_suites;
+    opts.ssl_cipher = get_otel_trace_configs().ssl_ciphers.empty() ?
+        FLAGS_ssl_cipher_list : get_otel_trace_configs().ssl_ciphers;
+    opts.ssl_cipher_suite = get_otel_trace_configs().tls_cipher_suites.empty() ?
+        FLAGS_tls_ciphersuites : get_otel_trace_configs().tls_cipher_suites;
 
     VLOG(2) << "OTel minimum TLS version set to '" << opts.ssl_min_tls << "'";
     VLOG(2) << "OTel TLS 1.2 allowed ciphers set to '" << opts.ssl_cipher << "'";
@@ -246,11 +359,8 @@ static OtlpHttpExporterOptions http_exporter_config() {
   }
 
   // Additional HTTP headers
-  parse_otel_additional_headers(FLAGS_otel_trace_additional_headers,
-      [&opts](const string& key, const string& value) {
-        VLOG(2) << "Adding additional OTel header: " << key << " = " << value;
-        opts.http_headers.emplace(key, value);
-      });
+  opts.http_headers.insert(get_otel_trace_configs().additional_headers.cbegin(),
+      get_otel_trace_configs().additional_headers.cend());
 
   return opts;
 } // function http_exporter_config
@@ -260,10 +370,10 @@ static OtlpHttpExporterOptions http_exporter_config() {
 static BatchSpanProcessorOptions batch_processor_config() {
   BatchSpanProcessorOptions batch_opts;
 
-  batch_opts.max_queue_size = FLAGS_otel_trace_batch_queue_size;
-  batch_opts.max_export_batch_size = FLAGS_otel_trace_batch_max_batch_size;
+  batch_opts.max_queue_size = get_otel_trace_configs().batch_queue_size;
+  batch_opts.max_export_batch_size = get_otel_trace_configs().batch_max_batch_size;
   batch_opts.schedule_delay_millis =
-      chrono::milliseconds(FLAGS_otel_trace_batch_schedule_delay_ms);
+      chrono::milliseconds(get_otel_trace_configs().batch_schedule_delay_ms);
 
   return batch_opts;
 } // function batch_processor_config
@@ -296,12 +406,13 @@ static unique_ptr<SpanExporter> init_exporter_file() {
 static unique_ptr<SpanExporter> init_exporter() {
   unique_ptr<SpanExporter> exporter;
 
-  if(FLAGS_otel_trace_exporter == OTEL_EXPORTER_OTLP_HTTP) {
+  if(get_otel_trace_configs().exporter == TOtelExporterType::OTLP_HTTP) {
+    VLOG(2) << "OpenTelemetry exporter: " << OTEL_EXPORTER_OTLP_HTTP;
     exporter = OtlpHttpExporterFactory::Create(http_exporter_config());
   } else {
+    VLOG(2) << "OpenTelemetry exporter: " << OTEL_EXPORTER_FILE;
     exporter = init_exporter_file();
   }
-  VLOG(2) << "OpenTelemetry exporter: " << FLAGS_otel_trace_exporter;
 
   return exporter;
 } // function init_exporter
@@ -312,7 +423,7 @@ static unique_ptr<SpanProcessor> init_span_processor() {
   unique_ptr<SpanExporter> exporter = init_exporter();
   unique_ptr<SpanProcessor> processor;
 
-  if (boost::iequals(trim_copy(FLAGS_otel_trace_span_processor), SPAN_PROCESSOR_BATCH)) {
+  if (get_otel_trace_configs().span_processor == TOtelSpanProcessorType::BATCH) {
     VLOG(2) << "Using BatchSpanProcessor for OpenTelemetry spans";
     processor = BatchSpanProcessorFactory::Create(move(exporter),
         batch_processor_config());
@@ -373,27 +484,27 @@ shared_ptr<SpanManager> build_span_manager(ClientRequestState* crs) {
       provider_->GetTracer(SCOPE_SPAN_NAME, SCOPE_SPAN_SPEC_VERSION), crs);
 } // function build_span_manager
 
-namespace test {
-bool otel_tls_enabled_for_testing() {
-  return otel_tls_enabled();
-}
+// namespace test {
+// bool otel_tls_enabled_for_testing() {
+//   return otel_tls_enabled();
+// }
 
-OtlpHttpExporterOptions get_http_exporter_config() {
-  return http_exporter_config();
-}
+// OtlpHttpExporterOptions get_http_exporter_config() {
+//   return http_exporter_config();
+// }
 
-BatchSpanProcessorOptions get_batch_processor_config() {
-  return batch_processor_config();
-}
+// BatchSpanProcessorOptions get_batch_processor_config() {
+//   return batch_processor_config();
+// }
 
-unique_ptr<SpanExporter> get_exporter() {
-  return init_exporter();
-}
+// unique_ptr<SpanExporter> get_exporter() {
+//   return init_exporter();
+// }
 
-unique_ptr<SpanProcessor> get_span_processor() {
-  return init_span_processor();
-}
+// unique_ptr<SpanProcessor> get_span_processor() {
+//   return init_span_processor();
+// }
 
-} // namespace test
+// } // namespace test
 
 } // namespace impala

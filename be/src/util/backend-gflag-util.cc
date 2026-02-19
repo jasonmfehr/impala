@@ -24,7 +24,7 @@
 #include "gen-cpp/BackendGflags_types.h"
 #include "gutil/strings/substitute.h"
 #include "kudu/util/flag_tags.h"
-#include "observe/otel-parsers.h"
+#include "observe/otel.h"
 #include "rpc/jni-thrift-util.h"
 #include "rpc/thrift-util.h"
 #include "util/backend-gflag-util.h"
@@ -131,6 +131,7 @@ DECLARE_bool(invalidate_global_metadata_on_event_processing_failure);
 DECLARE_string(inject_process_event_failure_event_types);
 DECLARE_double(inject_process_event_failure_ratio);
 DECLARE_bool(enable_workload_mgmt);
+DECLARE_string(cluster_id);
 DECLARE_string(query_log_table_name);
 DECLARE_string(default_skipped_hms_event_types);
 DECLARE_string(common_hms_event_types);
@@ -153,35 +154,6 @@ DECLARE_string(warmup_tables_config_file);
 DECLARE_bool(keeps_warmup_tables_loaded);
 DECLARE_bool(truncate_external_tables_with_hms);
 DECLARE_bool(disable_hms_sync_by_default);
-
-// OTel related flags
-DECLARE_bool(otel_trace_enabled);
-DECLARE_string(otel_trace_additional_headers);
-DECLARE_int32(otel_trace_batch_queue_size);
-DECLARE_int32(otel_trace_batch_max_batch_size);
-DECLARE_int32(otel_trace_batch_schedule_delay_ms);
-DECLARE_string(otel_trace_ca_cert_path);
-DECLARE_string(otel_trace_ca_cert_string);
-DECLARE_string(otel_trace_collector_url);
-DECLARE_bool(otel_trace_compression);
-DECLARE_bool(otel_debug);
-DECLARE_string(otel_trace_exporter);
-DECLARE_string(otel_file_pattern);
-DECLARE_string(otel_file_alias_pattern);
-DECLARE_int32(otel_file_flush_interval_ms);
-DECLARE_int32(otel_file_flush_count);
-DECLARE_int32(otel_file_max_file_size);
-DECLARE_int32(otel_file_max_file_count);
-DECLARE_double(otel_trace_retry_policy_backoff_multiplier);
-DECLARE_double(otel_trace_retry_policy_initial_backoff_s);
-DECLARE_int32(otel_trace_retry_policy_max_attempts);
-DECLARE_int32(otel_trace_retry_policy_max_backoff_s);
-DECLARE_string(otel_trace_span_processor);
-DECLARE_string(otel_trace_ssl_ciphers);
-DECLARE_int32(otel_trace_timeout_s);
-DECLARE_string(otel_trace_tls_cipher_suites);
-DECLARE_bool(otel_trace_tls_insecure_skip_verify);
-DECLARE_string(otel_trace_tls_minimum_version);
 
 // HS2 SAML2.0 configuration
 // Defined here because TAG_FLAG caused issues in global-flags.cc
@@ -631,38 +603,8 @@ Status PopulateThriftBackendGflags(TBackendGflags& cfg) {
   cfg.__set_min_jdbc_scan_cardinality(FLAGS_min_jdbc_scan_cardinality);
   cfg.__set_max_stmt_metadata_loader_threads(FLAGS_max_stmt_metadata_loader_threads);
   cfg.__set_disable_hms_sync_by_default(FLAGS_disable_hms_sync_by_default);
-  cfg.__set_otel_trace_enabled(FLAGS_otel_trace_enabled);
-  cfg.__set_otel_trace_exporter(FLAGS_otel_trace_exporter);
-  cfg.__set_otel_trace_collector_url(FLAGS_otel_trace_collector_url);
-  cfg.__set_otel_trace_compression(FLAGS_otel_trace_compression);
-  cfg.__set_otel_trace_timeout_s(FLAGS_otel_trace_timeout_s);
-  cfg.__set_otel_trace_ca_cert_path(FLAGS_otel_trace_ca_cert_path);
-  cfg.__set_otel_trace_ca_cert_string(FLAGS_otel_trace_ca_cert_string);
-  cfg.__set_otel_trace_tls_minimum_version(FLAGS_otel_trace_tls_minimum_version);
-  cfg.__set_otel_trace_ssl_ciphers(FLAGS_otel_trace_ssl_ciphers);
-  cfg.__set_otel_trace_tls_cipher_suites(FLAGS_otel_trace_tls_cipher_suites);
-  cfg.__set_otel_trace_tls_insecure_skip_verify(
-      FLAGS_otel_trace_tls_insecure_skip_verify);
-  cfg.__set_otel_trace_retry_policy_max_attempts(
-      FLAGS_otel_trace_retry_policy_max_attempts);
-  cfg.__set_otel_trace_retry_policy_initial_backoff_s(
-      FLAGS_otel_trace_retry_policy_initial_backoff_s);
-  cfg.__set_otel_trace_retry_policy_max_backoff_s(
-      FLAGS_otel_trace_retry_policy_max_backoff_s);
-  cfg.__set_otel_trace_retry_policy_backoff_multiplier(
-      FLAGS_otel_trace_retry_policy_backoff_multiplier);
-  cfg.__set_otel_trace_span_processor(FLAGS_otel_trace_span_processor);
-  cfg.__set_otel_trace_batch_queue_size(FLAGS_otel_trace_batch_queue_size);
-  cfg.__set_otel_trace_batch_schedule_delay_ms(
-      FLAGS_otel_trace_batch_schedule_delay_ms);
-  cfg.__set_otel_trace_batch_max_batch_size(FLAGS_otel_trace_batch_max_batch_size);
-
-  std::map<std::string, std::string> additional_headers;
-  parse_otel_additional_headers(FLAGS_otel_trace_additional_headers,
-      [&additional_headers](const string& key, const string& value) {
-        additional_headers.emplace(key, value);
-      });
-  cfg.__set_otel_trace_additional_headers(additional_headers);
+  cfg.__set_cluster_id(FLAGS_cluster_id);
+  cfg.__set_otel_trace_config(get_otel_trace_configs());
 
   return Status::OK();
 }

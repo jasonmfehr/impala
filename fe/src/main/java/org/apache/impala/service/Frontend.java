@@ -33,8 +33,31 @@ import com.google.common.math.LongMath;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.SpanId;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceId;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
+import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporterBuilder;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.trace.SpanProcessor;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.sdk.trace.export.SpanExporter;
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import java.io.IOException;
-import java.lang.reflect.Array;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -46,6 +69,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -303,6 +328,139 @@ public class Frontend {
   private static final String AVG_ADMISSION_SLOTS_PER_EXECUTOR =
       "AvgAdmissionSlotsPerExecutor";
   private static final String CALCITE_FAILURE_REASON = "CalciteFailureReason";
+  private static final String OTEL_EXPORTER_OTLP_HTTP = "otlp_http";
+  private static final String OTEL_TRACER_NAME = "org.apache.impala.frontend";
+  private static final String OTEL_SPAN_NAME = "impala.frontend.create_exec_request";
+
+  private static Tracer createOtelTracerFromConfig() {
+    if (BackendConfig.INSTANCE == null || !BackendConfig.INSTANCE.isOtelTraceEnabled()) {
+      return null;
+    }
+
+    String exporterType = BackendConfig.INSTANCE.getOtelTraceExporter();
+    if (exporterType == null) exporterType = "";
+    exporterType = exporterType.trim();
+    if (!exporterType.isEmpty()
+        && !OTEL_EXPORTER_OTLP_HTTP.equalsIgnoreCase(exporterType)) {
+      LOG.warn("Unsupported OpenTelemetry exporter '{}'; tracing disabled.",
+          exporterType);
+      return null;
+    }
+
+    OtlpHttpSpanExporterBuilder exporterBuilder = OtlpHttpSpanExporter.builder();
+    String endpoint = BackendConfig.INSTANCE.getOtelTraceCollectorUrl();
+    if (endpoint != null && !endpoint.isEmpty()) {
+      exporterBuilder.setEndpoint(endpoint);
+    }
+    exporterBuilder.setTimeout(Objects.requireNonNull(
+        Duration.ofSeconds(BackendConfig.INSTANCE.getOtelTraceTimeoutSecs())));
+    if (BackendConfig.INSTANCE.isOtelTraceCompressionEnabled()) {
+      exporterBuilder.setCompression("gzip");
+    }
+    configureOtelHeaders(exporterBuilder,
+        BackendConfig.INSTANCE.getOtelTraceAdditionalHeaders());
+    configureOtelTrustedCertificates(exporterBuilder);
+    logUnsupportedOtelTlsConfig();
+    logUnsupportedOtelRetryConfig();
+
+    SpanExporter exporter = Objects.requireNonNull(exporterBuilder.build());
+    SpanProcessor spanProcessor = Objects.requireNonNull(createSpanProcessor(exporter));
+    AttributeKey<String> serviceNameKey = Objects.requireNonNull(
+      AttributeKey.stringKey("service.name"));
+    AttributeKey<String> serviceVersionKey = Objects.requireNonNull(
+      AttributeKey.stringKey("service.version"));
+    String buildVersion = BackendConfig.INSTANCE.getImpalaBuildVersion();
+    if (buildVersion == null) buildVersion = "unknown";
+    Attributes attributes = Objects.requireNonNull(Attributes.of(
+      serviceNameKey, "Impala", serviceVersionKey, buildVersion));
+    Resource resource = Objects.requireNonNull(Resource.create(attributes));
+    SdkTracerProvider tracerProvider = Objects.requireNonNull(
+      SdkTracerProvider.builder()
+        .addSpanProcessor(spanProcessor)
+        .setResource(resource)
+        .build());
+
+    OpenTelemetrySdk openTelemetry = Objects.requireNonNull(OpenTelemetrySdk.builder()
+      .setTracerProvider(tracerProvider)
+      .build());
+    return openTelemetry.getTracer(OTEL_TRACER_NAME);
+  }
+
+  private static void configureOtelHeaders(OtlpHttpSpanExporterBuilder exporterBuilder,
+      @Nullable Map<String, String> headerConfig) {
+    if (headerConfig == null || headerConfig.isEmpty()) return;
+    for (Map.Entry<String, String> entry : headerConfig.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
+      if (key == null || key.isEmpty() || value == null || value.isEmpty()) {
+        LOG.warn("Ignoring invalid OpenTelemetry header entry: '{}={}'", key, value);
+        continue;
+      }
+      exporterBuilder.addHeader(key, value);
+    }
+  }
+
+  private static void configureOtelTrustedCertificates(
+      OtlpHttpSpanExporterBuilder exporterBuilder) {
+    String caCertPath = BackendConfig.INSTANCE.getOtelTraceCaCertPath();
+    String caCertString = BackendConfig.INSTANCE.getOtelTraceCaCertString();
+    if (caCertPath != null && !caCertPath.isEmpty()) {
+      try {
+        exporterBuilder.setTrustedCertificates(
+            Objects.requireNonNull(Files.readAllBytes(Paths.get(caCertPath))));
+      } catch (IOException e) {
+        LOG.warn("Failed to read OpenTelemetry CA cert from path '{}': {}",
+            caCertPath, e.getMessage());
+      }
+    } else if (caCertString != null && !caCertString.isEmpty()) {
+      exporterBuilder.setTrustedCertificates(
+          Objects.requireNonNull(caCertString.getBytes(StandardCharsets.UTF_8)));
+    }
+  }
+
+  private static void logUnsupportedOtelTlsConfig() {
+    String tlsMinimumVersion = BackendConfig.INSTANCE.getOtelTraceTlsMinimumVersion();
+    String sslCiphers = BackendConfig.INSTANCE.getOtelTraceSslCiphers();
+    String tlsCipherSuites = BackendConfig.INSTANCE.getOtelTraceTlsCipherSuites();
+    if ((tlsMinimumVersion != null && !tlsMinimumVersion.isEmpty())
+        || (sslCiphers != null && !sslCiphers.isEmpty())
+        || (tlsCipherSuites != null && !tlsCipherSuites.isEmpty())
+        || BackendConfig.INSTANCE.isOtelTraceTlsInsecureSkipVerify()) {
+      LOG.warn("OpenTelemetry TLS settings are configured but not applied by the "
+          + "frontend OTLP HTTP exporter.");
+    }
+  }
+
+  private static void logUnsupportedOtelRetryConfig() {
+    if (BackendConfig.INSTANCE.getOtelTraceRetryPolicyMaxAttempts() > 0
+        || BackendConfig.INSTANCE.getOtelTraceRetryPolicyInitialBackoffSecs() > 0
+        || BackendConfig.INSTANCE.getOtelTraceRetryPolicyMaxBackoffSecs() > 0
+        || BackendConfig.INSTANCE.getOtelTraceRetryPolicyBackoffMultiplier() > 0) {
+      LOG.warn("OpenTelemetry retry policy settings are configured but not applied "
+          + "by the frontend OTLP HTTP exporter.");
+    }
+  }
+
+  private static SpanProcessor createSpanProcessor(SpanExporter exporter) {
+    String processor = BackendConfig.INSTANCE.getOtelTraceSpanProcessor();
+    if (processor == null) processor = "";
+    processor = processor.trim();
+    if (processor.equalsIgnoreCase("simple")) {
+      LOG.warn("Using SimpleSpanProcessor for OpenTelemetry spans; this may block "
+          + "query planning threads.");
+      return SimpleSpanProcessor.create(Objects.requireNonNull(exporter));
+    }
+
+    return BatchSpanProcessor.builder(Objects.requireNonNull(exporter))
+        .setMaxQueueSize(BackendConfig.INSTANCE.getOtelTraceBatchQueueSize())
+        .setScheduleDelay(Objects.requireNonNull(Duration.ofMillis(
+            BackendConfig.INSTANCE.getOtelTraceBatchScheduleDelayMs())))
+        .setMaxExportBatchSize(
+            BackendConfig.INSTANCE.getOtelTraceBatchMaxBatchSize())
+        .setExporterTimeout(Objects.requireNonNull(Duration.ofSeconds(
+            BackendConfig.INSTANCE.getOtelTraceTimeoutSecs())))
+        .build();
+  }
 
   // info about the planner used. In this code, we will always use the Original planner,
   // but other planners may set their own planner values
@@ -2103,11 +2261,15 @@ public class Frontend {
     // and profiling.
     try (FrontendProfile.Scope scope = FrontendProfile.createNewWithScope();
          Canceller.Registration reg = Canceller.register(planCtx.queryCtx_.query_id)) {
+      Tracer tracer = createOtelTracerFromConfig();
+      AtomicReference<Span> activeSpanRef = new AtomicReference<>();
+      AtomicReference<Scope> activeScopeRef = new AtomicReference<>();
       EventSequence timeline = new EventSequence("Query Compilation");
       // a wrapper of the getTExecRequest is in the factory so the implementation
       // can handle various planner fallback execution logic (e.g. allowing one
       // planner, if execution fails, to call a different planner)
-      TExecRequest result = getTExecRequestWithFallback(planCtx, timeline);
+      TExecRequest result = getTExecRequestWithFallback(
+          planCtx, timeline, tracer, activeSpanRef, activeScopeRef);
       DebugUtils.executeDebugAction(
           planCtx.getQueryContext().client_request.query_options.getDebug_action(),
           DebugUtils.PLAN_CREATE);
@@ -2115,6 +2277,10 @@ public class Frontend {
       result.setTimeline(timeline.toThrift());
       result.setProfile(FrontendProfile.getCurrent().emitAsThrift());
       result.setProfile_children(FrontendProfile.getCurrent().emitChildrenAsThrift());
+      Scope activeScope = activeScopeRef.getAndSet(null);
+      if (activeScope != null) activeScope.close();
+      Span activeSpan = activeSpanRef.getAndSet(null);
+      if (activeSpan != null) activeSpan.end();
       return result;
     }
   }
@@ -2399,13 +2565,16 @@ public class Frontend {
   }
 
   private TExecRequest getTExecRequestWithFallback(
-      PlanCtx planCtx, EventSequence timeline) throws ImpalaException {
+      PlanCtx planCtx, EventSequence timeline, Tracer tracer,
+      AtomicReference<Span> activeSpanRef, AtomicReference<Scope> activeScopeRef)
+      throws ImpalaException {
     TExecRequest request = null;
     CompilerFactory compilerFactory = getCalciteCompilerFactory(planCtx);
     String exceptionClass = null;
     if (compilerFactory != null) {
       try {
-        request = getTExecRequest(compilerFactory, planCtx, timeline);
+        request = getTExecRequest(
+            compilerFactory, planCtx, timeline, tracer, activeSpanRef, activeScopeRef);
       } catch (Exception e) {
         if (!shouldFallbackToRegularPlanner(planCtx, e)) {
           throw e;
@@ -2420,7 +2589,8 @@ public class Frontend {
       // use the original planner if Calcite planner is not set or fallback
       // for Calcite planner is enabled.
       compilerFactory = new CompilerFactoryImpl();
-      request = getTExecRequest(compilerFactory, planCtx, timeline);
+      request = getTExecRequest(
+          compilerFactory, planCtx, timeline, tracer, activeSpanRef, activeScopeRef);
     }
     addPlannerToProfile(compilerFactory.getPlannerString(), exceptionClass);
     return request;
@@ -2445,7 +2615,9 @@ public class Frontend {
   }
 
   private TExecRequest getTExecRequest(CompilerFactory compilerFactory,
-      PlanCtx planCtx, EventSequence timeline) throws ImpalaException {
+      PlanCtx planCtx, EventSequence timeline, Tracer tracer,
+      AtomicReference<Span> activeSpanRef, AtomicReference<Scope> activeScopeRef)
+      throws ImpalaException {
     TQueryCtx queryCtx = planCtx.getQueryContext();
     LOG.info("Analyzing query: " + queryCtx.client_request.stmt + " db: "
         + queryCtx.session.database);
@@ -2554,7 +2726,8 @@ public class Frontend {
       while (true) {
         Canceller.throwIfCancelled();
         try {
-          req = doCreateExecRequest(compilerFactory, planCtx, warnings, timeline);
+            req = doCreateExecRequest(compilerFactory, planCtx, warnings, timeline, tracer,
+              activeSpanRef, activeScopeRef);
           markTimelineRetries(attempt, retryMsg, timeline);
           break;
         } catch (InconsistentMetadataFetchException e) {
@@ -2948,7 +3121,8 @@ public class Frontend {
   }
 
   private TExecRequest doCreateExecRequest(CompilerFactory compilerFactory,
-      PlanCtx planCtx, List<String> warnings, EventSequence timeline)
+      PlanCtx planCtx, List<String> warnings, EventSequence timeline, Tracer tracer,
+      AtomicReference<Span> activeSpanRef, AtomicReference<Scope> activeScopeRef)
       throws ImpalaException {
     TQueryCtx queryCtx = planCtx.getQueryContext();
 
@@ -2997,7 +3171,7 @@ public class Frontend {
         queryCtx.isSetCurrent_trace() ? queryCtx.getCurrent_trace().getActive_span_id() : "N/A",
         queryCtx.isSetCurrent_trace() ? queryCtx.getCurrent_trace().getTrace_start_time() : "N/A",
         PrintId(queryCtx.getQuery_id()),
-        "TBD",
+        BackendConfig.INSTANCE.getClusterId(),
         queryCtx.getCoord_hostname() + ":" + queryCtx.getCoord_ip_address().getPort(),
         queryCtx.getClient_request().getRedacted_stmt(),
         queryCtx.getRequest_pool(),
@@ -3013,6 +3187,33 @@ public class Frontend {
     // need to re-fetch the parsedStatement because analysisResult can rewrite the
     // statement.
     parsedStmt = analysisResult.getParsedStmt();
+    if (tracer != null && queryCtx.isSetCurrent_trace()
+        && activeSpanRef.get() == null) {
+      String traceId = queryCtx.getCurrent_trace().getTrace_id();
+      String parentSpanId = queryCtx.getCurrent_trace().getActive_span_id();
+      long startTimeNanos = queryCtx.getCurrent_trace().getTrace_start_time();
+      if (traceId != null && parentSpanId != null
+          && TraceId.isValid(traceId) && SpanId.isValid(parentSpanId)
+          && startTimeNanos > 0) {
+        TraceFlags traceFlags = Objects.requireNonNull(TraceFlags.getSampled());
+        TraceState traceState = Objects.requireNonNull(TraceState.getDefault());
+        SpanContext parentContext = Objects.requireNonNull(
+            SpanContext.createFromRemoteParent(
+                traceId, parentSpanId, traceFlags, traceState));
+        Span parentSpan = Objects.requireNonNull(Span.wrap(parentContext));
+        Context parent = Objects.requireNonNull(Context.root().with(parentSpan));
+        Span span = tracer.spanBuilder(OTEL_SPAN_NAME)
+            .setParent(Objects.requireNonNull(parent))
+            .setStartTimestamp(startTimeNanos, TimeUnit.NANOSECONDS)
+            .startSpan();
+        activeSpanRef.set(span);
+        activeScopeRef.set(span.makeCurrent());
+      } else {
+        LOG.warn("Skipping OpenTelemetry span creation due to invalid trace context: "
+            + "trace_id='{}' span_id='{}' start_time='{}'",
+            traceId, parentSpanId, startTimeNanos);
+      }
+    }
     LOG.warn("Statement Type:\n    IsSet: {}\n    IsSetOp: {}\n    IsQuery: {}\n    IsShowTables: {}",
         analysisResult.isSetStmt(),
         analysisResult.isSetOperationStmt(),

@@ -20,6 +20,8 @@ package org.apache.impala.service;
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic
     .HADOOP_SECURITY_AUTH_TO_LOCAL;
 
+import java.util.Map;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.authentication.util.KerberosName;
 import org.apache.impala.analysis.SqlScanner;
@@ -632,6 +634,9 @@ public class BackendConfig {
   public void setDisableHmsSyncByDefault(boolean disableHmsSyncByDefault) {
     backendCfg_.disable_hms_sync_by_default = disableHmsSyncByDefault;
   }
+  public String getClusterId() {
+    return backendCfg_.cluster_id;
+  }
 
   // OpenTelemetry trace flags
   public boolean isOtelTraceEnabled() {
@@ -646,7 +651,7 @@ public class BackendConfig {
     return backendCfg_.otel_trace_collector_url;
   }
 
-  public String getOtelTraceAdditionalHeaders() {
+  public Map<String, String> getOtelTraceAdditionalHeaders() {
     return backendCfg_.otel_trace_additional_headers;
   }
 

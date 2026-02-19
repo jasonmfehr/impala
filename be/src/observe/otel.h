@@ -26,6 +26,7 @@
 #include <opentelemetry/sdk/trace/exporter.h>
 #include <opentelemetry/sdk/trace/processor.h>
 
+#include "gen-cpp/Observe_types.h"
 #include "gen-cpp/Query_types.h"
 #include "observe/span-manager.h"
 #include "service/client-request-state.h"
@@ -42,6 +43,12 @@ const std::string OTEL_EXPORTER_FILE = "file";
 // Constants representing the supported OpenTelemetry span processor implementations.
 const std::string SPAN_PROCESSOR_SIMPLE = "simple";
 const std::string SPAN_PROCESSOR_BATCH = "batch";
+
+const TOtelConfigs& get_otel_configs();
+const TOtelTraceConfigs& get_otel_trace_configs();
+
+// Returns true if OpenTelemetry tracing should take place.
+bool otel_trace_enabled();
 
 // Returns true if an OpenTelemetry trace needs to be created for the given SQL query.
 // The sql string_view will be trimmed of leading whitespace and comments.
