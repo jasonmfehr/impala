@@ -1816,6 +1816,31 @@ class ImpalaTestSuite(BaseTestSuite):
             str(e))
         time.sleep(1)
 
+  def assert_log_contains_eventually(self, daemon, level, line_regex, expected_count=1,
+      timeout_s=6, period_s=1):
+    """Assert that assert_log_contains() eventually succeeds within timeout_s.
+
+    Unlike assert_log_contains(), this method delegates retry logic to
+    assert_eventually() and performs a single assert_log_contains() attempt on each
+    iteration.
+    """
+    def condition():
+      try:
+        return self.assert_log_contains(daemon, level, line_regex, expected_count, 0) \
+            is not None
+      except AssertionError:
+        return False
+
+    self.assert_eventually(timeout_s, period_s, condition)
+
+  def assert_impalad_log_contains_eventually(self, level, line_regex, expected_count=1,
+      timeout_s=6, period_s=1):
+    """
+    Convenience wrapper around assert_log_contains for impalad logs.
+    """
+    return self.assert_log_contains_eventually(
+        "impalad", level, line_regex, expected_count, timeout_s, period_s)
+
   @staticmethod
   def validate_exec_option_dimension(vector):
     """Validate that test dimension with name matching query option name is

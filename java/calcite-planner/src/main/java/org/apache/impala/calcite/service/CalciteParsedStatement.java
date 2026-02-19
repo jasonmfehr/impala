@@ -80,6 +80,48 @@ public class CalciteParsedStatement implements ParsedStatement {
   }
 
   @Override
+  public boolean isAlterTableStmt() { return false; }
+
+  @Override
+  public boolean isComputeStatsStmt() { return false; }
+
+  @Override
+  public boolean isCreateDbStmt() { return false; }
+
+  @Override
+  public boolean isCreateTableAsSelectStmt() { return false; }
+
+  @Override
+  public boolean isCreateTableLikeStmt() { return false; }
+
+  @Override
+  public boolean isCreateTableStmt() { return false; }
+
+  @Override
+  public boolean isCreateViewStmt() { return false; }
+
+  @Override
+  public boolean isDeleteStmt() { return false; }
+
+  @Override
+  public boolean isDropDbStmt() { return false; }
+
+  @Override
+  public boolean isDropTableOrViewStmt() { return false; }
+
+  @Override
+  public boolean isInsertStmt() { return false; }
+
+  @Override
+  public boolean isInvalidateMetadata() { return false; }
+
+  @Override
+  public boolean isUpdateStmt() {return false; }
+
+  @Override
+  public boolean isValuesStmt() { return false; }
+
+  @Override
   public String toSql() {
     return sql_;
   }
