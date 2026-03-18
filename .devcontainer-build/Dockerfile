@@ -148,7 +148,7 @@ RUN export IMPALA_JDK_VERSION="${JAVA_VERSION}" \
     && echo "[STATUS] - prepopulating Impala shell virtual environment" \
     && ./bin/impala-shell.sh --version \
     && echo "[STATUS] - finished prepopulating Impala shell virtual environment" \
-    && cp .devcontainer-build/impala.code-workspace .
+    && cp .devcontainer-build/impala.code-workspace.devcontainer impala.code-workspace
 
 WORKDIR ${USER_HOME}/.local/share/CMakeTools
 RUN cp "${IMPALA_HOME}/.devcontainer-build/cmake-kits.json" .
