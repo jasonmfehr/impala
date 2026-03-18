@@ -23,6 +23,8 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 
+import static org.apache.impala.catalog.FeIcebergTable.LOG;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -72,6 +74,7 @@ import org.apache.impala.thrift.TTableType;
 import org.apache.impala.util.EventSequence;
 import org.apache.impala.util.IcebergSchemaConverter;
 import org.apache.impala.util.IcebergUtil;
+import org.github.jamm.MemoryMeter;
 
 /**
  * Representation of an Iceberg table in the catalog cache.
@@ -550,6 +553,63 @@ public class IcebergTable extends Table implements FeIcebergTable {
           loader.getLoadedIcebergFds(), icebergFiles, loader.getIcebergPartitions());
       partitionStats_ = Utils.loadPartitionStats(this, icebergFiles);
 
+
+
+      MemoryMeter meter = MemoryMeter.builder().build();
+
+      LOG.warn("getDataFilesWithoutDeletes size: '{}'", fileStore_.getDataFilesWithoutDeletes().size());
+      fileStore_.getDataFilesWithoutDeletes().forEach(fd -> {
+        LOG.warn("DataFilesWithoutDeletes file descriptor with size: {}", meter.measureDeep(fd));
+      });
+
+      LOG.warn("getDataFilesWithDeletes size: '{}'", fileStore_.getDataFilesWithDeletes().size());
+      fileStore_.getDataFilesWithDeletes().forEach(fd -> {
+        LOG.warn("DataFilesWithDeletes file descriptor with size: {}", meter.measureDeep(fd));
+      });
+
+      LOG.warn("getPositionDeleteFiles size: '{}'", fileStore_.getPositionDeleteFiles().size());
+      fileStore_.getPositionDeleteFiles().forEach(fd -> {
+        LOG.warn("PositionDeleteFiles file descriptor with size: {}", meter.measureDeep(fd));
+      });
+
+      LOG.warn("getEqualityDeleteFiles size: '{}'", fileStore_.getEqualityDeleteFiles().size());
+      fileStore_.getEqualityDeleteFiles().forEach(fd -> {
+        LOG.warn("EqualityDeleteFiles file descriptor with size: {}", meter.measureDeep(fd));
+      });
+
+      LOG.warn("getMissingFiles size: '{}'", fileStore_.getMissingFiles().size());
+      fileStore_.getMissingFiles().forEach(mf -> {
+        LOG.warn("MissingFiles with size: {}", meter.measureDeep(mf));
+      });
+
+      LOG.warn("getPartitionMap size: '{}'", fileStore_.getPartitionMap().size());
+      fileStore_.getPartitionMap().forEach((k, v) -> {
+        LOG.warn("PartitionMap entry with key size: {} and value size: {}",
+            meter.measureDeep(k), meter.measureDeep(v));
+      });
+
+      LOG.warn("getOldFileDescMap size: '{}'", fileStore_.getOldFileDescMap().size());
+      fileStore_.getOldFileDescMap().forEach((k, v) -> {
+        LOG.warn("OldFileDescMap entry with key size: {} and value size: {}",
+            meter.measureDeep(k), meter.measureDeep(v));
+      });
+
+      LOG.warn("getOldPartitionMap size: '{}'", fileStore_.getOldPartitionMap().size());
+      fileStore_.getOldPartitionMap().forEach((k, v) -> {
+        LOG.warn("OldPartitionMap entry with key size: {} and value size: {}",
+            meter.measureDeep(k), meter.measureDeep(v));
+      });
+
+      LOG.warn("getDataFileToDV size: '{}'", fileStore_.getDataFileToDV().size());
+      fileStore_.getDataFileToDV().forEach((k, v) -> {
+        LOG.warn("DataFileToDV entry with key size: {} and value size: {}",
+            meter.measureDeep(k), meter.measureDeep(v));
+      });
+
+      LOG.warn("icebergApiTable_ size: '{}'", meter.measureDeep(icebergApiTable_));
+
+
+
       setAvroSchema(msClient, msTable_, fileStore_, catalogTimeline);
       updateMetrics(loader.getFileMetadataStats());
     } catch (Exception e) {
@@ -572,6 +632,7 @@ public class IcebergTable extends Table implements FeIcebergTable {
   }
 
   private void updateMetrics(FileMetadataStats stats) {
+    // TODO: add additional Iceberg specific overhead
     long memUsageEstimate = stats.numFiles * PER_FD_MEM_USAGE_BYTES +
         stats.numBlocks * PER_BLOCK_MEM_USAGE_BYTES;
     setEstimatedMetadataSize(memUsageEstimate);
