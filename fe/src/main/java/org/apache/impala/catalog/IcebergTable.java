@@ -648,7 +648,14 @@ public class IcebergTable extends Table implements FeIcebergTable {
   }
 
   private void updateMetrics(FileMetadataStats stats) {
-    long memUsageEstimate = stats.numFiles * PER_FD_MEM_USAGE_BYTES +
+    long memUsageEstimate =
+        fileStore_.getDataFilesWithoutDeletes().size() * 494 +
+        fileStore_.getDataFilesWithDeletes().size() * 476 +
+        fileStore_.getPositionDeleteFiles().size() * 484 +
+        fileStore_.getEqualityDeleteFiles().size() * 493 +
+        fileStore_.getMissingFiles().size() * 204 +
+        fileStore_.getPartitionMap().size() * 163 +
+        fileStore_.getDataFileToDV().size() * 303 +
         stats.numBlocks * PER_BLOCK_MEM_USAGE_BYTES;
     setEstimatedMetadataSize(memUsageEstimate);
     setNumFiles(stats.numFiles);
