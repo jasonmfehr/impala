@@ -1,0 +1,67 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+ARG ROCKY_VERSION=9
+FROM rockylinux:${ROCKY_VERSION}
+
+ARG GIT_REPO
+ARG GIT_BRANCH
+ARG GIT_HASH
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+ARG USER_NAME=impdev
+ARG USER_HOME=/home/${USER_NAME}
+ARG DEFAULT_TZ="America/Los_Angeles"
+
+# Source and build metadata labels.
+LABEL git.repo="${GIT_REPO}"
+LABEL git.branch="${GIT_BRANCH}"
+LABEL git.hash="${GIT_HASH}"
+LABEL os.family="rocky"
+LABEL os.version="${ROCKY_VERSION}"
+
+# Available Locales are en_US.UTF-8, hu_HU.UTF-8, and hi_IN.UTF-8
+ENV LOCALE=en_US.UTF-8
+
+SHELL ["/bin/bash", "-c"]
+
+RUN yum install -y ca-certificates tzdata \
+    && ln -snf "/usr/share/zoneinfo/${DEFAULT_TZ}" /etc/localtime \
+    && echo "${DEFAULT_TZ}" > /etc/timezone \
+    && yum install -y sudo git psmisc vim emacs nano curl wget \
+           openssh-server openssh-clients bind-utils bash-completion jq \
+           glibc-langpack-en util-linux \
+    && yum install -y epel-release \
+    && yum install -y ccache \
+    && groupadd --gid "${USER_GID}" "${USER_NAME}" \
+    && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash \
+           --home "${USER_HOME}" "${USER_NAME}" \
+    && passwd -l "${USER_NAME}" \
+    && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && echo >> /etc/sysctl.conf \
+    && echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf \
+    && sysctl -p
+
+USER ${USER_UID}:${USER_GID}
+
+WORKDIR ${USER_HOME}/.ssh
+RUN chmod 700 "${USER_HOME}/.ssh" \
+    && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAy"\
+            "NTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mK"\
+            "V0U2w0WZ2YB/++Tpockg=" > known_hosts \
+    && ssh-keyscan -p 29418 gerrit.cloudera.org >> known_hosts \
+    && chmod 600 known_hosts

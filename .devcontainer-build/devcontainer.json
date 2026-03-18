@@ -14,6 +14,7 @@
       "--add-host=buildkitsandbox:127.0.0.1"
     ],
     "args": {
+      "BASE_IMAGE": "${localEnv:BASE_IMAGE}",
       "IMPALA_CMAKE_VERSION": "${localEnv:IMPALA_CMAKE_VERSION}",
       "IMPALA_GCC_VERSION": "${localEnv:IMPALA_GCC_VERSION}",
       "IMPALA_BUILD_THREADS": "${localEnv:IMPALA_BUILD_THREADS}",

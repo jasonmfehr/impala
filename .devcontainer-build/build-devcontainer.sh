@@ -28,6 +28,12 @@
 #   OUTPUT_TYPE:    The output type for the devcontainer build command. Default: "image"
 #   PUSH:           If set to 1, the built image will be pushed to a remote registry,
 #                   otherwise the resulting output will not be pushed. Default: "0"
+#   OS:             The operating system family to build for. Valid values: "ubuntu", "rocky"
+#                   Default: "ubuntu"
+#   OS_VERSION:     The version of the OS to build for. Valid values:
+#                   - For ubuntu: "20.04", "22.04", "24.04"
+#                   - For rocky: "8", "9"
+#                   Default: "22.04" for ubuntu, "9" for rocky
 
 set -euo pipefail
 
@@ -38,6 +44,50 @@ DOCKER_BUILDER="${DOCKER_BUILDER:-impala-builder}"
 OUTPUT_TYPE="${OUTPUT_TYPE:-image}"
 PUSH="${PUSH:-0}"
 JAVA_VERSION="${JAVA_VERSION:-17}"
+OS="${OS:-ubuntu}"
+
+# Set default OS_VERSION based on OS if not specified
+if [[ -z "${OS_VERSION:-}" ]]; then
+  if [[ "${OS}" == "ubuntu" ]]; then
+    OS_VERSION="22.04"
+  elif [[ "${OS}" == "rocky" ]]; then
+    OS_VERSION="9"
+  else
+    echo "[ERROR] Unknown OS: ${OS}" >&2
+    exit 1
+  fi
+fi
+
+# Validate OS and OS_VERSION combinations
+case "${OS}" in
+  ubuntu)
+    case "${OS_VERSION}" in
+      20.04|22.04|24.04)
+        ;;
+      *)
+        echo "[ERROR] Unsupported Ubuntu version: ${OS_VERSION}" >&2
+        echo "[ERROR] Supported versions: 20.04, 22.04, 24.04" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  rocky)
+    case "${OS_VERSION}" in
+      8|9)
+        ;;
+      *)
+        echo "[ERROR] Unsupported Rocky Linux version: ${OS_VERSION}" >&2
+        echo "[ERROR] Supported versions: 8, 9" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  *)
+    echo "[ERROR] Unsupported OS: ${OS}" >&2
+    echo "[ERROR] Supported OS families: ubuntu, rocky" >&2
+    exit 1
+    ;;
+esac
 
 IMPALA_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export IMPALA_HOME
@@ -75,10 +125,18 @@ GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 GIT_REMOTE_NAME="$(git config --get "branch.${GIT_BRANCH}.remote")"
 GIT_REPO="$(git remote get-url "${GIT_REMOTE_NAME}" | cut -d'/' -f3- | cut -d'@' -f2-)"
 
+# Determine base image name and tag
+BASE_IMAGE_NAME="${OCI_IMG}-base-${OS}"
+BASE_IMAGE_TAG="${OS_VERSION}-${PLATFORM##*/}"
+BASE_IMAGE="${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"
+
 echo "[INFO] Building Impala devcontainer:"
 echo "         Git Repo:     ${GIT_REPO}"
 echo "         Git Branch:   ${GIT_BRANCH}"
 echo "         Git Hash:     ${GIT_HASH}"
+echo "         OS:           ${OS}"
+echo "         OS Version:   ${OS_VERSION}"
+echo "         Base Image:   ${BASE_IMAGE}"
 echo "         OCI Image:    ${OCI_IMG}:${OCI_TAG}"
 echo "         Platform:     ${PLATFORM}"
 echo "         Output Type:  ${OUTPUT_TYPE}"
@@ -103,6 +161,34 @@ docker buildx create \
     --bootstrap \
     --use
 
+# Build the base image first
+echo "[INFO] Building base image: ${BASE_IMAGE}"
+if [[ "${OS}" == "ubuntu" ]]; then
+  BASE_DOCKERFILE="Dockerfile.base.ubuntu"
+  OS_VERSION_ARG="UBUNTU_VERSION"
+elif [[ "${OS}" == "rocky" ]]; then
+  BASE_DOCKERFILE="Dockerfile.base.rocky"
+  OS_VERSION_ARG="ROCKY_VERSION"
+fi
+
+docker buildx build \
+    --file ".devcontainer-build/${BASE_DOCKERFILE}" \
+    --tag "${BASE_IMAGE}" \
+    --platform="${PLATFORM}" \
+    --build-arg "${OS_VERSION_ARG}=${OS_VERSION}" \
+    --build-arg "GIT_REPO=${GIT_REPO}" \
+    --build-arg "GIT_BRANCH=${GIT_BRANCH}" \
+    --build-arg "GIT_HASH=${GIT_HASH}" \
+    --build-arg "JAVA_VERSION=${JAVA_VERSION}" \
+    --build-arg "IMPALA_CMAKE_VERSION=${IMPALA_CMAKE_VERSION:-}" \
+    --build-arg "IMPALA_GCC_VERSION=${IMPALA_GCC_VERSION:-}" \
+    --build-arg "IMPALA_BUILD_THREADS=${IMPALA_BUILD_THREADS}" \
+    --load \
+    "${IMPALA_HOME}"
+
+echo "[INFO] Building main devcontainer image: ${OCI_IMG}:${OCI_TAG}"
+
+BASE_IMAGE="${BASE_IMAGE}" \
 GIT_REPO="${GIT_REPO}" \
 GIT_BRANCH="${GIT_BRANCH}" \
 GIT_HASH="${GIT_HASH}" \
