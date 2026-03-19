@@ -45,12 +45,14 @@ RUN yum install -y ca-certificates tzdata \
     && echo "${DEFAULT_TZ}" > /etc/timezone \
     && yum install -y sudo git psmisc vim emacs nano curl wget \
            openssh-server openssh-clients bind-utils bash-completion jq \
-           util-linux which net-tools passwd \
+           util-linux which net-tools passwd procps-ng \
     && groupadd --gid "${USER_GID}" "${USER_NAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash \
            --home "${USER_HOME}" "${USER_NAME}" \
     && passwd -l "${USER_NAME}" \
-    && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    && echo >> /etc/sudoers \
+    && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && echo "Defaults:${USER_NAME} !pam_session" >> /etc/sudoers
 
 USER ${USER_UID}:${USER_GID}
 

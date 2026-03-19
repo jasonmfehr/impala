@@ -57,6 +57,7 @@ RUN apt-get update \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash \
            --home "${USER_HOME}" "${USER_NAME}" \
     && passwd -l "${USER_NAME}" \
+    && echo >> /etc/sudoers \
     && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 USER ${USER_UID}:${USER_GID}
