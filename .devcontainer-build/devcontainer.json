@@ -24,6 +24,9 @@
       "JAVA_VERSION": "${localEnv:JAVA_VERSION}"
     }
   },
+  "runArgs": [
+    "--sysctl", "fs.inotify.max_user_watches=524288"
+  ],
   "capAdd": [
     "SYS_PTRACE"
   ],

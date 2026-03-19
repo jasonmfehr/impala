@@ -37,7 +37,7 @@ LABEL java.version="${JAVA_VERSION}"
 ENV IN_DOCKER=true
 
 # Impala specific environment variables
-ENV IMPALA_HOME=${HOME}/impala
+ENV IMPALA_HOME=${IMPALA_USER_HOME}/impala
 ENV IMPALA_CMAKE_VERSION=${IMPALA_CMAKE_VERSION}
 ENV IMPALA_GCC_VERSION=${IMPALA_GCC_VERSION}
 ENV IMPALA_MINIMAL_DEBUG_INFO=true
@@ -59,8 +59,8 @@ RUN --mount=type=bind,source=.,target=/tmp/impala \
 
 WORKDIR ${IMPALA_HOME}
 RUN export IMPALA_JDK_VERSION="${JAVA_VERSION}" \
-    && echo >> "${HOME}/.bashrc" \
-    && cat .devcontainer/bashrc-additions >> "${HOME}/.bashrc" \
+    && echo >> "${IMPALA_USER_HOME}/.bashrc" \
+    && cat .devcontainer/bashrc-additions >> "${IMPALA_USER_HOME}/.bashrc" \
     && curl -Lo .git/hooks/commit-msg https://gerrit.cloudera.org/tools/hooks/commit-msg \
     && chmod 755 .git/hooks/commit-msg \
     && echo "[STATUS] - starting system bootstrap" \
@@ -100,19 +100,19 @@ RUN export IMPALA_JDK_VERSION="${JAVA_VERSION}" \
     && git gc --aggressive --prune=now \
     && for remote in $(git remote); do git remote rm "${remote}"; done \
     && git remote add upstream https://github.com/apache/impala.git \
-    && rm -f "${HOME}/.gitconfig" \
+    && rm -f "${IMPALA_USER_HOME}/.gitconfig" \
     && echo "[STATUS] - prepopulating Impala shell virtual environment" \
     && ./bin/impala-shell.sh --version \
     && echo "[STATUS] - finished prepopulating Impala shell virtual environment" \
     && cp .devcontainer-build/impala.code-workspace.devcontainer impala.code-workspace
 
-WORKDIR ${HOME}/.local/share/CMakeTools
+WORKDIR ${IMPALA_USER_HOME}/.local/share/CMakeTools
 RUN cp "${IMPALA_HOME}/.devcontainer-build/cmake-kits.json" .
 
 WORKDIR ${IMPALA_HOME}/be/.vscode
 RUN cp "${IMPALA_HOME}/.devcontainer-build/c_cpp_properties.json" .
 
-WORKDIR ${HOME}/.ssh
+WORKDIR ${IMPALA_USER_HOME}/.ssh
 RUN ls | grep -v -e authorized_keys -e config -e known_hosts \
         | xargs -I{} rm -rf {} || true \
     && > authorized_keys \

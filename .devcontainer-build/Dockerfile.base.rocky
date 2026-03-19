@@ -15,8 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-ARG ROCKY_VERSION=9
-FROM rockylinux:${ROCKY_VERSION}
+ARG OS_VERSION=9
+FROM rockylinux:${OS_VERSION}
 
 ARG GIT_REPO
 ARG GIT_BRANCH
@@ -31,8 +31,9 @@ ARG DEFAULT_TZ="America/Los_Angeles"
 LABEL git.repo="${GIT_REPO}"
 LABEL git.branch="${GIT_BRANCH}"
 LABEL git.hash="${GIT_HASH}"
-LABEL os.family="rocky"
-LABEL os.version="${ROCKY_VERSION}"
+
+# General environment variables
+ENV IMPALA_USER_HOME=${USER_HOME}
 
 # Available Locales are en_US.UTF-8, hu_HU.UTF-8, and hi_IN.UTF-8
 ENV LOCALE=en_US.UTF-8
@@ -44,17 +45,12 @@ RUN yum install -y ca-certificates tzdata \
     && echo "${DEFAULT_TZ}" > /etc/timezone \
     && yum install -y sudo git psmisc vim emacs nano curl wget \
            openssh-server openssh-clients bind-utils bash-completion jq \
-           glibc-langpack-en util-linux \
-    && yum install -y epel-release \
-    && yum install -y ccache \
+           util-linux which net-tools passwd \
     && groupadd --gid "${USER_GID}" "${USER_NAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --shell /bin/bash \
            --home "${USER_HOME}" "${USER_NAME}" \
     && passwd -l "${USER_NAME}" \
-    && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
-    && echo >> /etc/sysctl.conf \
-    && echo "fs.inotify.max_user_watches=524288" >> /etc/sysctl.conf \
-    && sysctl -p
+    && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 USER ${USER_UID}:${USER_GID}
 
@@ -65,3 +61,5 @@ RUN chmod 700 "${USER_HOME}/.ssh" \
             "V0U2w0WZ2YB/++Tpockg=" > known_hosts \
     && ssh-keyscan -p 29418 gerrit.cloudera.org >> known_hosts \
     && chmod 600 known_hosts
+
+WORKDIR ${USER_HOME}

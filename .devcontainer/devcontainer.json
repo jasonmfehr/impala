@@ -38,7 +38,8 @@ under the License.
       "--add-host=ip46.impala.test:127.0.0.1",
       "--add-host=ip6.impala.test:[::1]",
       "--add-host=ip6:[::1]",
-      "--add-host=ip46:[::1]"
+      "--add-host=ip46:[::1]",
+      "--sysctl", "fs.inotify.max_user_watches=524288"
   ],
   "hostRequirements": {
     "cpus": 4,
