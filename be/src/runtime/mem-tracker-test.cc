@@ -20,9 +20,12 @@
 
 #include "runtime/mem-tracker.h"
 #include "testutil/gtest-util.h"
+#include "testutil/scoped-flag-setter.h"
 #include "util/metrics.h"
 
 #include "common/names.h"
+
+DECLARE_double(soft_mem_limit_frac);
 
 namespace impala {
 
@@ -397,5 +400,57 @@ TEST(MemTestTest, TopN) {
   }
   root.Release(10);
 }
+
+TEST(MemTestTest, GetLowestLimitLevel0) {
+  auto soft_mem_limit_frac_setter =
+      ScopedFlagSetter<double>::Make(&FLAGS_soft_mem_limit_frac, 0.9);
+
+  MemTracker level_0(80);
+  MemTracker level_1(100, "", &level_0);
+  MemTracker level_2(-1, "", &level_1);
+  MemTracker level_3(-1, "", &level_2);
+
+  EXPECT_EQ(80, level_3.GetLowestLimit(MemLimit::HARD));
+  EXPECT_EQ(72, level_3.GetLowestLimit(MemLimit::SOFT));
+}
+
+TEST(MemTestTest, GetLowestLimitLevel1) {
+  auto soft_mem_limit_frac_setter =
+      ScopedFlagSetter<double>::Make(&FLAGS_soft_mem_limit_frac, 0.9);
+
+  MemTracker level_0(100);
+  MemTracker level_1(80, "", &level_0);
+  MemTracker level_2(-1, "", &level_1);
+  MemTracker level_3(-1, "", &level_2);
+
+  EXPECT_EQ(80, level_3.GetLowestLimit(MemLimit::HARD));
+  EXPECT_EQ(72, level_3.GetLowestLimit(MemLimit::SOFT));
+}
+
+TEST(MemTestTest, GetLowestLimitLevel2) {
+  auto soft_mem_limit_frac_setter =
+      ScopedFlagSetter<double>::Make(&FLAGS_soft_mem_limit_frac, 0.9);
+
+  MemTracker level_0(-1);
+  MemTracker level_1(100, "", &level_0);
+  MemTracker level_2(80, "", &level_1);
+  MemTracker level_3(-1, "", &level_2);
+
+  EXPECT_EQ(80, level_3.GetLowestLimit(MemLimit::HARD));
+  EXPECT_EQ(72, level_3.GetLowestLimit(MemLimit::SOFT));
+}
+TEST(MemTestTest, GetLowestLimitLevel3) {
+  auto soft_mem_limit_frac_setter =
+      ScopedFlagSetter<double>::Make(&FLAGS_soft_mem_limit_frac, 0.9);
+
+  MemTracker level_0(-1);
+  MemTracker level_1(100, "", &level_0);
+  MemTracker level_2(-1, "", &level_1);
+  MemTracker level_3(80, "", &level_2);
+
+  EXPECT_EQ(80, level_3.GetLowestLimit(MemLimit::HARD));
+  EXPECT_EQ(72, level_3.GetLowestLimit(MemLimit::SOFT));
+}
+
 }
 

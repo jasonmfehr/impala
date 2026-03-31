@@ -43,7 +43,16 @@ CPackConfig.cmake
 CPackSourceConfig.cmake
 _CPack_Packages
 install_manifest.txt
+bin/build/
+cmake_modules/build/
+common/build/
+docker/build/
+fe/build/
+infra/build/
+java/build/
 package/build/
+testdata/build/
+www/build/
 
 # Build timestamp files
 .*timestamp

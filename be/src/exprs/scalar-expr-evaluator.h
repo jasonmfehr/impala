@@ -206,6 +206,7 @@ class ScalarExprEvaluator {
   bool closed() const { return closed_; }
   bool is_clone() const { return is_clone_; }
   MemPool* expr_perm_pool() const { return expr_perm_pool_; }
+  MemPool* expr_results_pool() const { return expr_results_pool_; }
 
   /// The builtin functions are not called from anywhere in the code and the
   /// symbols are therefore not included in the binary. We call these functions
@@ -250,6 +251,10 @@ class ScalarExprEvaluator {
   /// 'fn_ctxs_') come from. Owned by the exec node or data sink which owns this
   /// evaluator.
   MemPool* const expr_perm_pool_;
+
+  /// Pointer to the MemPool which all expression results allocations come from. Owned by
+  /// the exec node or data sink which owns this evaluator.
+  MemPool* const expr_results_pool_;
 
   /// The expr tree which this evaluator is for.
   const ScalarExpr& root_;

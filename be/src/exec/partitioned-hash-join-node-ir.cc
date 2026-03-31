@@ -176,11 +176,14 @@ template<int const JoinOp>
 bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRowOuterJoins(
     ScalarExprEvaluator* const* other_join_conjunct_evals,
     int num_other_join_conjuncts, ScalarExprEvaluator* const* conjunct_evals,
-    int num_conjuncts, RowBatch::Iterator* out_batch_iterator, int* remaining_capacity) {
+    int num_conjuncts, RowBatch::Iterator* out_batch_iterator, int* remaining_capacity,
+    Status* status, const int64_t mem_soft_limit) {
   DCHECK(JoinOp == TJoinOp::LEFT_OUTER_JOIN || JoinOp == TJoinOp::RIGHT_OUTER_JOIN ||
       JoinOp == TJoinOp::FULL_OUTER_JOIN);
   DCHECK(current_probe_row_ != NULL);
   TupleRow* out_row = out_batch_iterator->Get();
+  const MemTracker* const results_tracker = (num_conjuncts == 0
+      ? nullptr : (*conjunct_evals)->expr_results_pool()->mem_tracker());
   for (; !hash_tbl_iterator_.AtEnd(); hash_tbl_iterator_.NextDuplicate()) {
     TupleRow* matched_build_row = hash_tbl_iterator_.GetRow();
     DCHECK(matched_build_row != NULL);
@@ -206,7 +209,11 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRowOuterJoins(
       }
       out_row = out_batch_iterator->Next();
     }
-  }
+
+    if(UNLIKELY(num_conjuncts != 0 && results_tracker->consumption() > mem_soft_limit)) {
+      (*conjunct_evals)->expr_results_pool()->FreeAll();
+    }
+  } // end for loop
 
   if (JoinOp != TJoinOp::RIGHT_OUTER_JOIN && !matched_probe_) {
     // No match for this row, we need to output it if it's a left/full outer join.
@@ -226,7 +233,7 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRow(
     ScalarExprEvaluator* const* other_join_conjunct_evals,
     int num_other_join_conjuncts, ScalarExprEvaluator* const* conjunct_evals,
     int num_conjuncts, RowBatch::Iterator* out_batch_iterator, int* remaining_capacity,
-    Status* status) {
+    Status* status, const int64_t mem_soft_limit) {
   if (JoinOp == TJoinOp::INNER_JOIN) {
     return ProcessProbeRowInnerJoin(other_join_conjunct_evals,
         num_other_join_conjuncts, conjunct_evals, num_conjuncts, out_batch_iterator,
@@ -248,7 +255,7 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRow(
            JoinOp == TJoinOp::FULL_OUTER_JOIN);
     return ProcessProbeRowOuterJoins<JoinOp>(other_join_conjunct_evals,
         num_other_join_conjuncts, conjunct_evals, num_conjuncts, out_batch_iterator,
-        remaining_capacity);
+        remaining_capacity, status, mem_soft_limit);
   }
 }
 
@@ -366,7 +373,8 @@ void IR_ALWAYS_INLINE PartitionedHashJoinNode::EvalAndHashProbePrefetchGroup(
 // CreateOutputRow, EvalOtherJoinConjuncts, and EvalConjuncts are replaced by codegen.
 template <int const JoinOp>
 int PartitionedHashJoinNode::ProcessProbeBatch(TPrefetchMode::type prefetch_mode,
-    RowBatch* out_batch, HashTableCtx* __restrict__ ht_ctx, Status* __restrict__ status) {
+  RowBatch* out_batch, HashTableCtx* __restrict__ ht_ctx, Status* __restrict__ status,
+  const int64_t mem_soft_limit) {
   DCHECK(builder_->state() == HashJoinState::PARTITIONING_PROBE
       || builder_->state() == HashJoinState::PROBING_SPILLED_PARTITION
       || builder_->state() == HashJoinState::REPARTITIONING_PROBE);
@@ -408,8 +416,8 @@ int PartitionedHashJoinNode::ProcessProbeBatch(TPrefetchMode::type prefetch_mode
       // 'current_probe_row_' can be NULL on the first iteration through this loop.
       if (current_probe_row_ != NULL) {
         if (!ProcessProbeRow<JoinOp>(other_join_conjunct_evals,
-                num_other_join_conjuncts, conjunct_evals, num_conjuncts,
-                &out_batch_iterator, &remaining_capacity, status)) {
+            num_other_join_conjuncts, conjunct_evals, num_conjuncts, &out_batch_iterator,
+            &remaining_capacity, status, mem_soft_limit)) {
           if (status->ok()) DCHECK_EQ(remaining_capacity, 0);
           break;
         }
@@ -457,29 +465,29 @@ inline bool PartitionedHashJoinNode::AppendProbeRow(
 
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::INNER_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::LEFT_OUTER_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::LEFT_SEMI_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::LEFT_ANTI_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::RIGHT_OUTER_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::RIGHT_SEMI_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::RIGHT_ANTI_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 template int PartitionedHashJoinNode::ProcessProbeBatch<TJoinOp::FULL_OUTER_JOIN>(
     TPrefetchMode::type prefetch_mode, RowBatch* out_batch, HashTableCtx* ht_ctx,
-    Status* status);
+    Status* status, const int64_t mem_soft_limit);
 }
