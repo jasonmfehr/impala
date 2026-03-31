@@ -71,7 +71,7 @@ const char* ScalarExprEvaluator::LLVM_CLASS_NAME = "class.impala::ScalarExprEval
 
 ScalarExprEvaluator::ScalarExprEvaluator(
     const ScalarExpr& root, MemPool* expr_perm_pool, MemPool* expr_results_pool)
-  : expr_perm_pool_(expr_perm_pool), root_(root) {}
+  : expr_perm_pool_(expr_perm_pool), expr_results_pool_(expr_results_pool), root_(root) {}
 
 ScalarExprEvaluator::~ScalarExprEvaluator() {
   DCHECK(!initialized_ || closed_);

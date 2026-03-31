@@ -18,6 +18,7 @@
 #include "exec/exec-node.h"
 
 #include <memory>
+#include <fstream>
 #include <sstream>
 #include <unistd.h>  // for sleep()
 
@@ -293,6 +294,12 @@ ExecNode::~ExecNode() {
 Status ExecNode::Prepare(RuntimeState* state) {
   RETURN_IF_ERROR(ExecDebugAction(TExecNodePhase::PREPARE, state));
   DCHECK(runtime_profile_ != NULL);
+  {
+    std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
+        std::ios_base::app);
+    out << "\nGOT HERE ExecNode query: " << state->query_mem_tracker()->GetLimit(MemLimit::HARD) << "\n";
+    out << "\nGOT HERE ExecNode instance: " << state->instance_mem_tracker()->GetLimit(MemLimit::HARD) << "\n";
+  }
   mem_tracker_.reset(new MemTracker(runtime_profile_, -1, runtime_profile_->name(),
       state->instance_mem_tracker()));
   expr_mem_tracker_.reset(new MemTracker(-1, "Exprs", mem_tracker_.get(), false));
