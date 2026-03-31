@@ -76,7 +76,8 @@ class PartitionedHashJoinPlanNode : public BlockingJoinPlanNode {
   /// and is used when the partition level is 0, otherwise xxx_fn_ uses murmur hash and is
   /// used for subsequent levels.
   typedef int (*ProcessProbeBatchFn)(
-      PartitionedHashJoinNode*, TPrefetchMode::type, RowBatch*, HashTableCtx*, Status*);
+      PartitionedHashJoinNode*, TPrefetchMode::type, RowBatch*, HashTableCtx*,
+      Status*, int64_t);
   /// Jitted PartitionedHashJoinNode::ProcessProbeBatch function pointers.  NULL if
   /// codegen is disabled.
   CodegenFnPtr<ProcessProbeBatchFn> process_probe_batch_fn_;
@@ -90,7 +91,7 @@ class PartitionedHashJoinPlanNode : public BlockingJoinPlanNode {
   /// PartitionedHashJoinNode::ProcessProbeBatch(). Returns non-OK if codegen was not
   /// possible.
   Status CodegenProcessProbeBatch(
-      LlvmCodeGen* codegen, TPrefetchMode::type prefetch_mode);
+      LlvmCodeGen* codegen, TPrefetchMode::type prefetch_mode, int64_t smallest_soft_limit);
 };
 
 /// Operator to perform partitioned hash join, spilling to disk as necessary. This
@@ -370,7 +371,8 @@ class PartitionedHashJoinNode : public BlockingJoinNode {
   bool inline ProcessProbeRowOuterJoins(
       ScalarExprEvaluator* const* other_join_conjunct_evals, int num_other_join_conjuncts,
       ScalarExprEvaluator* const* conjunct_evals, int num_conjuncts,
-      RowBatch::Iterator* out_batch_iterator, int* remaining_capacity) WARN_UNUSED_RESULT;
+      RowBatch::Iterator* out_batch_iterator, int* remaining_capacity,
+      Status* status, int64_t smallest_soft_limit) WARN_UNUSED_RESULT;
 
   /// Probes 'current_probe_row_' against the the hash tables and append outputs
   /// to output batch. Wrapper around the join-type specific probe row functions
@@ -379,7 +381,7 @@ class PartitionedHashJoinNode : public BlockingJoinNode {
   bool inline ProcessProbeRow(ScalarExprEvaluator* const* other_join_conjunct_evals,
       int num_other_join_conjuncts, ScalarExprEvaluator* const* conjunct_evals,
       int num_conjuncts, RowBatch::Iterator* out_batch_iterator, int* remaining_capacity,
-      Status* status) WARN_UNUSED_RESULT;
+      Status* status, int64_t smallest_soft_limit) WARN_UNUSED_RESULT;
 
   /// Evaluates some number of rows in 'probe_batch_' against the probe expressions
   /// and hashes the results to 32-bit hash values. The evaluation results and the hash
@@ -408,7 +410,7 @@ class PartitionedHashJoinNode : public BlockingJoinNode {
   /// responsibility to do so.
   template<int const JoinOp>
   int ProcessProbeBatch(TPrefetchMode::type, RowBatch* out_batch, HashTableCtx* ht_ctx,
-      Status* status);
+      Status* status, int64_t smallest_soft_limit);
 
   /// Wrapper that calls either the interpreted or codegen'd version of
   /// ProcessProbeBatch() and commits the rows to 'out_batch' on success.
@@ -416,7 +418,8 @@ class PartitionedHashJoinNode : public BlockingJoinNode {
 
   /// Wrapper that calls the templated version of ProcessProbeBatch() based on 'join_op'.
   int ProcessProbeBatch(const TJoinOp::type join_op, TPrefetchMode::type,
-      RowBatch* out_batch, HashTableCtx* ht_ctx, Status* status);
+      RowBatch* out_batch, HashTableCtx* ht_ctx, Status* status,
+      int64_t smallest_soft_limit);
 
   /// Used when NeedToProcessUnmatchedBuildRows() is true. Writes all unmatched rows from
   /// 'output_build_partitions_' to 'out_batch', up to 'out_batch' capacity.
