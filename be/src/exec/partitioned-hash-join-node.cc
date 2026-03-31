@@ -181,7 +181,7 @@ void PartitionedHashJoinPlanNode::Codegen(FragmentState* state) {
   }
 
   TPrefetchMode::type prefetch_mode = state->query_options().prefetch_mode;
-  AddCodegenStatus(CodegenProcessProbeBatch(codegen, prefetch_mode),  "Probe Side");
+  AddCodegenStatus(CodegenProcessProbeBatch(codegen, prefetch_mode, state->query_options().mem_limit_executors),  "Probe Side");
 }
 
 Status PartitionedHashJoinNode::Open(RuntimeState* state) {
@@ -495,21 +495,27 @@ Status PartitionedHashJoinNode::ProcessProbeBatch(RowBatch* out_batch) {
   int rows_added = 0;
   Status status;
   TPrefetchMode::type prefetch_mode = runtime_state_->query_options().prefetch_mode;
+  const int64_t smallest_soft_limit = runtime_state_->query_options().mem_limit_executors;
   SCOPED_TIMER(probe_timer_);
 
   PartitionedHashJoinPlanNode::ProcessProbeBatchFn process_probe_batch_fn;
   if (ht_ctx_->level() == 0) {
+    LOG(WARNING) << "GOT HERE 1" << endl;
     process_probe_batch_fn = process_probe_batch_fn_level0_.load();
   } else {
+    LOG(WARNING) << "GOT HERE 2" << endl;
     process_probe_batch_fn = process_probe_batch_fn_.load();
   }
-
+  
   if (process_probe_batch_fn != nullptr) {
+      LOG(WARNING) << "GOT HERE 3" << endl;
       rows_added = process_probe_batch_fn(
-          this, prefetch_mode, out_batch, ht_ctx_.get(), &status);
+      this, prefetch_mode, out_batch, ht_ctx_.get(), &status, smallest_soft_limit);
   } else {
+    LOG(WARNING) << "GOT HERE 4" << endl;
     rows_added = ProcessProbeBatch(
-        join_op_, prefetch_mode, out_batch, ht_ctx_.get(), &status);
+      join_op_, prefetch_mode, out_batch, ht_ctx_.get(), &status,
+      smallest_soft_limit);
   }
 
   if (UNLIKELY(rows_added < 0)) {
@@ -523,35 +529,36 @@ Status PartitionedHashJoinNode::ProcessProbeBatch(RowBatch* out_batch) {
 
 int PartitionedHashJoinNode::ProcessProbeBatch(
     const TJoinOp::type join_op, TPrefetchMode::type prefetch_mode,
-    RowBatch* out_batch, HashTableCtx* ht_ctx, Status* status) {
+    RowBatch* out_batch, HashTableCtx* ht_ctx, Status* status,
+    int64_t smallest_soft_limit) {
   switch (join_op) {
     case TJoinOp::INNER_JOIN:
       return ProcessProbeBatch<TJoinOp::INNER_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::LEFT_OUTER_JOIN:
       return ProcessProbeBatch<TJoinOp::LEFT_OUTER_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::LEFT_SEMI_JOIN:
       return ProcessProbeBatch<TJoinOp::LEFT_SEMI_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::LEFT_ANTI_JOIN:
       return ProcessProbeBatch<TJoinOp::LEFT_ANTI_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN:
       return ProcessProbeBatch<TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN>(prefetch_mode,
-          out_batch, ht_ctx, status);
+          out_batch, ht_ctx, status, smallest_soft_limit);
     case TJoinOp::RIGHT_OUTER_JOIN:
       return ProcessProbeBatch<TJoinOp::RIGHT_OUTER_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::RIGHT_SEMI_JOIN:
       return ProcessProbeBatch<TJoinOp::RIGHT_SEMI_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::RIGHT_ANTI_JOIN:
       return ProcessProbeBatch<TJoinOp::RIGHT_ANTI_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     case TJoinOp::FULL_OUTER_JOIN:
       return ProcessProbeBatch<TJoinOp::FULL_OUTER_JOIN>(prefetch_mode, out_batch,
-          ht_ctx, status);
+          ht_ctx, status, smallest_soft_limit);
     default:
       DCHECK(false) << "Unknown join type";
       return -1;
@@ -577,6 +584,7 @@ Status PartitionedHashJoinNode::GetNext(
   // execution of the state machine where the current call into GetNext() left off.
   // See the definition of ProbeState for description of the state machine and states.
   do {
+    LOG(WARNING) << "JASON 1 probe_expr_results_pool_: probe state:" << static_cast<int>(probe_state_) << " " << probe_expr_results_pool_->DebugString() << endl;
     DCHECK(status.ok());
     DCHECK(builder_->state() != HashJoinState::PARTITIONING_BUILD)
         << "Should not be in GetNext() " << static_cast<int>(builder_->state());
@@ -1415,7 +1423,7 @@ Status PartitionedHashJoinPlanNode::CodegenCreateOutputRow(
 }
 
 Status PartitionedHashJoinPlanNode::CodegenProcessProbeBatch(
-    LlvmCodeGen* codegen, TPrefetchMode::type prefetch_mode) {
+    LlvmCodeGen* codegen, TPrefetchMode::type prefetch_mode, int64_t smallest_soft_limit) {
   // Codegen for hashing rows
   llvm::Function* hash_fn;
   llvm::Function* murmur_hash_fn;
@@ -1472,6 +1480,12 @@ Status PartitionedHashJoinPlanNode::CodegenProcessProbeBatch(
   DCHECK_GE(prefetch_mode, TPrefetchMode::NONE);
   DCHECK_LE(prefetch_mode, TPrefetchMode::HT_BUCKET);
   prefetch_mode_arg->replaceAllUsesWith(codegen->GetI32Constant(prefetch_mode));
+
+    // Replace the parameter 'smallest_soft_limit' with a literal constant.
+    llvm::Value* smallest_soft_limit_arg =
+      codegen->GetArgument(process_probe_batch_fn, 5);
+    smallest_soft_limit_arg->replaceAllUsesWith(
+      codegen->GetI64Constant(smallest_soft_limit));
 
   // Codegen HashTable::Equals
   llvm::Function* probe_equals_fn;
