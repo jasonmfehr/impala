@@ -640,11 +640,13 @@ ImpalaServer::ImpalaServer(ExecEnv* exec_env)
       bind<void>(&ImpalaServer::CancelFromThreadPool, this, _2)));
   ABORT_IF_ERROR(cancellation_thread_pool_->Init());
 
-  unreg_thread_pool_.reset(new ThreadPool<QueryHandle>("impala-server",
-      "unregistration-worker", FLAGS_unregistration_thread_pool_size,
-      FLAGS_unregistration_thread_pool_queue_depth,
-      bind<void>(&ImpalaServer::FinishUnregisterQuery, this, _2)));
-  ABORT_IF_ERROR(unreg_thread_pool_->Init());
+  if (FLAGS_is_coordinator) {
+    unreg_thread_pool_.reset(new ThreadPool<QueryHandle>("impala-server",
+        "unregistration-worker", FLAGS_unregistration_thread_pool_size,
+        FLAGS_unregistration_thread_pool_queue_depth,
+        bind<void>(&ImpalaServer::FinishUnregisterQuery, this, _2)));
+    ABORT_IF_ERROR(unreg_thread_pool_->Init());
+  }
 
   // Initialize a session expiry thread which blocks indefinitely until the first session
   // with non-zero timeout value is opened. Note that a session which doesn't specify any
@@ -1671,6 +1673,7 @@ Status ImpalaServer::UnregisterQuery(
 
   // Do the rest of the unregistration work in the background so that the client does
   // not need to wait for profile serialization, etc.
+  DCHECK(unreg_thread_pool_ != nullptr) << "unreg_thread_pool_ is null";
   unreg_thread_pool_->Offer(move(query_handle));
   return Status::OK();
 }
