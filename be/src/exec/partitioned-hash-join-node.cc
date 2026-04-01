@@ -501,19 +501,15 @@ Status PartitionedHashJoinNode::ProcessProbeBatch(RowBatch* out_batch) {
 
   PartitionedHashJoinPlanNode::ProcessProbeBatchFn process_probe_batch_fn;
   if (ht_ctx_->level() == 0) {
-    LOG(WARNING) << "GOT HERE 1" << endl;
     process_probe_batch_fn = process_probe_batch_fn_level0_.load();
   } else {
-    LOG(WARNING) << "GOT HERE 2" << endl;
     process_probe_batch_fn = process_probe_batch_fn_.load();
   }
-  
+
   if (process_probe_batch_fn != nullptr) {
-      LOG(WARNING) << "GOT HERE 3" << endl;
       rows_added = process_probe_batch_fn(
       this, prefetch_mode, out_batch, ht_ctx_.get(), &status, mem_soft_limit);
   } else {
-    LOG(WARNING) << "GOT HERE 4" << endl;
     rows_added = ProcessProbeBatch(
       join_op_, prefetch_mode, out_batch, ht_ctx_.get(), &status, mem_soft_limit);
   }
@@ -584,7 +580,6 @@ Status PartitionedHashJoinNode::GetNext(
   // execution of the state machine where the current call into GetNext() left off.
   // See the definition of ProbeState for description of the state machine and states.
   do {
-    LOG(WARNING) << "JASON 1 probe_expr_results_pool_: probe state:" << static_cast<int>(probe_state_) << " " << probe_expr_results_pool_->DebugString() << endl;
     DCHECK(status.ok());
     DCHECK(builder_->state() != HashJoinState::PARTITIONING_BUILD)
         << "Should not be in GetNext() " << static_cast<int>(builder_->state());

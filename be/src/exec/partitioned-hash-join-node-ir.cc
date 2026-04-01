@@ -24,23 +24,9 @@
 #include "runtime/row-batch.h"
 #include "util/process-state-info.h"
 
-#include <fstream>
-#include <sstream>
-
 #include "common/names.h"
 
 namespace impala {
-
-namespace {
-
-inline void AppendProcessProbeBatchLog(const string& message) {
-  std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-      std::ios_base::app);
-  out << message << '\n';
-  out.flush();
-}
-
-}
 
 // Wrapper around ExecNode's eval conjuncts with a different function name.
 // This lets us distinguish between the join conjuncts vs. non-join conjuncts
@@ -199,100 +185,37 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRowOuterJoins(
   TupleRow* out_row = out_batch_iterator->Get();
   const MemTracker* const results_tracker =
       (*conjunct_evals)->expr_results_pool()->mem_tracker();
-  {
-    std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-        std::ios_base::app);
-    out << "\nGOT HERE 14a: " << mem_soft_limit << "\n";
-  }
   for (; !hash_tbl_iterator_.AtEnd(); hash_tbl_iterator_.NextDuplicate()) {
     TupleRow* matched_build_row = hash_tbl_iterator_.GetRow();
     DCHECK(matched_build_row != NULL);
     // Create an output row with all probe/build tuples and evaluate the
     // non-equi-join conjuncts.
-    {
-      std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-          std::ios_base::app);
-      out << "\nGOT HERE 15: " << ProcessStateInfo(false).GetRss() << "\n";
-    }
     CreateOutputRow(out_row, current_probe_row_, matched_build_row);
-    {
-      std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-          std::ios_base::app);
-      out << "GOT HERE 16: " << ProcessStateInfo(false).GetRss() << "\n";
-    }
     if (!EvalOtherJoinConjuncts(other_join_conjunct_evals, num_other_join_conjuncts,
         out_row)) {
-      {
-        std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-            std::ios_base::app);
-        out << "GOT HERE 17\n";
-      }
       continue;
-    }
-    {
-      std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-          std::ios_base::app);
-      out << "GOT HERE 18: " << ProcessStateInfo(false).GetRss() << "\n";
     }
     // At this point the probe is considered matched.
     matched_probe_ = true;
     if (JoinOp == TJoinOp::RIGHT_OUTER_JOIN || JoinOp == TJoinOp::FULL_OUTER_JOIN) {
-      {
-        std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-            std::ios_base::app);
-        out << "GOT HERE 19 num_conjuncts: " << num_conjuncts << "\n";
-      }
       // There is a match for this build row. Mark the Bucket or the DuplicateNode
       // as matched for right/full outer joins.
       hash_tbl_iterator_.SetMatched();
     }
     if (ExecNode::EvalConjuncts(conjunct_evals, num_conjuncts, out_row)) {
-      {
-        std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-            std::ios_base::app);
-        out << "GOT HERE 20\n";
-      }
       --(*remaining_capacity);
       if (*remaining_capacity == 0) {
         hash_tbl_iterator_.NextDuplicate();
         return false;
       }
-      {
-        std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-            std::ios_base::app);
-        out << "GOT HERE 21\n";
-      }
       out_row = out_batch_iterator->Next();
-      {
-        std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-            std::ios_base::app);
-        out << "GOT HERE 22\n";
-      }
     }
-    {
-      std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-          std::ios_base::app);
-      out << "GOT HERE 23: " << ProcessStateInfo(false).GetRss() << "\n";
-      // out << "    expression perm pool: " << (*conjunct_evals)->expr_perm_pool()->DebugString() << "\n";
-      // out << "    expression results pool: " << (*conjunct_evals)->expr_results_pool()->DebugString() << "\n";
-      out << "    expression results pool: " << (*conjunct_evals)->expr_results_pool()->total_allocated_bytes() << "\n";
-    }
-    
+
     if(UNLIKELY(results_tracker->consumption() > mem_soft_limit)) {
-      {
-        std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-            std::ios_base::app);
-        out << "GOT HERE 24: Memory limit exceeded for expr results pool\n";
-      }
       (*conjunct_evals)->expr_results_pool()->FreeAll();
     }
   } // end for loop
 
-  {
-    std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-        std::ios_base::app);
-    out << "GOT HERE 23\n";
-  }
   if (JoinOp != TJoinOp::RIGHT_OUTER_JOIN && !matched_probe_) {
     // No match for this row, we need to output it if it's a left/full outer join.
     CreateOutputRow(out_row, current_probe_row_, NULL);
@@ -312,13 +235,6 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRow(
     int num_other_join_conjuncts, ScalarExprEvaluator* const* conjunct_evals,
     int num_conjuncts, RowBatch::Iterator* out_batch_iterator, int* remaining_capacity,
     Status* status, const int64_t mem_soft_limit) {
-  {
-    std::stringstream ss;
-    ss << "GOT HERE 14: Join Op: " << static_cast<int>(JoinOp);
-    std::ofstream out("/home/jfehr/dev/impala/processprobebatch.out",
-        std::ios_base::app);
-    out << ss.str() << '\n';
-  }
   if (JoinOp == TJoinOp::INNER_JOIN) {
     return ProcessProbeRowInnerJoin(other_join_conjunct_evals,
         num_other_join_conjuncts, conjunct_evals, num_conjuncts, out_batch_iterator,
@@ -494,27 +410,19 @@ int PartitionedHashJoinNode::ProcessProbeBatch(TPrefetchMode::type prefetch_mode
     // exhausted in the previous iteration), we will proceed with the remaining items in
     // the values cache.
     if (expr_vals_cache->AtEnd()) {
-      AppendProcessProbeBatchLog("GOT HERE 5");
       EvalAndHashProbePrefetchGroup(prefetch_mode, ht_ctx);
     }
-    AppendProcessProbeBatchLog("GOT HERE 6");
     // Process the prefetch group.
     do {
-      AppendProcessProbeBatchLog("GOT HERE 7");
       // 'current_probe_row_' can be NULL on the first iteration through this loop.
       if (current_probe_row_ != NULL) {
-        AppendProcessProbeBatchLog("GOT HERE 8");
         if (!ProcessProbeRow<JoinOp>(other_join_conjunct_evals,
             num_other_join_conjuncts, conjunct_evals, num_conjuncts, &out_batch_iterator,
             &remaining_capacity, status, mem_soft_limit)) {
-          AppendProcessProbeBatchLog("GOT HERE 9");
           if (status->ok()) DCHECK_EQ(remaining_capacity, 0);
-          AppendProcessProbeBatchLog("GOT HERE 10");
           break;
         }
-        AppendProcessProbeBatchLog("GOT HERE 11");
       }
-      AppendProcessProbeBatchLog("GOT HERE 12");
       // Must have reached the end of the hash table iterator for the current row before
       // moving to the next row.
       DCHECK(hash_tbl_iterator_.AtEnd());
