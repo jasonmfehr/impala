@@ -34,6 +34,7 @@
 namespace impala {
 
 class MemTracker;
+class MemPool;
 
 /// Similar to SummaryStatsCounter without thread-safe support so don't need
 /// to acquire locks.
@@ -66,6 +67,32 @@ struct MemPoolCounters {
 
   /// Stats of freed bytes in free()
   SummaryStats freed_bytes;
+};
+
+/// Interface for MemPool behavior.
+class MemPoolIface {
+ public:
+  virtual ~MemPoolIface() = default;
+
+  virtual uint8_t* Allocate(int64_t size) noexcept = 0;
+  virtual uint8_t* TryAllocate(int64_t size) noexcept = 0;
+  virtual uint8_t* TryAllocateAligned(int64_t size, int alignment) noexcept = 0;
+  virtual uint8_t* TryAllocateUnaligned(int64_t size) noexcept = 0;
+  virtual void ReturnPartialAllocation(int64_t byte_size) = 0;
+
+  virtual void Clear() = 0;
+  virtual void FreeAll() = 0;
+  virtual void AcquireData(MemPool* src, bool keep_current) = 0;
+  virtual void SetMemTracker(MemTracker* new_tracker) = 0;
+
+  virtual std::string DebugString() = 0;
+
+  virtual int64_t total_allocated_bytes() const = 0;
+  virtual int64_t total_reserved_bytes() const = 0;
+  virtual MemTracker* mem_tracker() = 0;
+
+  virtual int64_t GetTotalChunkSizes() const = 0;
+  virtual MemPoolCounters GetMemPoolCounters() const = 0;
 };
 
 /// A MemPool maintains a list of memory chunks from which it allocates memory in
@@ -125,7 +152,7 @@ struct MemPoolCounters {
 //
 /// This class is not thread-safe. A DFAKE_MUTEX is used to help enforce correct usage.
 
-class MemPool {
+class MemPool : public MemPoolIface {
  public:
   /// 'tracker' tracks the amount of memory allocated by this pool. Must not be NULL.
   /// If 'enforce_binary_chunk_sizes' is set to true then all chunk sizes
@@ -134,12 +161,12 @@ class MemPool {
 
   /// Frees all chunks of memory and subtracts the total allocated bytes
   /// from the registered limits.
-  ~MemPool();
+  ~MemPool() override;
 
   /// Allocates a section of memory of 'size' bytes with DEFAULT_ALIGNMENT at the end
   /// of the the current chunk. Creates a new chunk if there aren't any chunks
   /// with enough capacity.
-  uint8_t* Allocate(int64_t size) noexcept {
+  uint8_t* Allocate(int64_t size) noexcept override {
     DFAKE_SCOPED_LOCK(mutex_);
     return Allocate<false>(size, DEFAULT_ALIGNMENT);
   }
@@ -148,14 +175,14 @@ class MemPool {
   /// this call will fail (returns NULL) if it does.
   /// The caller must handle the NULL case. This should be used for allocations
   /// where the size can be very big to bound the amount by which we exceed mem limits.
-  uint8_t* TryAllocate(int64_t size) noexcept {
+  uint8_t* TryAllocate(int64_t size) noexcept override {
     DFAKE_SCOPED_LOCK(mutex_);
     return Allocate<true>(size, DEFAULT_ALIGNMENT);
   }
 
   /// Same as TryAllocate() except a non-default alignment can be specified. It
   /// should be a power-of-two in [1, alignof(std::max_align_t)].
-  uint8_t* TryAllocateAligned(int64_t size, int alignment) noexcept {
+  uint8_t* TryAllocateAligned(int64_t size, int alignment) noexcept override {
     DFAKE_SCOPED_LOCK(mutex_);
     DCHECK_GE(alignment, 1);
     DCHECK_LE(alignment, alignof(std::max_align_t));
@@ -164,7 +191,7 @@ class MemPool {
   }
 
   /// Same as TryAllocate() except returned memory is not aligned at all.
-  uint8_t* TryAllocateUnaligned(int64_t size) noexcept {
+  uint8_t* TryAllocateUnaligned(int64_t size) noexcept override {
     DFAKE_SCOPED_LOCK(mutex_);
     // Call templated implementation directly so that it is inlined here and the
     // alignment logic can be optimised out.
@@ -174,7 +201,7 @@ class MemPool {
   /// Returns 'byte_size' to the current chunk back to the mem pool. This can
   /// only be used to return either all or part of the previous allocation returned
   /// by Allocate().
-  void ReturnPartialAllocation(int64_t byte_size) {
+  void ReturnPartialAllocation(int64_t byte_size) override {
     DFAKE_SCOPED_LOCK(mutex_);
     DCHECK_GE(byte_size, 0);
     DCHECK(current_chunk_idx_ != -1);
@@ -191,30 +218,30 @@ class MemPool {
   }
 
   /// Makes all allocated chunks available for re-use, but doesn't delete any chunks.
-  void Clear();
+  void Clear() override;
 
   /// Deletes all allocated chunks. FreeAll() or AcquireData() must be called for
   /// each mem pool
-  void FreeAll();
+  void FreeAll() override;
 
   /// Absorb all chunks that hold data from src. If keep_current is true, let src hold on
   /// to its last allocated chunk that contains data.
   /// All offsets handed out by calls to GetCurrentOffset() for 'src' become invalid.
-  void AcquireData(MemPool* src, bool keep_current);
+  void AcquireData(MemPool* src, bool keep_current) override;
 
   /// Change the MemTracker, updating consumption on the current and new tracker.
-  void SetMemTracker(MemTracker* new_tracker);
+  void SetMemTracker(MemTracker* new_tracker) override;
 
-  std::string DebugString();
+  std::string DebugString() override;
 
-  int64_t total_allocated_bytes() const { return total_allocated_bytes_; }
-  int64_t total_reserved_bytes() const { return total_reserved_bytes_; }
-  MemTracker* mem_tracker() { return mem_tracker_; }
+  int64_t total_allocated_bytes() const override { return total_allocated_bytes_; }
+  int64_t total_reserved_bytes() const override { return total_reserved_bytes_; }
+  MemTracker* mem_tracker() override { return mem_tracker_; }
 
   /// Return sum of chunk_sizes_.
-  int64_t GetTotalChunkSizes() const;
+  int64_t GetTotalChunkSizes() const override;
 
-  MemPoolCounters GetMemPoolCounters() const { return counters_; }
+  MemPoolCounters GetMemPoolCounters() const override { return counters_; }
 
   /// TODO: make a macro for doing this
   /// For C++/IR interop, we need to be able to look up types by name.

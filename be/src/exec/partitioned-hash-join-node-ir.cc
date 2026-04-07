@@ -21,6 +21,7 @@
 #include "exec/blocking-join-node.inline.h"
 #include "exec/exec-node.inline.h"
 #include "exec/hash-table.inline.h"
+#include "runtime/mem-pool-resetting.h"
 #include "runtime/row-batch.h"
 
 #include "common/names.h"
@@ -182,8 +183,8 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRowOuterJoins(
       JoinOp == TJoinOp::FULL_OUTER_JOIN);
   DCHECK(current_probe_row_ != NULL);
   TupleRow* out_row = out_batch_iterator->Get();
-  const MemTracker* const results_tracker = (num_conjuncts == 0
-      ? nullptr : (*conjunct_evals)->expr_results_pool()->mem_tracker());
+  // const MemTracker* const results_tracker = (num_conjuncts == 0
+  //     ? nullptr : (*conjunct_evals)->expr_results_pool()->mem_tracker());
   for (; !hash_tbl_iterator_.AtEnd(); hash_tbl_iterator_.NextDuplicate()) {
     TupleRow* matched_build_row = hash_tbl_iterator_.GetRow();
     DCHECK(matched_build_row != NULL);
@@ -210,9 +211,9 @@ bool IR_ALWAYS_INLINE PartitionedHashJoinNode::ProcessProbeRowOuterJoins(
       out_row = out_batch_iterator->Next();
     }
 
-    if(UNLIKELY(num_conjuncts != 0 && results_tracker->consumption() > mem_soft_limit)) {
-      (*conjunct_evals)->expr_results_pool()->FreeAll();
-    }
+    // if(UNLIKELY(num_conjuncts != 0 && results_tracker->consumption() > mem_soft_limit)) {
+    //   (*conjunct_evals)->expr_results_pool()->FreeAll();
+    // }
   } // end for loop
 
   if (JoinOp != TJoinOp::RIGHT_OUTER_JOIN && !matched_probe_) {

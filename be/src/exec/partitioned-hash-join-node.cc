@@ -128,6 +128,7 @@ PartitionedHashJoinNode::~PartitionedHashJoinNode() {
 Status PartitionedHashJoinNode::Prepare(RuntimeState* state) {
   SCOPED_TIMER(runtime_profile_->total_time_counter());
 
+  // TODO: wrap expr_results_pool() with a ResettingMemPool
   RETURN_IF_ERROR(BlockingJoinNode::Prepare(state));
   runtime_state_ = state;
   if (!UseSeparateBuild(state->query_options())) {
