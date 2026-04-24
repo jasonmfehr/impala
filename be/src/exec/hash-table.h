@@ -166,6 +166,10 @@ class HashTableCtx {
       int num_build_tuples, MemPool* expr_perm_pool, MemPool* build_expr_results_pool,
       MemPool* probe_expr_results_pool, boost::scoped_ptr<HashTableCtx>* ht_ctx);
 
+  MemPool* expr_perm_pool() { return expr_perm_pool_; }
+  MemPool* build_expr_results_pool() { return build_expr_results_pool_; }
+  MemPool* probe_expr_results_pool() { return probe_expr_results_pool_; }
+
   /// Initialize the build and probe expression evaluators.
   Status Open(RuntimeState* state);
 
