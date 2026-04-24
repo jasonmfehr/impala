@@ -259,6 +259,18 @@ class MemTracker {
     return false;
   }
 
+  const int64_t CalcSmallestSoftLimit() const {
+    int64_t smallest = -1;
+
+    for (MemTracker* tracker : limit_trackers_) {
+      if (tracker->soft_limit() >= 0 && (smallest == -1 || tracker->soft_limit() < smallest)) {
+        smallest = tracker->soft_limit();
+      }
+    }
+
+    return smallest;
+  }
+
   /// If this tracker has a limit, checks the limit and attempts to free up some memory if
   /// the hard limit is exceeded by calling any added GC functions. Returns true if the
   /// limit is exceeded after calling the GC functions. Returns false if there is no limit
@@ -266,6 +278,12 @@ class MemTracker {
   bool LimitExceeded(MemLimit mode) {
     if (UNLIKELY(CheckLimitExceeded(mode))) return LimitExceededSlow(mode);
     return false;
+  }
+
+  /// Returns true if the current memory tracker's limit is exceeded.
+  bool CheckLimitExceeded(MemLimit mode) const {
+    int64_t limit = GetLimit(mode);
+    return limit >= 0 && limit < consumption();
   }
 
   /// Returns the maximum consumption that can be made without exceeding the limit on
@@ -380,12 +398,6 @@ class MemTracker {
 
  private:
   friend class PoolMemTrackerRegistry;
-
-  /// Returns true if the current memory tracker's limit is exceeded.
-  bool CheckLimitExceeded(MemLimit mode) const {
-    int64_t limit = GetLimit(mode);
-    return limit >= 0 && limit < consumption();
-  }
 
   /// Slow path for LimitExceeded().
   bool LimitExceededSlow(MemLimit mode);
