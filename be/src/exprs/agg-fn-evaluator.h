@@ -26,6 +26,7 @@
 #include "exprs/agg-fn.h"
 #include "runtime/descriptors.h"
 #include "runtime/lib-cache.h"
+#include "runtime/mem-pool-resetting.h"
 #include "runtime/tuple-row.h"
 #include "runtime/types.h"
 #include "udf/udf.h"
@@ -181,7 +182,7 @@ class AggFnEvaluator {
   /// caller wants functions like Serialize(), Finalize() and GetValue() to allocate
   /// from a different MemPool. Does does *not* change the pool for the input exprs.
   /// This should generally be used via ScopedResultsPool instead of directly.
-  MemPool* SwapResultsPool(MemPool* new_results_pool) {
+  MemPoolIface* SwapResultsPool(MemPoolIface* new_results_pool) {
     return agg_fn_ctx_->impl()->SwapResultsPool(new_results_pool);
   }
 
@@ -312,7 +313,7 @@ inline void AggFnEvaluator::Finalize(const std::vector<AggFnEvaluator*>& evals,
 /// The previous results pool is restored when this goes out of scope.
 class ScopedResultsPool {
  public:
-  ScopedResultsPool(AggFnEvaluator* agg_fn_eval, MemPool* new_results_pool)
+  ScopedResultsPool(AggFnEvaluator* agg_fn_eval, MemPoolIface* new_results_pool)
     : agg_fn_eval_(agg_fn_eval),
       prev_results_pool_(agg_fn_eval->SwapResultsPool(new_results_pool)) {}
 
@@ -324,7 +325,7 @@ class ScopedResultsPool {
 
  private:
   AggFnEvaluator* const agg_fn_eval_;
-  MemPool* const prev_results_pool_;
+  MemPoolIface* const prev_results_pool_;
 };
 }
 

@@ -40,6 +40,7 @@ using impala_udf::BuiltInFunctions;
 
 class FreePool;
 class MemPool;
+class MemPoolIface;
 class RuntimeState;
 class ScalarExpr;
 
@@ -59,7 +60,7 @@ class FunctionContextImpl {
   /// allocations that may hold expr results (i.e. AllocateForResults()) are backed
   /// by 'results_pool'.
   static impala_udf::FunctionContext* CreateContext(RuntimeState* state,
-      MemPool* perm_pool, MemPool* results_pool,
+      MemPool* perm_pool, MemPoolIface* results_pool,
       const impala_udf::FunctionContext::TypeDesc& return_type,
       const std::vector<impala_udf::FunctionContext::TypeDesc>& arg_types,
       int varargs_buffer_size = 0, bool debug = false);
@@ -67,7 +68,7 @@ class FunctionContextImpl {
   /// Create a FunctionContext for a UDA. Identical to the UDF version except for the
   /// intermediate type. Caller is responsible for deleting it.
   static impala_udf::FunctionContext* CreateContext(RuntimeState* state,
-      MemPool* perm_pool, MemPool* results_pool,
+      MemPool* perm_pool, MemPoolIface* results_pool,
       const impala_udf::FunctionContext::TypeDesc& intermediate_type,
       const impala_udf::FunctionContext::TypeDesc& return_type,
       const std::vector<impala_udf::FunctionContext::TypeDesc>& arg_types,
@@ -85,7 +86,7 @@ class FunctionContextImpl {
   /// debug flag as this FunctionContext. The caller is responsible for calling delete on
   /// it. The cloned FunctionContext cannot be used after the original FunctionContext is
   /// destroyed because it may reference fragment-local state from the original.
-  impala_udf::FunctionContext* Clone(MemPool* perm_pool, MemPool* results_pool);
+  impala_udf::FunctionContext* Clone(MemPool* perm_pool, MemPoolIface* results_pool);
 
   /// Allocates a buffer of 'byte_size' to hold expr results. If the new allocation
   /// causes the memory limit to be exceeded, the error will be set in this object
@@ -98,8 +99,8 @@ class FunctionContextImpl {
 
   /// Replaces the current 'results_pool_' for  'new_results_pool' to be used for
   /// AllocateForResults(). Returns a pointer to the pool that was replaced.
-  MemPool* SwapResultsPool(MemPool* new_results_pool) {
-    MemPool* old_results_pool = results_pool_;
+  MemPoolIface* SwapResultsPool(MemPoolIface* new_results_pool) {
+    MemPoolIface* old_results_pool = results_pool_;
     results_pool_ = new_results_pool;
     return old_results_pool;
   }
@@ -223,7 +224,7 @@ class FunctionContextImpl {
   /// expression evaluation. Var-len values returned from an expression may reference
   /// memory in this pool - the caller is responsible for ensuring that the pool is
   /// not cleared while that memory is still referenced.
-  MemPool* results_pool_;
+  MemPoolIface* results_pool_;
 
   /// We use the query's runtime state to report errors and warnings. NULL for test
   /// contexts.

@@ -182,7 +182,7 @@ bool FailNextAlloc() {
 #endif
 
 FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
-    MemPool* udf_mem_pool, MemPool* results_pool,
+    MemPool* udf_mem_pool, MemPoolIface* results_pool,
     const FunctionContext::TypeDesc& return_type,
     const vector<FunctionContext::TypeDesc>& arg_types, int varargs_buffer_size,
     bool debug) {
@@ -195,7 +195,7 @@ FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
 }
 
 FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
-    MemPool* udf_mem_pool, MemPool* results_pool,
+    MemPool* udf_mem_pool, MemPoolIface* results_pool,
     const FunctionContext::TypeDesc& intermediate_type,
     const FunctionContext::TypeDesc& return_type,
     const vector<FunctionContext::TypeDesc>& arg_types, int varargs_buffer_size,
@@ -219,7 +219,7 @@ FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
 }
 
 FunctionContext* FunctionContextImpl::Clone(
-    MemPool* udf_mem_pool, MemPool* results_pool) {
+    MemPool* udf_mem_pool, MemPoolIface* results_pool) {
   impala_udf::FunctionContext* new_context =
       CreateContext(state_, udf_mem_pool, results_pool, intermediate_type_,
           return_type_, arg_types_, varargs_buffer_size_, debug_);

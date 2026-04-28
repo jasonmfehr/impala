@@ -280,12 +280,6 @@ class MemTracker {
     return false;
   }
 
-  /// Returns true if the current memory tracker's limit is exceeded.
-  bool CheckLimitExceeded(MemLimit mode) const {
-    int64_t limit = GetLimit(mode);
-    return limit >= 0 && limit < consumption();
-  }
-
   /// Returns the maximum consumption that can be made without exceeding the limit on
   /// this tracker or any of its parents. Returns int64_t::max() if there are no
   /// limits and a negative value if any limit is already exceeded.
@@ -398,6 +392,12 @@ class MemTracker {
 
  private:
   friend class PoolMemTrackerRegistry;
+
+  /// Returns true if the current memory tracker's limit is exceeded.
+  bool CheckLimitExceeded(MemLimit mode) const {
+    int64_t limit = GetLimit(mode);
+    return limit >= 0 && limit < consumption();
+  }
 
   /// Slow path for LimitExceeded().
   bool LimitExceededSlow(MemLimit mode);
