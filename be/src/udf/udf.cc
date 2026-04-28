@@ -511,6 +511,7 @@ uint8_t* FunctionContextImpl::AllocateForResults(int64_t byte_size) noexcept {
 #if !defined(NDEBUG) && !defined(IMPALA_UDF_SDK_BUILD)
   uint8_t* buffer = FailNextAlloc() ? nullptr : results_pool_->Allocate(byte_size);
 #else
+  // TODO: IMPALA-14863:  Reset results_pool_ if it exceeds a certain size
   uint8_t* buffer = results_pool_->Allocate(byte_size);
 #endif
   if (UNLIKELY(
