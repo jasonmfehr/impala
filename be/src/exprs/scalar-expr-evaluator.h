@@ -18,15 +18,11 @@
 #ifndef IMPALA_EXPRS_SCALAR_EXPR_EVALUATOR_H
 #define IMPALA_EXPRS_SCALAR_EXPR_EVALUATOR_H
 
-#include <memory>
-
 #include <boost/scoped_ptr.hpp>
 
 #include "common/object-pool.h"
 #include "common/status.h"
 #include "exprs/expr-value.h"
-#include "runtime/mem-pool.h"
-#include "runtime/mem-pool-resetting.h"
 #include "udf/udf-internal.h" // for CollectionVal
 #include "udf/udf.h"
 
@@ -130,12 +126,12 @@ class ScalarExprEvaluator {
   /// TODO: IMPALA-4743: Evaluate input arguments in ScalarExpr::Init() and store them
   /// in ScalarExpr.
   Status Clone(ObjectPool* pool, RuntimeState* state, MemPool* expr_perm_pool,
-      MemPoolIface* expr_results_pool, ScalarExprEvaluator** new_eval) const WARN_UNUSED_RESULT;
+      MemPool* expr_results_pool, ScalarExprEvaluator** new_eval) const WARN_UNUSED_RESULT;
 
   /// Convenience functions for cloning multiple ScalarExprEvaluators. The newly
   /// created evaluators are appended to 'new_evals.
   static Status Clone(ObjectPool* pool, RuntimeState* state, MemPool* expr_perm_pool,
-      MemPoolIface* expr_results_pool, const std::vector<ScalarExprEvaluator*>& evals,
+      MemPool* expr_results_pool, const std::vector<ScalarExprEvaluator*>& evals,
       std::vector<ScalarExprEvaluator*>* new_evals) WARN_UNUSED_RESULT;
 
   /// If 'expr' is constant, evaluates it with no input row argument and returns the
@@ -210,6 +206,7 @@ class ScalarExprEvaluator {
   bool closed() const { return closed_; }
   bool is_clone() const { return is_clone_; }
   MemPool* expr_perm_pool() const { return expr_perm_pool_; }
+  MemPool* expr_results_pool() const { return expr_results_pool_; }
 
   /// The builtin functions are not called from anywhere in the code and the
   /// symbols are therefore not included in the binary. We call these functions
@@ -254,8 +251,9 @@ class ScalarExprEvaluator {
   /// 'fn_ctxs_') come from. Owned by the exec node or data sink which owns this
   /// evaluator.
   MemPool* const expr_perm_pool_;
-  std::unique_ptr<MemPoolIface> expr_results_pool_;
   
+  MemPool* const expr_results_pool_;
+
   /// The expr tree which this evaluator is for.
   const ScalarExpr& root_;
 

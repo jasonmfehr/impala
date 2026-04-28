@@ -17,7 +17,6 @@
 
 #include "exprs/scalar-expr-evaluator.h"
 
-#include <memory>
 #include <sstream>
 
 #include "common/object-pool.h"
@@ -71,8 +70,8 @@ using namespace impala_udf;
 const char* ScalarExprEvaluator::LLVM_CLASS_NAME = "class.impala::ScalarExprEvaluator";
 
 ScalarExprEvaluator::ScalarExprEvaluator(
-    const ScalarExpr& root, MemPool* expr_perm_pool, MemPoolIface* expr_results_pool)
-  : expr_perm_pool_(expr_perm_pool), root_(root) {}
+    const ScalarExpr& root, MemPool* expr_perm_pool, MemPool* expr_results_pool)
+  : expr_perm_pool_(expr_perm_pool), expr_results_pool_(expr_results_pool), root_(root) {}
 
 ScalarExprEvaluator::~ScalarExprEvaluator() {
   DCHECK(!initialized_ || closed_);
@@ -81,7 +80,6 @@ ScalarExprEvaluator::~ScalarExprEvaluator() {
 Status ScalarExprEvaluator::Create(const ScalarExpr& root, RuntimeState* state,
     ObjectPool* pool, MemPool* expr_perm_pool, MemPool* expr_results_pool,
     ScalarExprEvaluator** eval) {
-  expr_results_pool_ = std::make_unique<MemPoolResetting>(expr_results_pool, state->query_mem_tracker()->GetLowestLimit(MemLimit::SOFT));
   *eval = pool->Add(new ScalarExprEvaluator(root, expr_perm_pool, expr_results_pool));
   if (root.fn_ctx_idx_end_ > 0) {
     (*eval)->fn_ctxs_.resize(root.fn_ctx_idx_end_, nullptr);
@@ -119,7 +117,7 @@ Status ScalarExprEvaluator::Create(const vector<ScalarExpr*>& exprs, RuntimeStat
 }
 
 void ScalarExprEvaluator::CreateFnCtxs(RuntimeState* state, const ScalarExpr& expr,
-    MemPool* expr_perm_pool, MemPoolIface* expr_results_pool) {
+    MemPool* expr_perm_pool, MemPool* expr_results_pool) {
   const int fn_ctx_idx = expr.fn_ctx_idx();
   const bool has_fn_ctx = fn_ctx_idx != -1;
   vector<FunctionContext::TypeDesc> arg_types;
@@ -186,7 +184,7 @@ void ScalarExprEvaluator::Close(
 }
 
 Status ScalarExprEvaluator::Clone(ObjectPool* pool, RuntimeState* state,
-    MemPool* expr_perm_pool, MemPoolIface* expr_results_pool,
+    MemPool* expr_perm_pool, MemPool* expr_results_pool,
     ScalarExprEvaluator** cloned_eval) const {
   DCHECK(initialized_);
   DCHECK(opened_);
@@ -205,7 +203,7 @@ Status ScalarExprEvaluator::Clone(ObjectPool* pool, RuntimeState* state,
 }
 
 Status ScalarExprEvaluator::Clone(ObjectPool* pool, RuntimeState* state,
-    MemPool* expr_perm_pool, MemPoolIface* expr_results_pool,
+    MemPool* expr_perm_pool, MemPool* expr_results_pool,
     const vector<ScalarExprEvaluator*>& evals,
     vector<ScalarExprEvaluator*>* cloned_evals) {
   DCHECK(cloned_evals != nullptr);
