@@ -62,7 +62,8 @@ class FunctionContextImpl {
       MemPool* perm_pool, MemPool* results_pool,
       const impala_udf::FunctionContext::TypeDesc& return_type,
       const std::vector<impala_udf::FunctionContext::TypeDesc>& arg_types,
-      int varargs_buffer_size = 0, bool debug = false);
+      int varargs_buffer_size = 0, bool debug = false,
+      const int64_t results_pool_max_mem = -1);
 
   /// Create a FunctionContext for a UDA. Identical to the UDF version except for the
   /// intermediate type. Caller is responsible for deleting it.
@@ -71,7 +72,8 @@ class FunctionContextImpl {
       const impala_udf::FunctionContext::TypeDesc& intermediate_type,
       const impala_udf::FunctionContext::TypeDesc& return_type,
       const std::vector<impala_udf::FunctionContext::TypeDesc>& arg_types,
-      int varargs_buffer_size = 0, bool debug = false);
+      int varargs_buffer_size = 0, bool debug = false,
+      const int64_t results_pool_max_mem = -1);
 
   FunctionContextImpl(impala_udf::FunctionContext* parent);
   ~FunctionContextImpl();
@@ -290,6 +292,8 @@ class FunctionContextImpl {
 
   /// Built-in functions exposed to UDFs
   BuiltInFunctions functions_;
+
+  int64_t results_pool_max_mem_;
 };
 
 }

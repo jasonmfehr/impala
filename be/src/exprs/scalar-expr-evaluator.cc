@@ -64,6 +64,8 @@
 
 #include "common/names.h"
 
+DECLARE_double(result_pool_mem_multiplier);
+
 using namespace impala;
 using namespace impala_udf;
 
@@ -83,7 +85,9 @@ Status ScalarExprEvaluator::Create(const ScalarExpr& root, RuntimeState* state,
   *eval = pool->Add(new ScalarExprEvaluator(root, expr_perm_pool, expr_results_pool));
   if (root.fn_ctx_idx_end_ > 0) {
     (*eval)->fn_ctxs_.resize(root.fn_ctx_idx_end_, nullptr);
-    (*eval)->CreateFnCtxs(state, root, expr_perm_pool, expr_results_pool);
+    (*eval)->CreateFnCtxs(state, root, expr_perm_pool, expr_results_pool,
+        state->query_mem_tracker()->GetLowestLimit(MemLimit::SOFT)
+        * FLAGS_result_pool_mem_multiplier);
     DCHECK_EQ((*eval)->fn_ctxs_.size(), root.fn_ctx_idx_end_);
     for (FunctionContext* fn_ctx : (*eval)->fn_ctxs_) DCHECK(fn_ctx != nullptr);
     (*eval)->fn_ctxs_ptr_ = (*eval)->fn_ctxs_.data();
@@ -117,7 +121,8 @@ Status ScalarExprEvaluator::Create(const vector<ScalarExpr*>& exprs, RuntimeStat
 }
 
 void ScalarExprEvaluator::CreateFnCtxs(RuntimeState* state, const ScalarExpr& expr,
-    MemPool* expr_perm_pool, MemPool* expr_results_pool) {
+    MemPool* expr_perm_pool, MemPool* expr_results_pool,
+    const int64_t results_pool_max_mem) {
   const int fn_ctx_idx = expr.fn_ctx_idx();
   const bool has_fn_ctx = fn_ctx_idx != -1;
   vector<FunctionContext::TypeDesc> arg_types;
@@ -126,7 +131,8 @@ void ScalarExprEvaluator::CreateFnCtxs(RuntimeState* state, const ScalarExpr& ex
   // creation as well.
   if (!expr.type().IsStructType()) {
     for (const ScalarExpr* child : expr.children()) {
-      CreateFnCtxs(state, *child, expr_perm_pool, expr_results_pool);
+      CreateFnCtxs(state, *child, expr_perm_pool, expr_results_pool,
+          results_pool_max_mem);
       if (has_fn_ctx) arg_types.push_back(
           AnyValUtil::ColumnTypeToTypeDesc(child->type()));
     }
@@ -139,7 +145,8 @@ void ScalarExprEvaluator::CreateFnCtxs(RuntimeState* state, const ScalarExpr& ex
     DCHECK_LT(fn_ctx_idx, fn_ctxs_.size());
     DCHECK(fn_ctxs_[fn_ctx_idx] == nullptr);
     fn_ctxs_[fn_ctx_idx] = FunctionContextImpl::CreateContext(state, expr_perm_pool,
-        expr_results_pool, return_type, arg_types, varargs_buffer_size);
+        expr_results_pool, return_type, arg_types, varargs_buffer_size, false,
+        results_pool_max_mem);
   }
 }
 

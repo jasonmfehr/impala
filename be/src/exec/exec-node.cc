@@ -75,6 +75,11 @@
 
 #include "common/names.h"
 
+DEFINE_double_hidden(result_pool_mem_multiplier, 0.5, "");
+DEFINE_validator(result_pool_mem_multiplier, [](const char* flagname, double val) {
+  return val > 0.0 && val <= 1.0;
+});
+
 using strings::Substitute;
 
 namespace impala {
