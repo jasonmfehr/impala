@@ -523,6 +523,11 @@ uint8_t* FunctionContextImpl::AllocateForResults(int64_t byte_size) noexcept {
   if (results_pool_max_mem_ > -1 && UNLIKELY(
       results_pool_->total_allocated_bytes() + byte_size > results_pool_max_mem_)) {
     results_pool_->Clear();
+#ifndef IMPALA_UDF_SDK_BUILD
+    LOG(WARNING) << "FunctionContextImpl::AllocateForResults() cleared the results pool "
+        << "after reaching the max memory limit of " << results_pool_max_mem_
+        << " bytes.";
+#endif
   }
 
 #if !defined(NDEBUG) && !defined(IMPALA_UDF_SDK_BUILD)
