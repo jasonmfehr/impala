@@ -284,7 +284,7 @@ class ScalarExprEvaluator {
   /// Walks the expression tree 'expr' and fills in 'fn_ctxs_' for all Expr nodes
   /// which need FunctionContext.
   void CreateFnCtxs(RuntimeState* state, const ScalarExpr& expr, MemPool* expr_perm_pool,
-      MemPool* expr_results_pool);
+      MemPool* expr_results_pool, const int64_t results_pool_max_mem);
 
   // Helper functions for codegen.
 

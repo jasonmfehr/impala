@@ -76,10 +76,19 @@ class FreePool {
   int64_t net_allocations_;
 };
 
+// Minimal impala::MemPool implementation used in ctests.
 class MemPool {
  public:
   static uint8_t* Allocate(int byte_size) {
     return reinterpret_cast<uint8_t*>(malloc(byte_size));
+  }
+
+  static void Clear() {
+    // This function intentionally left blank.
+  };
+
+  static int64_t total_allocated_bytes() {
+    return 0;
   }
 };
 
@@ -185,13 +194,14 @@ FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
     MemPool* udf_mem_pool, MemPool* results_pool,
     const FunctionContext::TypeDesc& return_type,
     const vector<FunctionContext::TypeDesc>& arg_types, int varargs_buffer_size,
-    bool debug) {
+    bool debug, const int64_t results_pool_max_mem) {
   FunctionContext::TypeDesc invalid_type;
   invalid_type.type = FunctionContext::INVALID_TYPE;
   invalid_type.precision = 0;
   invalid_type.scale = 0;
   return FunctionContextImpl::CreateContext(state, udf_mem_pool, results_pool,
-      invalid_type, return_type, arg_types, varargs_buffer_size, debug);
+      invalid_type, return_type, arg_types, varargs_buffer_size, debug,
+      results_pool_max_mem);
 }
 
 FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
@@ -199,7 +209,7 @@ FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
     const FunctionContext::TypeDesc& intermediate_type,
     const FunctionContext::TypeDesc& return_type,
     const vector<FunctionContext::TypeDesc>& arg_types, int varargs_buffer_size,
-    bool debug) {
+    bool debug, const int64_t results_pool_max_mem) {
   impala_udf::FunctionContext* ctx = new impala_udf::FunctionContext();
   ctx->impl_->udf_pool_ = new FreePool(udf_mem_pool);
   ctx->impl_->results_pool_ = results_pool;
@@ -214,6 +224,7 @@ FunctionContext* FunctionContextImpl::CreateContext(RuntimeState* state,
   ctx->impl_->functions_.ai_generate_text = impala::AiFunctions::AiGenerateText;
   ctx->impl_->functions_.ai_generate_text_default =
       impala::AiFunctions::AiGenerateTextDefault;
+  ctx->impl_->results_pool_max_mem_ = results_pool_max_mem;
   VLOG_ROW << "Created FunctionContext: " << ctx;
   return ctx;
 }
@@ -250,7 +261,8 @@ FunctionContextImpl::FunctionContextImpl(FunctionContext* parent)
     thread_local_fn_state_(NULL),
     fragment_local_fn_state_(NULL),
     external_bytes_tracked_(0),
-    closed_(false) {}
+    closed_(false),
+    results_pool_max_mem_(0) {}
 
 FunctionContextImpl::~FunctionContextImpl() {
   delete udf_pool_;
@@ -508,6 +520,11 @@ const BuiltInFunctions* FunctionContext::Functions() const {
 
 uint8_t* FunctionContextImpl::AllocateForResults(int64_t byte_size) noexcept {
   assert(!closed_);
+  if (results_pool_max_mem_ > -1 && UNLIKELY(
+      results_pool_->total_allocated_bytes() + byte_size > results_pool_max_mem_)) {
+    results_pool_->Clear();
+  }
+
 #if !defined(NDEBUG) && !defined(IMPALA_UDF_SDK_BUILD)
   uint8_t* buffer = FailNextAlloc() ? nullptr : results_pool_->Allocate(byte_size);
 #else
