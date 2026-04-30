@@ -203,6 +203,9 @@ Java_org_apache_impala_service_FeSupport_NativeEvalExprsWithoutRow(
   // know what resource pool the query has been assigned to yet.
   query_ctx.request_pool = "fe-eval-exprs";
 
+  // Use process mem limit as the memory limit for expression evaluation.
+  query_ctx.client_request.query_options.__set_mem_limit(-1);
+
   RuntimeState state(query_ctx, ExecEnv::GetInstance());
   TPlanFragment fragment;
   PlanFragmentCtxPB fragment_ctx;
