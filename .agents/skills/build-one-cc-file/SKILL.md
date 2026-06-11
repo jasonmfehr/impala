@@ -16,11 +16,18 @@ This provides a fast validation path without building the entire project.
 - MUST run only from `${IMPALA_HOME}`.
 - MUST configure the environment in the same shell session before building:
   `export IMPALA_HOME=<git_repo_root> && cd "${IMPALA_HOME}" && source "${IMPALA_HOME}/bin/impala-config.sh" && source "${IMPALA_HOME}/bin/set-classpath.sh"`
-- MUST use `scripts/omake.sh` as the only build command path.
-- MUST NOT use the compile tool, Ninja, or direct CMake/Ninja invocation.
+- MUST use `.agents/skills/build-one-cc-file/scripts/omake.sh` as the only build command
+  path.
+- MUST NOT use the agent's compile tool, Ninja, or direct CMake/Ninja invocation.
 
 ## Available Scripts
-- `scripts/omake.sh` - Build one C++ source target by basename.
+
+- `.agents/skills/build-one-cc-file/scripts/omake.sh [--dry-run] <input>` — builds the
+  single object file for one C++ source.
+  - Accepts a bare basename (`rpc-trace`).
+  - `--dry-run`: prints the resolved `make` command on stdout and exits 0. Does not build.
+  - Without `--dry-run`: runs the `make` command; exits 0 on success, non-zero on failure.
+  - If no build target is found: exits non-zero (grep failure propagated via `set -e`).
 
 ## Input Contract
 
@@ -34,9 +41,9 @@ Pass exactly one argument: the source basename only.
 
 Examples:
 
-- Correct: `scripts/omake.sh rpc-trace`
-- Incorrect: `scripts/omake.sh be/src/rpc/rpc-trace.cc`
-- Incorrect: `scripts/omake.sh rpc-trace.cc`
+- Correct: `.agents/skills/build-one-cc-file/scripts/omake.sh rpc-trace`
+- Incorrect: `.agents/skills/build-one-cc-file/scripts/omake.sh be/src/rpc/rpc-trace.cc`
+- Incorrect: `.agents/skills/build-one-cc-file/scripts/omake.sh rpc-trace.cc`
 
 If starting from a path like `be/src/rpc/rpc-trace.cc`, convert it to `rpc-trace`
 before invocation.
@@ -47,10 +54,10 @@ before invocation.
    - Ensure current directory is `${IMPALA_HOME}`.
    - Ensure environment configuration has run in the current shell session.
 2. First attempt MUST use dry-run:
-   - Run: `scripts/omake.sh --dry-run <basename>`
+   - Run: `.agents/skills/build-one-cc-file/scripts/omake.sh --dry-run <basename>`
    - If dry-run fails, stop and report failure details.
 3. Execute real build after successful dry-run:
-   - Run: `scripts/omake.sh <basename>`
+   - Run: `.agents/skills/build-one-cc-file/scripts/omake.sh <basename>`
 
 ## Ambiguity Handling
 
@@ -66,13 +73,14 @@ On any failure:
 
 - MUST report the exact command run.
 - MUST report exit code.
-- MUST report the first actionable stderr/stdout line.
+- MUST report the first non-empty line from stderr; if stderr is empty, first stdout line
+  containing "error:"
 
 Retry behavior:
 
 - MUST analyze the failure first.
 - MUST attempt a concrete fix (for example corrected basename input or environment setup).
-- MAY retry once after analysis and fix attempt.
+- MAY retry the real build (step 3) once after analysis and fix attempt.
 - MUST NOT perform blind repeated retries.
 
 ## Success Output Contract
