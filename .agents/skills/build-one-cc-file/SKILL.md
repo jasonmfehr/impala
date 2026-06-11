@@ -8,30 +8,78 @@ metadata:
 
 ## Build One C++ File
 
-Use build-one-cc-file when needing to compile a single `*.cc` C++ file to check for
-errors. This is useful when making changes to a single file and wanting to quickly check
-for compilation errors without building the entire project.
+Use this skill when needing to compile one `*.cc` C++ file to check for errors.
+This provides a fast validation path without building the entire project.
 
-When using this skill, do not use the compile tool or run Ninja.
+## Deterministic Rules
+
+- MUST run only from `${IMPALA_HOME}`.
+- MUST configure the environment in the same shell session before building:
+  `export IMPALA_HOME=<git_repo_root> && cd "${IMPALA_HOME}" && source "${IMPALA_HOME}/bin/impala-config.sh" && source "${IMPALA_HOME}/bin/set-classpath.sh"`
+- MUST use `scripts/omake.sh` as the only build command path.
+- MUST NOT use the compile tool, Ninja, or direct CMake/Ninja invocation.
 
 ## Available Scripts
-- `scripts/omake.sh` - Script to build a single C++ file. Run with the `--help` argument
-  to see usage instructions. Run with the `--dry-run` argument to see the exact command
-  that would be executed without actually running it.
+- `scripts/omake.sh` - Build one C++ source target by basename.
 
-  Pass exactly one argument: the source basename only (no directory path and no `.cc`
-  extension).
+## Input Contract
 
-  The only parameter is the C++ file basename, not a path. Do not include folders or
-  file extension. The script will search for the corresponding build.make file and invoke
-  make on that file.
+Pass exactly one argument: the source basename only.
 
-  Correct: `scripts/omake.sh rpc-trace`
-  Incorrect: `scripts/omake.sh be/src/rpc/rpc-trace.cc`
-  Incorrect: `scripts/omake.sh rpc-trace.cc`
+- Input MUST be one token with no path separators.
+- Input MUST NOT include a directory path.
+- If input ends with `.cc`, strip `.cc` and continue.
+- Basename MUST match this pattern: `[A-Za-z0-9_-]+`
+- If validation fails, stop and request corrected input.
 
-  Before running, if you have a path like `be/src/rpc/rpc-trace.cc`, convert it to the
-  basename `rpc-trace`.
+Examples:
 
-  If `omake.sh` cannot find a matching build.make target, check that you passed basename
-  only (for example `rpc-trace`), not a path or `.cc` filename.
+- Correct: `scripts/omake.sh rpc-trace`
+- Incorrect: `scripts/omake.sh be/src/rpc/rpc-trace.cc`
+- Incorrect: `scripts/omake.sh rpc-trace.cc`
+
+If starting from a path like `be/src/rpc/rpc-trace.cc`, convert it to `rpc-trace`
+before invocation.
+
+## Execution Procedure
+
+1. Preflight and setup:
+   - Ensure current directory is `${IMPALA_HOME}`.
+   - Ensure environment configuration has run in the current shell session.
+2. First attempt MUST use dry-run:
+   - Run: `scripts/omake.sh --dry-run <basename>`
+   - If dry-run fails, stop and report failure details.
+3. Execute real build after successful dry-run:
+   - Run: `scripts/omake.sh <basename>`
+
+## Ambiguity Handling
+
+If basename collision occurs (multiple candidate source files map to the same basename),
+do not guess.
+
+- MUST ask the user to clarify which source path to use.
+- MUST wait for clarification before running the real build command.
+
+## Failure and Retry Policy
+
+On any failure:
+
+- MUST report the exact command run.
+- MUST report exit code.
+- MUST report the first actionable stderr/stdout line.
+
+Retry behavior:
+
+- MUST analyze the failure first.
+- MUST attempt a concrete fix (for example corrected basename input or environment setup).
+- MAY retry once after analysis and fix attempt.
+- MUST NOT perform blind repeated retries.
+
+## Success Output Contract
+
+On success, report:
+
+- Normalized basename used.
+- Dry-run command and result.
+- Real build command and result.
+- Final exit code and success confirmation.
