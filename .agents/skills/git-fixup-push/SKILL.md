@@ -65,14 +65,15 @@ commits into a single commit that can be pushed to gerrit.
 - [ ] Step 2: Commit already-staged changes (pre-existing index state).
   - Run staged check.
   - If staged changes exist, run:
-    - `git commit -m "commit staged files"`
+    - `git commit -m "WIP: commit staged files"`
   - If no staged changes, continue.
 - [ ] Step 3: Resolve unstaged tracked changes.
   - Run unstaged tracked check.
   - If no unstaged tracked changes, continue.
   - If unstaged tracked changes exist, ask user to choose exactly one action:
     - `stage`: run exactly `git add -u`
-    - `stash`: run `git stash push --keep-index -m "stashed by git-fixup-push skill"`
+    - `stash`: run `git stash push --keep-index -m "stashed by git-fixup-push skill"`.
+      Record that a stash was created; Step 9 will pop it after a successful push.
   - If input is not exactly `stage` or `stash`, abort.
 - [ ] Step 4: Commit staged changes created by Step 3.
   - Run staged check again.
@@ -87,7 +88,9 @@ commits into a single commit that can be pushed to gerrit.
     - `./bin/jenkins/critique-gerrit-review.py --dryrun`
   - If critique passes, continue.
   - If critique fails on first attempt:
-    - Fix all listed issues.
+    - For each file and line number listed in the critique output, apply exactly the
+      code-style fix described (for example: trim trailing whitespace, fix indentation,
+      shorten lines to ≤90 characters). Do not make unrelated changes.
     - Commit fixes with:
       - `git commit -m "fixed critique issues"`
     - Restart workflow from Step 1 and allow exactly one additional critique attempt.
@@ -98,10 +101,11 @@ commits into a single commit that can be pushed to gerrit.
   - If an `Assisted-by:` trailer is already present, do nothing and continue.
   - If missing, ask user whether to add it.
   - If user approves, amend commit message using `git interpret-trailers` and add exactly:
-    - `Assisted-by: GPT-5.3-Codex (GitHub Copilot)`
+    - `Assisted-by: <model> (<agent-name>)` where `<model>` is the name of the language
+      model and `<agent-name>` is the name of the agent executing this skill.
   - Deterministic amend sequence:
     - `tmp_msg="$(mktemp)"`
-    - `git log -1 --pretty=%B | git interpret-trailers --if-exists=doNothing --trailer "Assisted-by: GPT-5.3-Codex (GitHub Copilot)" > "$tmp_msg"`
+    - `git log -1 --pretty=%B | git interpret-trailers --if-exists=doNothing --trailer "Assisted-by: <model> (<agent-name>)" > "$tmp_msg"`
     - `git commit --amend -F "$tmp_msg"`
     - `rm -f "$tmp_msg"`
   - Preserve Gerrit footer requirements:
@@ -113,6 +117,12 @@ commits into a single commit that can be pushed to gerrit.
   - Run exactly:
     - `git push asf-gerrit HEAD:refs/drafts/master`
   - If this command fails, abort and report the first actionable error.
+- [ ] Step 9: Pop stash if one was created in Step 3.
+  - If Step 3 recorded that a stash was created, run:
+    - `git stash pop`
+  - If `git stash pop` exits non-zero, report the error and stop; do not abort
+    silently (the push already succeeded).
+  - If no stash was created in Step 3, skip this step.
 
 ## Gotchas
 
