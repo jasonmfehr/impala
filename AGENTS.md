@@ -29,7 +29,7 @@ This file is optimized for AI agents. Follow these terms exactly:
 ### Preconditions
 
 - MUST run commands in a shell that supports `source`.
-- MUST perform environment configuration before any build, test, or repo command.
+- MUST perform environment configuration before any build, test, or git command.
 - MUST execute the environment configuration sequence in a single shell session.
 - MUST keep the working directory at `${IMPALA_HOME}` unless a step explicitly requires
   another directory.
@@ -68,15 +68,20 @@ This file is optimized for AI agents. Follow these terms exactly:
 
 Before running shell commands, configure the environment.
 
-Required one-line sequence (`<git_repo_root>` is the absolute repo root path):
+Required one-line sequence. If the absolute repo root path is unknown, resolve it
+with `git rev-parse --show-toplevel` from any directory inside the repo:
 
-`export IMPALA_HOME=<git_repo_root> && cd "${IMPALA_HOME}" && source "${IMPALA_HOME}/bin/impala-config.sh" && source "${IMPALA_HOME}/bin/set-classpath.sh"`
+`export IMPALA_HOME=$(git rev-parse --show-toplevel) && cd "${IMPALA_HOME}" && source "${IMPALA_HOME}/bin/impala-config.sh" && source "${IMPALA_HOME}/bin/set-classpath.sh"`
 
 If you need stepwise execution, use this exact order:
-1. `export IMPALA_HOME=<git_repo_root>`
+1. `export IMPALA_HOME=$(git rev-parse --show-toplevel)`
 2. `cd "${IMPALA_HOME}"`
 3. `source "${IMPALA_HOME}/bin/impala-config.sh"`
 4. `source "${IMPALA_HOME}/bin/set-classpath.sh"`
+
+After sourcing, `IMPALA_BUILD_THREADS` is automatically set. Verify setup succeeded
+by checking that `echo $IMPALA_HOME` prints the repo root and `echo $IMPALA_BUILD_THREADS`
+prints a positive integer.
 
 ## Security
 
@@ -139,6 +144,9 @@ Impala is divided into several components:
 
 - To build C++ (`be`) and Java (`fe`/`java`) together, use `buildall.sh`.
   Run `buildall.sh --help` for flags.
+- The default build type is `debug`. Pass `-release` to `buildall.sh` to build with type
+  `release`.
+- All `make` commands run from `${IMPALA_HOME}`.
 - To build only C++ code under `be`, run:
   `make -j ${IMPALA_BUILD_THREADS} impalad`
 - To build Java components (`fe` and related Java modules) through the make target,
@@ -149,33 +157,35 @@ Impala is divided into several components:
   filename without `.cc`.
   Example: `make mem-pool-test`
 - To build an individual project under `java`, `cd` to that project root (where
-  `pom.xml` exists) and run `mvn install`.
+  `pom.xml` exists) and run `mvn install`. Run `cd "${IMPALA_HOME}"` afterwards to
+  restore the working directory.
 
 ## Running Tests
 
 - C++ CTest binaries are generated under `be/build/` with subdirectories depending
   on build type (`debug`, `release`, and so on). Test binary names correspond to
   source files named `*-test.cc`.
-  Example (`DEBUG`):
+  Example (default `debug` build type):
   `be/src/runtime/mem-pool-test.cc` -> `be/build/debug/runtime/mem-pool-test`
   Run the binary directly.
-- Run Java JUnit tests with:
+- Run Java JUnit tests with Maven from the `fe` directory:
   `mvn test -Dtest="<target_test>"`
   `<target_test>` is either a class name or `ClassName#testMethod`.
   Examples:
   - `mvn test -Dtest="LocalCatalogTest"`
   - `mvn test -Dtest="LocalCatalogTest#testDbs"`
+  Run `cd "${IMPALA_HOME}"` afterwards to restore the working directory.
 - Debug Java JUnit tests with:
   `mvn -Dmaven.surefire.debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=8000 -Xnoagent -Djava.compiler=NONE" -fae -Dtest="<target_test>" test`
 - Run Python tests under `tests` with:
-  `impala-py.test <path_to_test>`
+  `${IMPALA_HOME}/bin/impala-py.test <path_to_test>`
   Example:
-  `impala-py.test tests/custom_cluster/test_otel_trace.py`
+  `${IMPALA_HOME}/bin/impala-py.test tests/custom_cluster/test_otel_trace.py`
   To run one test function, add:
   `-k <test_name>`
-  For tests under `tests/custom_cluster`, if the file uses
-  `@SkipIfExploration.is_not_exhaustive()`, add:
-  `--exploration_strategy=exhaustive`
+  For tests under `tests/custom_cluster`, check whether the file contains
+  `@SkipIfExploration.is_not_exhaustive()` (e.g., `grep -q SkipIfExploration <file>`).
+  If it does, add `--exploration_strategy=exhaustive` to the invocation.
 
 ## Coding Standards
 
@@ -192,8 +202,8 @@ Impala is divided into several components:
   - Self-contained headers: inline functions MAY be placed in `.inline.h` files.
   - Header guards: use `#pragma once`.
   - Constant names: use `UPPER_CASE` instead of `kConstantName`.
-  - `using namespace` is allowed in `.cc` files where it materially reduces volume.
-  - Formatting uses `/.clang-format`.
+  - `using namespace` is allowed in `.cc` files only, never in header files.
+  - Formatting is defined in `${IMPALA_HOME}/.clang-format`.
   - If-condition formatting: single-line `if` is allowed only when the full
     statement fits within 90 characters; otherwise use braces and a new line body.
 - Most new files must include the Apache 2.0 license header. Exceptions apply when
@@ -209,6 +219,8 @@ Impala is divided into several components:
   If missing, ask whether to add it.
   If approved, append:
   `Assisted-by: <model> (<agent-name>)`
+  where `<model>` is the AI model name (for example `Claude Sonnet 4.5`) and
+  `<agent-name>` is the agent or tool name (for example `GitHub Copilot`).
   If declined, proceed without it.
   If user input is invalid, abort.
 - Gerrit requires `Change-Id:` in the final footer paragraph.
@@ -217,7 +229,8 @@ Impala is divided into several components:
 
 ## Using Skills
 
-Skills are defined under `.agents/skills` at repo root.
+Skills are defined under `.agents/skills` at repo root. To enumerate available
+skills, run: `ls "${IMPALA_HOME}/.agents/skills/"`
 When using scripts that have relative paths, resolve them relative to each skill
 root directory.
 
