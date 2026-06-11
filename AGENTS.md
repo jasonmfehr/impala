@@ -21,11 +21,11 @@
 
 ## Project Overview
 
-Apache Impala is the open source, native analytic database for open data and table formats Impala provides low latency and high concurrency for BI/analytic queries on the Hadoop ecosystem, including Iceberg, open data formats, and most cloud storage options. Impala also scales linearly, even in multitenant environments.
+Apache Impala is the open source, native analytic database for open data and table formats. Impala provides low latency and high concurrency for BI/analytic queries on the Hadoop ecosystem, including Iceberg, open data formats, and most cloud storage options. Impala scales linearly, even in multitenant environments.
 
 Impala is divided into several components:
-- The Impala Daemon (impalad) serves as both query coordinator and executor. Typically, each deamon instance is either a coordinator or an executor, but not both (although it is allowed for a single daemon to be both). Clients connect to impalad coordinators. This daemon handles query planning and coordination between all executors and is written in C++ for query handling and Java for query planning. It also manages metadata caching and retrieval from the catalogd.
-- The Impala Catalog Daemon (catalogd), written mostly in Java with some C++ for network communuication, which manages metadata for all Impala daemons in a cluster. It is responsible for loading and distributing table and database metadata to all impalad. The catalogd serves as a caching layer over other catalogs (such as Hive Metastore and Iceberg REST catalogs).
+- The Impala Daemon (impalad) serves as both query coordinator and executor. Typically, each daemon instance is either a coordinator or an executor, but not both (although it is allowed for a single daemon to be both). Clients connect to impalad coordinators. This daemon handles query planning and coordination between all executors and is written in C++ for query handling and Java for query planning. It also manages metadata caching and retrieval from the catalogd.
+- The Impala Catalog Daemon (catalogd), written mostly in Java with some C++ for network communication, which manages metadata for all Impala daemons in a cluster. It is responsible for loading and distributing table and database metadata to all impalad. The catalogd serves as a caching layer over other catalogs (such as Hive Metastore and Iceberg REST catalogs).
 - The Impala State Store (statestored), written in C++, which tracks the health and status of all Impala daemons in a cluster.
 - The Impala Shell (impala-shell) which is a command-line interface, written in Python, for connecting to and interacting with Impala daemons.
 
@@ -72,26 +72,25 @@ Agents that scan this repository should consult `SECURITY.md` for the project's 
 
 ## Environment Configuration
 
-Before running any commands using a shell, the environment must first be configured. Follow this workflow to properly configure the envionment for running shell commands, building code, or running tests.
-- [ ] Step 1: Check if the `$IMPALA_HOME` environment is present. If the `$IMPALA_HOME` environment variable is missing, set the value of `$IMPALA_HOME` to the fully qualified path of the folder that contains the `AGENTS.md` file and run `export IMPALA_HOME`.
-- [ ] Step 2: Run this command: `source "${IMPALA_HOME}/bin/impala-config.sh"`.
-- [ ] Step 3: Run this command: `source ./bin/set-classpath.sh`.
+Before running any commands using a shell, the environment must first be configured. Run the following command to properly configure the environment for running shell commands, building code, or running tests. `<git_repo_root>` must be the fully qualified path to the directory on disk that contains the root of this git repo:
+`export IMPALA_HOME=<git_repo_root> && cd "${IMPALA_HOME}" && source "${IMPALA_HOME}/bin/impala-config.sh" && source "${IMPALA_HOME}/bin/set-classpath.sh"`
 
 ## Building
 
 - To build the C++ code in the `be` folder and the Java code in the `fe` at the same time, use the `buildall.sh` script. Run `buildall.sh --help` to learn about its command line flags.
 - To build only the C++ code under the `be` folder structure, run `make -j ${IMPALA_BUILD_THREADS} impalad`. Use this command when only code in the `be` folder structure has been modified and needs to be built.
-- To build only the Java code under the `java` folder structure, run `make -j ${IMPALA_BUILD_THREADS} java`. Use this command when only code in the `fe` folder structure has been modified and needs to be built.
-- The C++ code has CTest tests nested under the `be/src` folder. These tests are in files with named `*-test.cc`. To build one of these test files, run `make <testname>` where `<testname>` is the name of the file without the `.cc` extention. For example, to build `mem-pool-test.cc`, run `make mem-pool-test`.
+- To build only the Java code under the `fe` folder structure, run `make -j ${IMPALA_BUILD_THREADS} java`. Use this command when only code in the `fe` folder structure has been modified and needs to be built.
+- The C++ code has CTest tests nested under the `be/src` folder. These tests are in files with named `*-test.cc`. To build one of these test files, run `make <testname>` where `<testname>` is the name of the file without the `.cc` extension. For example, to build `mem-pool-test.cc`, run `make mem-pool-test`.
+- To build individual projects under the `java` folder, `cd` to the project's root folder where its `pom.xml` file is located and run `mvn install`. Use this step only for projects under the `java` folder.
 
 ## Running Tests
 
-- To run C++ CTest tests, locate the compiled binary associated with the test. These binaries will be under the `be/build/debug/` folder structure and will have a name matching the `*-test.cc` file. For example, the `be/src/runtime/mem-pool-test.cc` file will have a binary located at `be/build/debug/runtime/mem-pool-test`. Run this binary to execute the CTest tests in `mem-pool-test.cc`.
+- To run C++ CTest tests, locate the compiled binary associated with the test. These binaries will be under the `be/build/` folder structure and will have a name matching the `*-test.cc` file. The specific folder structure will depend on the build type of debug or release. For example, when built in DEBUG mode, the `be/src/runtime/mem-pool-test.cc` file will have a binary located at `be/build/debug/runtime/mem-pool-test`. Run this binary to execute the CTest tests in `mem-pool-test.cc`.
 - To run Java JUnit tests, run the command `mvn test -Dtest="<target_test>"` where `<target_test>` is either a Java JUnit class name or a Java JUnit class name and test function separated by the `#` symbol. For example, to run all tests in the `LocalCatalogTest` class, run `mvn test -Dtest="LocalCatalogTest"`. To run only the `testDbs` test function from the `LocalCatalogTest` class, run `mvn test -Dtest="LocalCatalogTest#testDbs"`.
 - To debug Java JUnit tests, run `mvn -Dmaven.surefire.debug="-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=8000 -Xnoagent -Djava.compiler=NONE" -fae -Dtest="<target_test>" test` where `<target_test>` follows the same pattern as running Java JUnit tests.
-- To run Python based tests under the `tests` folder, run `impala-py.test <path_to_test>` where `<path_to_test>` is the relative path to a Python test file. For example, `impala-py.test tests/custom_cluster/test_otel_trace.py`. To run a single test within a Python test file, add `-k <test_name>` onto the `impala-py.test` command and provide the name of a function who's name begins with `test_`. For tests under the `tests/custom_cluster` folder, examine the test file contents to see if the annotation `@SkipIfExploration.is_not_exhaustive()` is present. Add `--exploration_strategy=exhaustive` to the `impala-py.test` command to run tests with this annotation.
+- To run Python based tests under the `tests` folder, run `impala-py.test <path_to_test>` where `<path_to_test>` is the relative path to a Python test file. For example, `impala-py.test tests/custom_cluster/test_otel_trace.py`. To run a single test within a Python test file, add `-k <test_name>` onto the `impala-py.test` command and provide the name of a function whose name begins with `test_`. For tests under the `tests/custom_cluster` folder, examine the test file contents to see if the annotation `@SkipIfExploration.is_not_exhaustive()` is present. Add `--exploration_strategy=exhaustive` to the `impala-py.test` command to run tests with this annotation.
 
 ## Using Skills
 
-Skills are defined in the `.agents/skills` directory. When using scripts that have a relative path, search for these scripts relative to this skill's root directory.
-For example, to use the `scripts/omake.sh` script for the `build-one-cpp-file` skill, search for this script relative to the `.agents/skills/build-one-cpp-file` directory.
+Skills are defined in the `.agents/skills` directory rooted at the repo root directory. When using scripts that have a relative path, search for these scripts relative to this skill's root directory.
+For example, to use the `scripts/omake.sh` script for the `build-one-cc-file` skill, search for this script relative to the `.agents/skills/build-one-cc-file` directory.
