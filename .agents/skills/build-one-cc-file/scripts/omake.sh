@@ -29,9 +29,9 @@ Build a single C++ object file using the generated CMake build.make. The only pa
 the name of the C++ source file to build without any extension. The script will search for
 the corresponding build.make file and invoke make on that file.
 
-Example:
-  omake.sh be/src/runtime/runtime-state.cc
-  omake.sh --dry-run be/src/runtime/runtime-state.cc
+Example (for building be/src/runtime/runtime-state.cc):
+  omake.sh runtime-state
+  omake.sh --dry-run runtime-state
 EOF
   exit 0
 fi
