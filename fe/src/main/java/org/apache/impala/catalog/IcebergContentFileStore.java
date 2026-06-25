@@ -69,7 +69,8 @@ public class IcebergContentFileStore {
   private final static Logger LOG = LoggerFactory.getLogger(
       IcebergContentFileStore.class);
 
-  private static class EncodedFileDescriptor {
+  // TODO: temporary, switch back to private
+  public static class EncodedFileDescriptor {
     public final byte[] fileDesc_;
     public final byte[] fileMetadata_;
 
@@ -359,6 +360,15 @@ public class IcebergContentFileStore {
     oldFileDescMap_.put(pathHash, encode(desc));
   }
 
+  public int getOldFileDescriptorsSize() {
+    return oldFileDescMap_.size();
+  }
+
+  // TODO: temporary, remove this
+  public ConcurrentMap<Hash128, EncodedFileDescriptor> getOldFileDescMap() {
+    return oldFileDescMap_;
+  }
+
   // This is only invoked during time travel, when we are querying a snapshot that has
   // partitions which have been removed since.
   public void addOldPartition(ByteBuffer partition, Integer id) {
@@ -440,6 +450,11 @@ public class IcebergContentFileStore {
       return getOldPartitionList().get(id - getNumPartitions());
     }
     return getPartitionList().get(id);
+  }
+
+  // TODO: temporary, remove this
+  public ConcurrentMap<ByteBuffer, Integer> getOldPartitionMap() {
+    return oldPartitionMap_;
   }
 
   public List<IcebergFileDescriptor> getDataFilesWithoutDeletes() {
