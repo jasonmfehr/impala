@@ -1375,7 +1375,7 @@ public class AnalyzeDDLTest extends FrontendTestBase {
 
     // Test updating stats on all scalar types.
     for (Type t: Type.getSupportedTypes()) {
-      if (t.isNull() || t.isUuid()) continue;
+      if (t.isNull() || t.isUuid() || t.isGeometry()) continue;
       Preconditions.checkState(t.isScalarType());
       String typeStr = t.getPrimitiveType().toString();
       if (t.getPrimitiveType() == PrimitiveType.CHAR ||
@@ -3355,7 +3355,8 @@ public class AnalyzeDDLTest extends FrontendTestBase {
     AnalysisError("CREATE TABLE DataSrcTable1 (x int) PRODUCED BY DATA SOURCE " +
         "not_a_data_src(\"\")", "Data source does not exist");
     for (Type t: Type.getSupportedTypes()) {
-      if (t.isUuid()) continue;  // UUID is only supported for Iceberg tables.
+      // UUID is only supported for Iceberg tables; GEOMETRY is not a data source type.
+      if (t.isUuid() || t.isGeometry()) continue;
       PrimitiveType type = t.getPrimitiveType();
       if (DataSourceTable.isSupportedPrimitiveType(type) || t.isNull()) continue;
       String typeSpec = type.name();
@@ -4300,6 +4301,23 @@ public class AnalyzeDDLTest extends FrontendTestBase {
     TypeDefsAnalyzeOk("TIMESTAMP");
     TypeDefsAnalyzeOk("DATE");
     TypeDefsAnalyzeOk("BINARY");
+
+    // GEOMETRY type is not yet supported for table columns.
+    AnalysisError("create table new_table (g geometry)",
+        "Type 'GEOMETRY' is not yet supported for table columns: g");
+    AnalysisError("create table new_table (i int, g geometry)",
+        "Type 'GEOMETRY' is not yet supported for table columns: g");
+    AnalysisError("create table new_table (i int) PARTITIONED BY (g geometry)",
+        "Type 'GEOMETRY' is not supported as partition-column type in column: g");
+
+    // Currently GEOMETRY column produced indirectly via CTAS is rejected at analysis,
+    // like an explicit GEOMETRY column.
+    // TODO: IMPALA-15162 will add GEOMETRY column support (Iceberg/Parquet). Once tables
+    // have GEOMETRY columns, revisit this: CTAS producing GEOMETRY should then be
+    // allowed.
+    AnalysisError("create table new_table as select cast(NULL as geometry) as g",
+        "Type 'GEOMETRY' is not yet supported for table columns: g");
+    AnalyzesOk("create view new_view as select cast(NULL as geometry) as g");
 
     // Test decimal.
     TypeDefsAnalyzeOk("DECIMAL");

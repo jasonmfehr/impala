@@ -463,6 +463,11 @@ class TableDef {
     Set<String> colNames = new HashSet<>();
     for (ColumnDef colDef: columnDefs_) {
       colDef.analyze(analyzer);
+      if (colDef.getType().isGeometry()) {
+        throw new AnalysisException(String.format(
+            "Type '%s' is not yet supported for table columns: %s",
+            colDef.getType().toSql(), colDef.getColName()));
+      }
       if (!colNames.add(colDef.getColName().toLowerCase())) {
         throw new AnalysisException("Duplicate column name: " + colDef.getColName());
       }

@@ -544,6 +544,7 @@ public class Function extends CatalogObjectImpl {
     case FIXED_UDA_INTERMEDIATE:
     case BINARY:
     case UUID:
+    case GEOMETRY:
       // These types are marshaled into a StringVal.
       return "StringVal";
     case TIMESTAMP:
