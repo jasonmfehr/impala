@@ -50,13 +50,12 @@ public class InPredicate extends Predicate {
   public static void initBuiltins(Db db) {
     for (Type t: Type.getSupportedTypes()) {
       if (t.isNull()) continue;
-      // TODO: Add UUID builtin support.
-      if (t.isUuid()) continue;
       // TODO we do not support codegen for CHAR and the In predicate must be codegened
       // because it has variable number of arguments. This will force CHARs to be
       // cast up to strings; meaning that "in" comparisons will not have CHAR comparison
       // semantics.
       if (t.getPrimitiveType() == PrimitiveType.CHAR) continue;
+      if (!t.supportsComparison()) continue;
 
       String typeString = t.getPrimitiveType().toString().toLowerCase();
       if (t.isVarchar() || t.isBinary()) typeString = "string";

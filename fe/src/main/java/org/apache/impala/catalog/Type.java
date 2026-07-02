@@ -63,6 +63,7 @@ public abstract class Type {
   public static final ScalarType STRING = new ScalarType(PrimitiveType.STRING);
   public static final ScalarType BINARY = new ScalarType(PrimitiveType.BINARY);
   public static final ScalarType UUID = new ScalarType(PrimitiveType.UUID);
+  public static final ScalarType GEOMETRY = new ScalarType(PrimitiveType.GEOMETRY);
   public static final ScalarType TIMESTAMP = new ScalarType(PrimitiveType.TIMESTAMP);
   public static final ScalarType DATE = new ScalarType(PrimitiveType.DATE);
   public static final ScalarType DATETIME = new ScalarType(PrimitiveType.DATETIME);
@@ -115,6 +116,7 @@ public abstract class Type {
     supportedTypes.add(DATE);
     supportedTypes.add(BINARY);
     supportedTypes.add(UUID);
+    supportedTypes.add(GEOMETRY);
 
     unsupportedTypes = new ArrayList<>();
     unsupportedTypes.add(DATETIME);
@@ -156,6 +158,7 @@ public abstract class Type {
       case VARCHAR: return VARCHAR;
       case BINARY: return BINARY;
       case UUID: return UUID;
+      case GEOMETRY: return GEOMETRY;
       case DECIMAL: return DECIMAL;
       case CHAR: return CHAR;
       case FIXED_UDA_INTERMEDIATE: return FIXED_UDA_INTERMEDIATE;
@@ -178,6 +181,14 @@ public abstract class Type {
   public String toHiveMetastoreType() {
     if (isUuid()) {
       return "string";
+    }
+    // HMS does not know GEOMETRY and rejects it as a column type, so store it as BINARY
+    // (its HMS representation). Impala recomputes the real type when it re-analyzes the
+    // view definition, so a view can expose a GEOMETRY column; this only changes what
+    // HMS and other engines see. (Non-Iceberg base tables reject GEOMETRY columns at
+    // analysis, so this is reached only for views.)
+    if (isGeometry()) {
+      return "binary";
     }
     return toSql().toLowerCase();
   }
@@ -212,7 +223,10 @@ public abstract class Type {
   public boolean isString() { return isScalarType(PrimitiveType.STRING); }
   public boolean isBinary() { return isScalarType(PrimitiveType.BINARY); }
   public boolean isUuid() { return isScalarType(PrimitiveType.UUID); }
-  public boolean isVarLenStringType() { return isVarchar() || isString() || isBinary(); }
+  public boolean isGeometry() { return isScalarType(PrimitiveType.GEOMETRY); }
+  public boolean isVarLenStringType() {
+    return isVarchar() || isString() || isBinary() || isGeometry();
+  }
   public boolean isWildcardDecimal() { return false; }
   public boolean isWildcardVarchar() { return false; }
   public boolean isWildcardChar() { return false; }
@@ -271,6 +285,30 @@ public abstract class Type {
   public boolean isArrayType() { return this instanceof ArrayType; }
   public boolean isStructType() { return this instanceof StructType; }
   public boolean isVariantType() { return this instanceof VariantType; }
+
+  /**
+   * Whether values of this type can be compared and ordered: usable with the comparison
+   * operators (=, !=, <, >, ...), IN, as an equi-join key, and in ORDER BY / GROUP BY /
+   * SELECT DISTINCT / DISTINCT aggregate parameters.
+   * - Complex types, VARIANT and GEOMETRY are not comparable by design.
+   * - UUID is excluded only because its builtins are not implemented yet.
+   */
+  public boolean supportsComparison() {
+    return !isComplexOrVariantType() && !isGeometry() && !isUuid();
+  }
+
+  /**
+   * Throws an AnalysisException if this type cannot be compared/ordered (see
+   * supportsComparison()); does nothing otherwise. 'exprDesc' describes the offending
+   * expression (e.g. "ORDER BY expression 'x'") and is combined with the type name into
+   * "<exprDesc> with type '<type>' is not supported.".
+   */
+  public void throwIfNotComparable(String exprDesc) throws AnalysisException {
+    if (!supportsComparison()) {
+      throw new AnalysisException(String.format(
+          "%s with type '%s' is not supported.", exprDesc, toSql()));
+    }
+  }
 
   /**
    * Returns true if 't' is a VARIANT or (recursively) contains a VARIANT nested inside an
@@ -661,6 +699,7 @@ public abstract class Type {
     switch (t.getPrimitiveType()) {
       case STRING:
       case BINARY:
+      case GEOMETRY:
         return Integer.MAX_VALUE;
       case UUID:
         return 36;
@@ -797,6 +836,7 @@ public abstract class Type {
       case VARCHAR: return java.sql.Types.VARCHAR;
       case BINARY: return java.sql.Types.BINARY;
       case UUID: return java.sql.Types.VARCHAR;
+      case GEOMETRY: return java.sql.Types.BINARY;
       case DECIMAL: return java.sql.Types.DECIMAL;
       case FIXED_UDA_INTERMEDIATE: return java.sql.Types.BINARY;
       default:
@@ -846,6 +886,7 @@ public abstract class Type {
     defaultCompatibilityRules.add(new DiagonalCompatibility());
     defaultCompatibilityRules.add(new BinaryCompatibility());
     defaultCompatibilityRules.add(new UuidCompatibility());
+    defaultCompatibilityRules.add(new GeometryCompatibility());
     defaultCompatibilityRules.add(new FixedUdaCompatibility());
     defaultCompatibilityRules.add(new DefaultCompatibility());
     defaultCompatibilityRules.add(new CheckEmptyCompatibility());

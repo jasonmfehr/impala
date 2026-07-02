@@ -311,11 +311,8 @@ public abstract class QueryStmt extends StatementBase {
   protected void createSortTupleInfo(Analyzer analyzer) throws AnalysisException {
     Preconditions.checkState(evaluateOrderBy_);
     for (Expr orderingExpr: sortInfo_.getSortExprs()) {
-      if (orderingExpr.getType().isComplexOrVariantType()) {
-        throw new AnalysisException(String.format("ORDER BY expression '%s' with " +
-            "complex type '%s' is not supported.", orderingExpr.toSql(),
-            orderingExpr.getType().toSql()));
-      }
+      orderingExpr.getType().throwIfNotComparable(
+          "ORDER BY expression '" + orderingExpr.toSql() + "'");
     }
 
     checkTypeValidityForSorting(analyzer);
@@ -349,6 +346,24 @@ public abstract class QueryStmt extends StatementBase {
         String error = "Sorting is not supported if the select list "
             + "contains collection(s) nested in struct(s).";
         throw new AnalysisException(error);
+      }
+    }
+  }
+
+  /**
+   * Blocks GEOMETRY from the client-facing result of a top-level query. GEOMETRY has no
+   * defined client serialization yet (the WKT-vs-WKB decision is deferred); adding client
+   * support is tracked in IMPALA-15244. Until then it must be converted (e.g. via
+   * ST_AsText) before being returned. Only enforced at the root analyzer, so GEOMETRY may
+   * still flow through inline views, CREATE VIEW definitions and subqueries.
+   */
+  protected void checkGeometryNotInResult(Analyzer analyzer) throws AnalysisException {
+    if (!analyzer.isRootAnalyzer()) return;
+    for (Expr expr: resultExprs_) {
+      if (expr.getType().isGeometry()) {
+        throw new AnalysisException("GEOMETRY is not allowed in the select list of a "
+            + "top-level query; wrap it in a function such as ST_AsText(). Expr: '"
+            + expr.toSql() + "'.");
       }
     }
   }

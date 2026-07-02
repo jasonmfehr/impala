@@ -93,7 +93,7 @@ bigint,string
 #       several utility functions in the BE, so for now we should reject it in the FE
 select id, int_array from complextypestbl union select id, int_array from complextypestbl;
 ---- CATCH
-AnalysisException: UNION, EXCEPT and INTERSECT are not supported for ARRAY<INT> type.
+AnalysisException: UNION, EXCEPT and INTERSECT with type 'ARRAY<INT>' is not supported.
 ====
 ---- QUERY
 # Changing a column to a different type leads to a "non-pass-through" union that does a
@@ -566,10 +566,10 @@ INT,STRING,STRING
 ---- QUERY
 select distinct arr1 from complextypes_arrays
 ---- CATCH
-AnalysisException: Complex types are not supported in SELECT DISTINCT clauses.
+AnalysisException: SELECT DISTINCT expression 'arr1' with type 'ARRAY<INT>' is not supported.
 ====
 ---- QUERY
 select count(distinct arr1) from complextypes_arrays
 ---- CATCH
-AnalysisException: Complex types are not supported as DISTINCT parameters of aggregate functions.
+AnalysisException: DISTINCT aggregate parameter 'arr1' with type 'ARRAY<INT>' is not supported.
 ====
