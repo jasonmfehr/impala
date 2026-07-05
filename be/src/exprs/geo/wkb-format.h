@@ -87,7 +87,7 @@ inline WkbType GetWkbType(const StringVal& geom) {
   return static_cast<WkbType>(ReadUint32(ptr, GetByteOrderSwap(geom)));
 }
 
-inline OGCType WkbTypeToOgcType(WkbType wkb_type) {
+inline OGCType WkbTypeToOgcType(uint32_t wkb_type) {
   switch (wkb_type) {
     case WKB_POINT: return ST_POINT;
     case WKB_LINESTRING: return ST_LINESTRING;

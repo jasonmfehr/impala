@@ -22,7 +22,10 @@ set(LIBRARY_OUTPUT_PATH "${BUILD_OUTPUT_ROOT_DIRECTORY}/exprs/geo")
 set(EXECUTABLE_OUTPUT_PATH "${BUILD_OUTPUT_ROOT_DIRECTORY}/exprs/geo")
 
 add_library(ExprsGeoIr
+  geometry-wrapper-wkb.cc
   geospatial-functions-ir.cc
+  geospatial-functions-wkb-ir.cc
+  relation-wrapper-wkb.cc
   wkb-serialization.cc
 )
 add_dependencies(ExprsGeoIr gen-deps)
@@ -32,8 +35,11 @@ if (BUILD_WITH_NO_TESTS)
 endif()
 
 add_library(ExprsGeoTests STATIC
+  relation-wrapper-wkb-test.cc
   wkb-serialization-test.cc
 )
 add_dependencies(ExprsGeoTests gen-deps)
 
+ADD_UNIFIED_BE_LSAN_TEST(relation-wrapper-wkb-test
+  "RelationWrapperWkbTest.*:BoostGeometryLimitationsTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(wkb-serialization-test "WkbMalformedTest.*:WkbRoundTripTest.*")
