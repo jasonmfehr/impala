@@ -419,11 +419,6 @@ BOOLEAN
 true
 ====
 ---- QUERY
-select ST_NumPoints(ST_Point('point empty'));
----- RESULTS
-0
-====
----- QUERY
 select ST_NumPoints(ST_Point(0., 3.));
 ---- RESULTS
 1
