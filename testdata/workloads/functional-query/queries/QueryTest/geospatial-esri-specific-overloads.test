@@ -239,3 +239,12 @@ BOOLEAN,BOOLEAN,BOOLEAN
 ---- RESULTS
 false,true,false
 ====
+---- QUERY
+# ESRI-specific: ST_NumPoints of an empty point is 0 (ESRI checks isEmpty()). The WKB
+# native returns 1 -- boost's point has no empty state (it stores NaN coords) and
+# num_points() always counts the structural point. Kept ESRI-only until empty-point
+# handling is unified across modes. TODO: revisit WKB empty-point semantics.
+select ST_NumPoints(ST_Point('point empty'));
+---- RESULTS
+0
+====
