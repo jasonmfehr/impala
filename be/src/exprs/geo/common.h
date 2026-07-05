@@ -51,4 +51,14 @@ constexpr std::array<const char*, ST_MULTIPOLYGON + 1> OGCTypeToStr = {{
     "ST_MULTIPOLYGON"
 }};
 
+constexpr std::array<const char*, ST_MULTIPOLYGON + 1> OgcTypeToWktPrefix = {{
+    "UNKNOWN",
+    "POINT",
+    "LINESTRING",
+    "POLYGON",
+    "MULTIPOINT",
+    "MULTILINESTRING",
+    "MULTIPOLYGON"
+}};
+
 } // namespace impala::geo
