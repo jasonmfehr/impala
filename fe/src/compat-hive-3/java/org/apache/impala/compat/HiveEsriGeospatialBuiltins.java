@@ -95,14 +95,16 @@ public class HiveEsriGeospatialBuiltins {
         ? GeometryUtils.SerializationFormat.WKB
         : GeometryUtils.SerializationFormat.ESRI_SHAPE);
 
-    // Native C++ functions only work with ESRI Shape format, not WKB.
     boolean addNatives = lib.equals(TGeospatialLibrary.HIVE_ESRI);
     boolean isWkb = lib.equals(TGeospatialLibrary.WKB_EXPERIMENTAL);
     addLegacyUDFs(db, addNatives, isWkb);
     addGenericUDFs(db, isWkb);
     addVarargsUDFs(db, isWkb);
-    if(addNatives) {
+    if (addNatives) {
       addNatives(db);
+    }
+    if (isWkb) {
+      addWkbNatives(db);
     }
   }
 
@@ -118,34 +120,48 @@ public class HiveEsriGeospatialBuiltins {
     // Functions that serialize geometry to raw bytes (GEOMETRY -> BINARY in WKB mode).
     List<UDF> serializers = Arrays.asList(new ST_AsBinary(), new ST_AsShape());
 
-    // All other functions: geometry in/out or geometry in/scalar out.
-    List<UDF> legacyUDFs = new ArrayList<>(Arrays.asList(new ST_Area(),
-        new ST_AsGeoJson(), new ST_AsJson(), new ST_AsText(),
-        new ST_Boundary(), new ST_Buffer(), new ST_Centroid(), new ST_CoordDim(),
-        new ST_Difference(), new ST_Dimension(), new ST_Distance(),
-        new ST_DistanceSphere(), new ST_EndPoint(),
-        new ST_Envelope(), new ST_ExteriorRing(),
+    // Functions that always run as Java (no C++ native in either mode).
+    List<UDF> legacyUDFs = new ArrayList<>(Arrays.asList(
+        new ST_AsGeoJson(), new ST_AsJson(),
+        new ST_Boundary(), new ST_Buffer(), new ST_CoordDim(),
+        new ST_Difference(), new ST_DistanceSphere(),
         new ST_GeodesicLengthWGS84(), new ST_GeomCollection(), new ST_GeometryN(),
-        new ST_GeomFromText(),
-        new ST_InteriorRingN(), new ST_Intersection(),
-        new ST_Is3D(), new ST_IsClosed(), new ST_IsEmpty(), new ST_IsMeasured(),
-        new ST_IsRing(), new ST_IsSimple(), new ST_Length(),
+        new ST_Intersection(),
+        new ST_Is3D(), new ST_IsMeasured(),
         new ST_M(), new ST_MaxM(), new ST_MaxZ(),
-        new ST_MinM(), new ST_MinZ(), new ST_NumGeometries(),
-        new ST_NumInteriorRing(), new ST_NumPoints(),
-        new ST_PointN(),
-        new ST_Relate(), new ST_StartPoint(), new ST_SymmetricDiff(),
+        new ST_MinM(), new ST_MinZ(),
+        new ST_Relate(), new ST_SymmetricDiff(),
         new ST_Z()));
 
-    List<UDF> legacyUDFsWithNativeImplementation = Arrays.asList(
+    // Functions with native C++ implementations in HIVE_ESRI mode (ESRI Shape format).
+    List<UDF> legacyUDFsWithEsriNative = Arrays.asList(
         new ST_EnvIntersects(), new ST_GeometryType(),
         new ST_MaxX(), new ST_MaxY(),
         new ST_MinX(), new ST_MinY(),
         new ST_SRID(), new ST_SetSRID(),
         new ST_X(), new ST_Y()
     );
-    if (!addNatives) {
-      legacyUDFs.addAll(legacyUDFsWithNativeImplementation);
+
+    // Functions with native C++ implementations in WKB_EXPERIMENTAL mode.
+    List<UDF> legacyUDFsWithWkbNative = Arrays.asList(
+        new ST_Area(), new ST_AsText(), new ST_Centroid(),
+        new ST_Dimension(), new ST_Distance(), new ST_EndPoint(),
+        new ST_Envelope(), new ST_ExteriorRing(), new ST_GeomFromText(),
+        new ST_InteriorRingN(), new ST_IsClosed(), new ST_IsEmpty(),
+        new ST_IsRing(), new ST_IsSimple(), new ST_Length(),
+        new ST_NumGeometries(), new ST_NumInteriorRing(), new ST_NumPoints(),
+        new ST_PointN(), new ST_StartPoint()
+    );
+
+    if (addNatives) {
+      // HIVE_ESRI: ESRI natives handle legacyUDFsWithEsriNative, rest stays Java.
+      legacyUDFs.addAll(legacyUDFsWithWkbNative);
+    } else if (isWkb) {
+      // WKB_EXPERIMENTAL: WKB natives handle both lists. Add neither.
+    } else {
+      // No natives: all run as Java.
+      legacyUDFs.addAll(legacyUDFsWithEsriNative);
+      legacyUDFs.addAll(legacyUDFsWithWkbNative);
     }
 
     HiveLegacyFunctionExtractor extractor = isWkb
@@ -195,27 +211,38 @@ public class HiveEsriGeospatialBuiltins {
     List<ScalarFunction> genericUDFs = new ArrayList<>();
     Type geomType = isWkb ? Type.GEOMETRY : Type.BINARY;
 
-    List<Set<Type>> stBinArguments =
-        ImmutableList.of(ImmutableSet.of(Type.DOUBLE, Type.BIGINT),
-            ImmutableSet.of(Type.STRING, geomType));
-    List<Set<Type>> stBinEnvelopeArguments =
-        ImmutableList.of(ImmutableSet.of(Type.DOUBLE, Type.BIGINT),
-            ImmutableSet.of(Type.STRING, geomType, Type.BIGINT));
+    if (!isWkb) {
+      // In WKB mode, ST_Bin and ST_BinEnvelope have C++ native implementations.
+      List<Set<Type>> stBinArguments =
+          ImmutableList.of(ImmutableSet.of(Type.DOUBLE, Type.BIGINT),
+              ImmutableSet.of(Type.STRING, geomType));
+      List<Set<Type>> stBinEnvelopeArguments =
+          ImmutableList.of(ImmutableSet.of(Type.DOUBLE, Type.BIGINT),
+              ImmutableSet.of(Type.STRING, geomType, Type.BIGINT));
 
-    genericUDFs.addAll(
-        createMappedGenericUDFs(stBinArguments, Type.BIGINT, ST_Bin.class));
-    genericUDFs.addAll(createMappedGenericUDFs(
-        stBinEnvelopeArguments, geomType, ST_BinEnvelope.class));
+      genericUDFs.addAll(
+          createMappedGenericUDFs(stBinArguments, Type.BIGINT, ST_Bin.class));
+      genericUDFs.addAll(createMappedGenericUDFs(
+          stBinEnvelopeArguments, geomType, ST_BinEnvelope.class));
+    }
+
     genericUDFs.add(createScalarFunction(
         ST_GeomFromGeoJson.class, geomType, new Type[] {Type.STRING}));
     genericUDFs.add(createScalarFunction(
         ST_GeomFromJson.class, geomType, new Type[] {Type.STRING}));
-    genericUDFs.add(createScalarFunction(
-        ST_MultiPolygon.class, geomType, new Type[] {Type.STRING}));
-    genericUDFs.add(createScalarFunction(
-        ST_MultiLineString.class, geomType, new Type[] {Type.STRING}));
 
-    createRelationalGenericUDFs(genericUDFs, isWkb);
+    if (!isWkb) {
+      // In WKB mode, ST_MultiPolygon and ST_MultiLineString have C++ natives.
+      genericUDFs.add(createScalarFunction(
+          ST_MultiPolygon.class, geomType, new Type[] {Type.STRING}));
+      genericUDFs.add(createScalarFunction(
+          ST_MultiLineString.class, geomType, new Type[] {Type.STRING}));
+    }
+
+    if (!isWkb) {
+      // In WKB mode, relational predicates have C++ native implementations.
+      createRelationalGenericUDFs(genericUDFs, isWkb);
+    }
 
     for (ScalarFunction function : genericUDFs) {
       db.addBuiltin(function);
@@ -228,9 +255,8 @@ public class HiveEsriGeospatialBuiltins {
         new ST_Disjoint(), new ST_Equals(), new ST_Intersects(), new ST_Overlaps(),
         new ST_Touches(), new ST_Within());
 
-    List<Set<Type>> relationalUDFArguments = isWkb
-        ? ImmutableList.of(ImmutableSet.of(Type.GEOMETRY), ImmutableSet.of(Type.GEOMETRY))
-        : ImmutableList.of(ImmutableSet.of(Type.STRING, Type.BINARY),
+    List<Set<Type>> relationalUDFArguments =
+        ImmutableList.of(ImmutableSet.of(Type.STRING, Type.BINARY),
             ImmutableSet.of(Type.STRING, Type.BINARY));
 
     for (GenericUDF relationalUDF : relationalUDFs) {
@@ -248,15 +274,18 @@ public class HiveEsriGeospatialBuiltins {
     varargsUDFs.addAll(
         extractFunctions(ST_Union_Wrapper.class, ST_Union.class, db.getName(),
             extractor));
-    varargsUDFs.addAll(
-        extractFunctions(ST_Polygon_Wrapper.class, ST_Polygon.class, db.getName(),
-            extractor));
-    varargsUDFs.addAll(
-        extractFunctions(ST_LineString_Wrapper.class, ST_LineString.class, db.getName(),
-            extractor));
-    varargsUDFs.addAll(
-        extractFunctions(ST_MultiPoint_Wrapper.class, ST_MultiPoint.class, db.getName(),
-            extractor));
+    if (!isWkb) {
+      // In WKB mode, ST_Polygon, ST_LineString, and ST_MultiPoint have C++ natives.
+      varargsUDFs.addAll(
+          extractFunctions(ST_Polygon_Wrapper.class, ST_Polygon.class, db.getName(),
+              extractor));
+      varargsUDFs.addAll(
+          extractFunctions(ST_LineString_Wrapper.class, ST_LineString.class, db.getName(),
+              extractor));
+      varargsUDFs.addAll(
+          extractFunctions(ST_MultiPoint_Wrapper.class, ST_MultiPoint.class, db.getName(),
+              extractor));
+    }
     varargsUDFs.addAll(
         extractFunctions(ST_ConvexHull_Wrapper.class, ST_ConvexHull.class, db.getName(),
             extractor));
@@ -274,7 +303,9 @@ public class HiveEsriGeospatialBuiltins {
     // There is no ST_PointM and ST_PointZM at the moment so points with M dimension can
     // be created only with the WKT constructor.
     Type geomType = isWkb ? Type.GEOMETRY : Type.BINARY;
-    if (!addNatives) {
+    if (!addNatives && !isWkb) {
+      // In HIVE_ESRI mode, st_point(DOUBLE,DOUBLE) is native C++.
+      // In WKB mode, both st_point(DOUBLE,DOUBLE) and st_point(STRING) are native C++.
       Type[] args2d = {Type.DOUBLE, Type.DOUBLE};
       db.addBuiltin(
           createScalarFunction(ST_Point.class, "st_point", geomType, args2d));
@@ -282,9 +313,12 @@ public class HiveEsriGeospatialBuiltins {
     Type[] args3d = {Type.DOUBLE, Type.DOUBLE, Type.DOUBLE};
     db.addBuiltin(
         createScalarFunction(ST_PointZ.class, "st_pointz", geomType, args3d));
-    Type[] argsWkt = {Type.STRING};
-    db.addBuiltin(
-        createScalarFunction(ST_Point.class, "st_point", geomType, argsWkt));
+    if (!isWkb) {
+      // In WKB mode, st_point(STRING) is handled by C++ native st_Point_WKB(StringVal).
+      Type[] argsWkt = {Type.STRING};
+      db.addBuiltin(
+          createScalarFunction(ST_Point.class, "st_point", geomType, argsWkt));
+    }
   }
 
   private static List<ScalarFunction> extractFromLegacyHiveBuiltin(
@@ -340,13 +374,43 @@ public class HiveEsriGeospatialBuiltins {
         .collect(Collectors.toList());
   }
 
+  private static final String GEO_FN_PREFIX =
+      "impala::geo::GeospatialFunctions::";
+  private static final String GEOM_WRAPPER_PREPARE =
+      GEO_FN_PREFIX + "GeometryWrapperPrepare";
+  private static final String GEOM_WRAPPER_CLOSE =
+      GEO_FN_PREFIX + "GeometryWrapperClose";
+  private static final String RELATION_WRAPPER_PREPARE =
+      GEO_FN_PREFIX + "RelationWrapperPrepare";
+  private static final String RELATION_WRAPPER_CLOSE =
+      GEO_FN_PREFIX + "RelationWrapperClose";
+
   private static void addNative(Db db, String fnNameBase, String fnNameSuffix,
       boolean varArgs, Type retType, Type... argTypes) {
     String udfName = fnNameBase.toLowerCase();
-    String geospatialFnPrefix = "impala::geo::GeospatialFunctions::";
-    String cppSymbolName = geospatialFnPrefix + fnNameBase + fnNameSuffix;
-
+    String cppSymbolName = GEO_FN_PREFIX + fnNameBase + fnNameSuffix;
     db.addScalarBuiltin(udfName, cppSymbolName, true, varArgs, retType, argTypes);
+  }
+
+  private static void addNative(Db db, String fnNameBase, String fnNameSuffix,
+      boolean varArgs, Type retType, String prepareFn, String closeFn,
+      Type... argTypes) {
+    String udfName = fnNameBase.toLowerCase();
+    String cppSymbolName = GEO_FN_PREFIX + fnNameBase + fnNameSuffix;
+    db.addScalarBuiltin(udfName, cppSymbolName, true, prepareFn, closeFn,
+        varArgs, retType, argTypes);
+  }
+
+  private static void addNativeWithGeomState(Db db, String fnNameBase,
+      String fnNameSuffix, boolean varArgs, Type retType, Type... argTypes) {
+    addNative(db, fnNameBase, fnNameSuffix, varArgs, retType,
+        GEOM_WRAPPER_PREPARE, GEOM_WRAPPER_CLOSE, argTypes);
+  }
+
+  private static void addNativeWithRelationState(Db db, String fnNameBase,
+      String fnNameSuffix, boolean varArgs, Type retType, Type... argTypes) {
+    addNative(db, fnNameBase, fnNameSuffix, varArgs, retType,
+        RELATION_WRAPPER_PREPARE, RELATION_WRAPPER_CLOSE, argTypes);
   }
 
   private static void addNative(Db db, String fnName, boolean varArgs, Type retType,
@@ -374,5 +438,101 @@ public class HiveEsriGeospatialBuiltins {
 
     // Predicates.
     addNative(db, "st_EnvIntersects", false, Type.BOOLEAN, Type.BINARY, Type.BINARY);
+  }
+
+  private static void addWkbNatives(Db db) {
+    // Accessors.
+    addNative(db, "st_X", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_Y", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_MinX", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_MaxX", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_MinY", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_MaxY", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_GeometryType", "_WKB", false, Type.STRING, Type.GEOMETRY);
+    addNative(db, "st_Srid", "_WKB", false, Type.INT, Type.GEOMETRY);
+    addNative(db, "st_SetSrid", "_WKB", false, Type.GEOMETRY, Type.GEOMETRY, Type.INT);
+
+    // Constructors.
+    addNative(db, "st_Point", "_WKB", false, Type.GEOMETRY, Type.DOUBLE, Type.DOUBLE);
+    addNativeWithGeomState(db, "st_Point", "_WKB", false, Type.GEOMETRY, Type.STRING);
+    addNativeWithGeomState(db, "st_LineString", "_WKB", false, Type.GEOMETRY, Type.STRING);
+    addNativeWithGeomState(db, "st_LineString", "_WKB", true, Type.GEOMETRY, Type.DOUBLE);
+    addNativeWithGeomState(db, "st_MultiPoint", "_WKB", false, Type.GEOMETRY, Type.STRING);
+    addNativeWithGeomState(db, "st_MultiPoint", "_WKB", true, Type.GEOMETRY, Type.DOUBLE);
+    addNativeWithGeomState(db, "st_Polygon", "_WKB", false, Type.GEOMETRY, Type.STRING);
+    addNativeWithGeomState(db, "st_Polygon", "_WKB", true, Type.GEOMETRY, Type.DOUBLE);
+    addNativeWithGeomState(db, "st_MultiLineString", "_WKB", false,
+        Type.GEOMETRY, Type.STRING);
+    addNativeWithGeomState(db, "st_MultiPolygon", "_WKB", false,
+        Type.GEOMETRY, Type.STRING);
+
+    // Predicates.
+    for (String fn : Arrays.asList("st_Contains", "st_Crosses", "st_Disjoint",
+        "st_Equals", "st_Intersects", "st_Overlaps", "st_Touches", "st_Within")) {
+      addNativeWithRelationState(db, fn, "_WKB", false, Type.BOOLEAN,
+          Type.GEOMETRY, Type.GEOMETRY);
+    }
+    addNative(db, "st_EnvIntersects", "_WKB", false, Type.BOOLEAN,
+        Type.GEOMETRY, Type.GEOMETRY);
+
+    // Transformations.
+    addNative(db, "st_Envelope", "_WKB", false, Type.GEOMETRY, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_AsText", "_WKB", false, Type.STRING, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_GeomFromText", "_WKB", false,
+        Type.GEOMETRY, Type.STRING);
+    addNativeWithGeomState(db, "st_GeomFromText", "_WKB", false,
+        Type.GEOMETRY, Type.STRING, Type.INT);
+
+    // Binning.
+    addNative(db, "st_Bin", "Geom_WKB", false, Type.BIGINT, Type.BIGINT,
+        Type.GEOMETRY);
+    addNative(db, "st_Bin", "Geom_WKB", false, Type.BIGINT, Type.DOUBLE,
+        Type.GEOMETRY);
+    addNative(db, "st_Bin", "Wkt", false, Type.BIGINT, Type.BIGINT, Type.STRING);
+    addNative(db, "st_Bin", "Wkt", false, Type.BIGINT, Type.DOUBLE, Type.STRING);
+    addNative(db, "st_Binenvelope", "BinId_WKB", false, Type.GEOMETRY,
+        Type.BIGINT, Type.BIGINT);
+    addNative(db, "st_Binenvelope", "BinId_WKB", false, Type.GEOMETRY,
+        Type.DOUBLE, Type.BIGINT);
+    addNative(db, "st_Binenvelope", "Geom_WKB", false, Type.GEOMETRY,
+        Type.BIGINT, Type.GEOMETRY);
+    addNative(db, "st_Binenvelope", "Geom_WKB", false, Type.GEOMETRY,
+        Type.DOUBLE, Type.GEOMETRY);
+    addNative(db, "st_Binenvelope", "Wkt_WKB", false, Type.GEOMETRY,
+        Type.BIGINT, Type.STRING);
+    addNative(db, "st_Binenvelope", "Wkt_WKB", false, Type.GEOMETRY,
+        Type.DOUBLE, Type.STRING);
+
+    // Geometry property functions.
+    addNativeWithGeomState(db, "st_Area", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_Length", "_WKB", false, Type.DOUBLE, Type.GEOMETRY);
+    addNativeWithRelationState(db, "st_Distance", "_WKB", false, Type.DOUBLE,
+        Type.GEOMETRY, Type.GEOMETRY);
+    addNative(db, "st_Dimension", "_WKB", false, Type.INT, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_NumPoints", "_WKB", false, Type.INT, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_NumGeometries", "_WKB", false,
+        Type.INT, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_NumInteriorRing", "_WKB", false,
+        Type.INT, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_IsEmpty", "_WKB", false,
+        Type.BOOLEAN, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_IsSimple", "_WKB", false,
+        Type.BOOLEAN, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_IsClosed", "_WKB", false,
+        Type.BOOLEAN, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_IsRing", "_WKB", false,
+        Type.BOOLEAN, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_Centroid", "_WKB", false,
+        Type.GEOMETRY, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_StartPoint", "_WKB", false,
+        Type.GEOMETRY, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_EndPoint", "_WKB", false,
+        Type.GEOMETRY, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_PointN", "_WKB", false,
+        Type.GEOMETRY, Type.GEOMETRY, Type.INT);
+    addNativeWithGeomState(db, "st_ExteriorRing", "_WKB", false,
+        Type.GEOMETRY, Type.GEOMETRY);
+    addNativeWithGeomState(db, "st_InteriorRingN", "_WKB", false,
+        Type.GEOMETRY, Type.GEOMETRY, Type.INT);
   }
 }

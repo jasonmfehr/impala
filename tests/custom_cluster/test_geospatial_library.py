@@ -23,18 +23,19 @@ from tests.common.skip import SkipIfApacheHive
 # In WKB mode ST functions register with GEOMETRY where ESRI mode uses BINARY.
 ST_POINT_SIGNATURE = "BINARY\tst_point(STRING)\tJAVA\ttrue"
 ST_X_SIGNATURE_BUILTIN = "DOUBLE\tst_x(BINARY)\tBUILTIN\ttrue"
-ST_POINT_WKB_SIGNATURE = "GEOMETRY\tst_point(STRING)\tJAVA\ttrue"
-ST_X_WKB_SIGNATURE = "DOUBLE\tst_x(GEOMETRY)\tJAVA\ttrue"
+# In WKB mode ST functions register with GEOMETRY where ESRI mode uses BINARY.
+ST_POINT_WKB_SIGNATURE = "GEOMETRY\tst_point(STRING)\tBUILTIN\ttrue"
+ST_X_WKB_SIGNATURE = "DOUBLE\tst_x(GEOMETRY)\tBUILTIN\ttrue"
 SHOW_FUNCTIONS = "show functions in _impala_builtins"
 
 
 @SkipIfApacheHive.feature_not_supported
-class TestGeospatialLibrary(CustomClusterTestSuite):
+@CustomClusterTestSuite.with_args(start_args='--geospatial_library=NONE')
+class TestGeospatialLibraryNone(CustomClusterTestSuite):
   """Tests the geospatial_library backend flag in the non-default modes.
   The default mode (WKB_EXPERIMENTAL) is covered mainly
   tests/query_test/test_geospatial_functions.py."""
 
-  @CustomClusterTestSuite.with_args(start_args='--geospatial_library=NONE')
   def test_disabled(self):
     result = self.execute_query(SHOW_FUNCTIONS)
     assert ST_POINT_SIGNATURE not in result.data
@@ -42,8 +43,11 @@ class TestGeospatialLibrary(CustomClusterTestSuite):
     assert ST_POINT_WKB_SIGNATURE not in result.data
     assert ST_X_WKB_SIGNATURE not in result.data
 
-  @SkipIfApacheHive.feature_not_supported
-  @CustomClusterTestSuite.with_args(start_args='--geospatial_library=WKB_EXPERIMENTAL')
+
+@SkipIfApacheHive.feature_not_supported
+@CustomClusterTestSuite.with_args(start_args='--geospatial_library=WKB_EXPERIMENTAL')
+class TestWkbExperimentalMode(CustomClusterTestSuite):
+
   def test_wkb_experimental(self):
     # WKB_EXPERIMENTAL registers ST functions with GEOMETRY signatures, unlike the BINARY
     # signatures used by HIVE_ESRI mode.
@@ -53,26 +57,11 @@ class TestGeospatialLibrary(CustomClusterTestSuite):
     assert ST_POINT_WKB_SIGNATURE in result.data
     assert ST_X_WKB_SIGNATURE in result.data
 
-  @SkipIfApacheHive.feature_not_supported
-  @CustomClusterTestSuite.with_args(start_args='--geospatial_library=HIVE_ESRI')
-  def test_hive_esri(self):
-    # HIVE_ESRI registers ST functions with BINARY signatures (and native C++ builtins),
-    # unlike the GEOMETRY signatures of the default WKB_EXPERIMENTAL mode.
-    result = self.execute_query(SHOW_FUNCTIONS)
-    assert ST_POINT_SIGNATURE in result.data
-    assert ST_X_SIGNATURE_BUILTIN in result.data
-    assert ST_POINT_WKB_SIGNATURE not in result.data
-    assert ST_X_WKB_SIGNATURE not in result.data
-
-  @CustomClusterTestSuite.with_args(
-      start_args='--geospatial_library=WKB_EXPERIMENTAL')
   def test_wkb_experimental_serialization(self, vector):
     # WKB is the inter-function serialization format in this mode, so this exercises
     # the WKB round-trip / malformed-input handling of the WKB serialization path.
     self.run_test_case('QueryTest/geospatial-wkb-serialization', vector)
 
-  @CustomClusterTestSuite.with_args(
-      start_args='--geospatial_library=WKB_EXPERIMENTAL')
   @pytest.mark.execute_serially
   def test_relations_table(self, vector):
     self.run_test_case('QueryTest/geospatial-relations-table', vector)
@@ -81,6 +70,15 @@ class TestGeospatialLibrary(CustomClusterTestSuite):
 @CustomClusterTestSuite.with_args(start_args='--geospatial_library=HIVE_ESRI')
 class TestEsriHiveMode(CustomClusterTestSuite):
   """Tests HIVE_ESRI mode in detail."""
+
+  def test_hive_esri(self):
+    # HIVE_ESRI registers ST functions with BINARY signatures (and native C++ builtins),
+    # unlike the GEOMETRY signatures of the default WKB_EXPERIMENTAL mode.
+    result = self.execute_query(SHOW_FUNCTIONS)
+    assert ST_POINT_SIGNATURE in result.data
+    assert ST_X_SIGNATURE_BUILTIN in result.data
+    assert ST_POINT_WKB_SIGNATURE not in result.data
+    assert ST_X_WKB_SIGNATURE not in result.data
 
   def test_esri_geospatial_functions(self, vector):
     self.run_test_case('QueryTest/geospatial-esri', vector)

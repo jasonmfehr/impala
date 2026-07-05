@@ -477,6 +477,11 @@ void ScalarExprEvaluator::InitBuiltinsDummy() {
   DecimalFunctions::Precision(nullptr, DecimalVal::null());
   DecimalOperators::CastToDecimalVal(nullptr, DecimalVal::null());
   geo::GeospatialFunctions::st_MaxX(nullptr, StringVal::null());
+  geo::GeospatialFunctions::st_X_WKB(nullptr, StringVal::null());
+  geo::GeospatialFunctions::GeometryWrapperPrepare(nullptr,
+      FunctionContext::THREAD_LOCAL);
+  geo::GeospatialFunctions::RelationWrapperPrepare(nullptr,
+      FunctionContext::THREAD_LOCAL);
   IcebergFunctions::TruncatePartitionTransform(nullptr, IntVal::null(), IntVal::null());
   VariantFunctions::VariantToJson(nullptr, StringVal::null(), StringVal::null());
   InPredicate::InIterate(nullptr, BigIntVal::null(), 0, nullptr);
