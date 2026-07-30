@@ -18,20 +18,35 @@
 #include "exprs/geo/geometry-wrapper-wkb.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
+#include <limits>
+#include <sstream>
+#include <variant>
 
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <gflags/gflags.h>
 #include <gutil/strings/numbers.h>
+#include <gutil/strings/split.h>
 
 #include "exprs/anyval-util.h"
 #include "exprs/geo/wkb-format.h"
 #include "exprs/geo/wkb-serialization.h"
 #include "exprs/geo/wkt.h"
 #include "udf/udf.h"
+#include "util/gflag-validator-util.h"
+#include "util/string-parser.h"
 
 #include "common/names.h"
 
+DEFINE_int32(geospatial_max_quad_segs, 999999, "Maximum allowed value for number of "
+    "quadrant segments parameters in geospatial functions.");
+DEFINE_validator(geospatial_max_quad_segs, ge_one);
+
 namespace impala::geo {
 
+using impala_udf::BooleanVal;
 using impala_udf::DoubleVal;
 
 bool GeometryWrapperWkb::FromWkb(const StringVal& geom) {
@@ -275,6 +290,34 @@ double GeometryWrapperWkb::Length() const {
 }
 
 namespace {
+
+constexpr const char* BUFFER_STYLE_KEY_QUAD_SEGS = "quad_segs";
+constexpr const char* BUFFER_STYLE_KEY_ENDCAP = "endcap";
+constexpr const char* BUFFER_STYLE_KEY_MITRE_LIMIT = "mitre_limit";
+constexpr const char* BUFFER_STYLE_KEY_MITER_LIMIT = "miter_limit";
+constexpr const char* BUFFER_STYLE_KEY_JOIN = "join";
+constexpr const char* BUFFER_STYLE_KEY_SIDE = "side";
+
+constexpr const char* BUFFER_STYLE_VALUE_SQUARE = "square";
+constexpr const char* BUFFER_STYLE_VALUE_FLAT = "flat";
+constexpr const char* BUFFER_STYLE_VALUE_BUTT = "butt";
+constexpr const char* BUFFER_STYLE_VALUE_ROUND = "round";
+constexpr const char* BUFFER_STYLE_VALUE_MITRE = "mitre";
+constexpr const char* BUFFER_STYLE_VALUE_MITER = "miter";
+constexpr const char* BUFFER_STYLE_VALUE_BEVEL = "bevel";
+constexpr const char* BUFFER_STYLE_VALUE_LEFT = "left";
+constexpr const char* BUFFER_STYLE_VALUE_RIGHT = "right";
+constexpr const char* BUFFER_STYLE_VALUE_BOTH = "both";
+
+// Taking into account the longest potential value for each key, the maximum length for
+// the buffer style string is 378 characters. Use a higher limit that is more round.
+constexpr int BUFFER_STYLE_MAX_LEN = 1000;
+
+// Argument indicies.
+const uint8_t ARG_DIST_IDX = 1;
+const uint8_t ARG_USE_SPHEROID_IDX = 2;
+const uint8_t ARG_BUFFER_STYLE_IDX = 3;
+
 template <class LhsT, class RhsT>
 double computeDistance(const LhsT& lhs, const RhsT& rhs) {
   return bg::distance(lhs, rhs);
@@ -464,6 +507,265 @@ bool GeometryWrapperWkb::GetInteriorRingN(FunctionContext* ctx, int n,
   // Reverse to match ESRI's ring ordering convention.
   linestring2d ls(ring.rbegin(), ring.rend());
   *result = WriteWkbLineString(ctx, ls);
+  return true;
+}
+
+// Helper functions for BufferWrapperWkb.
+namespace {
+
+bool parseIntOption(FunctionContext* ctx, const string& value,
+    const char* key, std::size_t* out) {
+  StringParser::ParseResult parse_result;
+  int parsed = StringParser::StringToInt<int>(value.data(), value.size(),
+      &parse_result);
+  if (parse_result != StringParser::PARSE_SUCCESS || parsed <= 0) {
+    ctx->SetError(Substitute("Invalid value '$0' for $1", value, key).c_str());
+    return false;
+  }
+  *out = parsed;
+  return true;
+}
+
+bool parseDoubleOption(FunctionContext* ctx,
+    const string& value, const char* key, double* out) {
+  StringParser::ParseResult parse_result;
+  double parsed = StringParser::StringToFloat<double>(value.data(), value.size(),
+      &parse_result);
+  if (parse_result != StringParser::PARSE_SUCCESS) {
+    ctx->SetError(Substitute("Invalid value '$0' for $1", value, key).c_str());
+    return false;
+  }
+  *out = parsed;
+  return true;
+}
+
+} // Helper functions for BufferWrapperWkb.
+
+bool BufferWrapperWkb::Buffer(FunctionContext* ctx, double distance,
+    StringVal* result) const {
+  std::variant<point2d, linestring2d, polygon2d, multipoint2d,
+      multi_linestring2d, multi_polygon2d> geom;
+
+  switch (ogc_type_) {
+    case ST_POINT:
+      geom = point_;
+      break;
+    case ST_LINESTRING:
+      geom = linestring_;
+      break;
+    case ST_POLYGON:
+      geom = polygon_;
+      break;
+    case ST_MULTIPOINT:
+      geom = multipoint_;
+      break;
+    case ST_MULTILINESTRING:
+      geom = multi_linestring_;
+      break;
+    case ST_MULTIPOLYGON:
+      geom = multi_polygon_;
+      break;
+    default:
+      return false;
+  }
+
+  multi_polygon2d buf;
+  auto visit_func = [&buf, this](auto&& geom, auto&& strat_distance, auto&& strat_join,
+      auto&& strat_end, auto&& strat_point) {
+    bg::buffer(geom, buf, strat_distance, strategy_side_, strat_join, strat_end,
+        strat_point);
+  };
+
+  if (ctx->IsArgConstant(ARG_DIST_IDX)) {
+    std::visit(visit_func, geom, strategy_distance_, strategy_join_, strategy_end_,
+        strategy_point_);
+  } else {
+    std::visit(visit_func, geom, BuildDistanceStrategy(distance), strategy_join_,
+        strategy_end_, strategy_point_);
+  }
+
+  if (buf.size() == 1) {
+    *result = WriteWkbPolygon(ctx, buf.at(0));
+  } else {
+    *result = WriteWkbMultiPolygon(ctx, buf);
+  }
+
+  return true;
+}
+
+bool BufferWrapperWkb::ParseBufferStyle(FunctionContext* ctx) {
+  using namespace boost::algorithm;
+  using namespace strings;
+  using namespace strings::delimiter;
+  using namespace std;
+
+  StringVal* buffer_style = reinterpret_cast<StringVal*>(
+        ctx->GetConstantArg(ARG_BUFFER_STYLE_IDX));
+
+  if (buffer_style->len > BUFFER_STYLE_MAX_LEN) {
+    ctx->SetError(Substitute("Buffer style string is too long. Maximum allowed length is "
+        "$0.", BUFFER_STYLE_MAX_LEN).c_str());
+    return false;
+  }
+
+  // Parse the buffer style string into key-value pairs.
+  const string style_str(reinterpret_cast<const char*>(buffer_style->ptr),
+      buffer_style->len);
+  std::unordered_map<string, string> pairs;
+  for (StringPiece sp : strings::Split(style_str, AnyOf(" "), SkipEmpty())) {
+    pair<string, string> kv = Split(sp, Limit(AnyOf("="), 1), SkipEmpty());
+    to_lower(kv.first);
+
+    // Error if unknown or missing keys are present.
+    if (UNLIKELY(kv.first != BUFFER_STYLE_KEY_QUAD_SEGS
+        && kv.first != BUFFER_STYLE_KEY_ENDCAP && kv.first != BUFFER_STYLE_KEY_MITRE_LIMIT
+        && kv.first != BUFFER_STYLE_KEY_SIDE && kv.first != BUFFER_STYLE_KEY_MITER_LIMIT
+        && kv.first != BUFFER_STYLE_KEY_JOIN)) {
+      ctx->SetError(Substitute("Unknown buffer style key '$0'", kv.first).c_str());
+      return false;
+    }
+
+    to_lower(kv.second);
+    pairs.insert_or_assign(move(kv.first), move(kv.second));
+  }
+
+  // Calculate points per circle first since it is used in multiple strategy definitions.
+  if (const auto& quad_seg = pairs.find(BUFFER_STYLE_KEY_QUAD_SEGS);
+      quad_seg != pairs.cend()) {
+    if (parseIntOption(ctx, quad_seg->second, BUFFER_STYLE_KEY_QUAD_SEGS,
+        &points_per_circle_)) {
+      if (points_per_circle_ > FLAGS_geospatial_max_quad_segs) {
+        ctx->SetError(Substitute("Number of quad segments exceeds the maximum allowed "
+            "value of $0.", FLAGS_geospatial_max_quad_segs).c_str());
+        return false;
+      }
+      // Multiply the number of segments per quarter circle to get the points per circle.
+      points_per_circle_ *= 4;
+    } else {
+      return false;
+    }
+  }
+
+  // Point strategy.
+  strategy_point_ = DefaultStrategyPoint(points_per_circle_);
+
+  // Endcap style.
+  if (const auto& endcap = pairs.find(BUFFER_STYLE_KEY_ENDCAP);
+      endcap != pairs.cend()) {
+    if (iequals(endcap->second, BUFFER_STYLE_VALUE_SQUARE)) {
+      ctx->SetError(Substitute("Endcap value of '$0' is not supported.",
+          BUFFER_STYLE_VALUE_SQUARE).c_str());
+      return false;
+    } else if (iequals(endcap->second, BUFFER_STYLE_VALUE_FLAT)
+        || iequals(endcap->second, BUFFER_STYLE_VALUE_BUTT)) {
+      strategy_end_ = buff::end_flat();
+    } else if (iequals(endcap->second, BUFFER_STYLE_VALUE_ROUND)) {
+      strategy_end_ = buff::end_round(points_per_circle_);
+    } else {
+      ctx->SetError(Substitute("Invalid value '$0' for $1", endcap->second,
+          BUFFER_STYLE_KEY_ENDCAP).c_str());
+      return false;
+    }
+  } else {
+    strategy_end_ = DefaultStrategyEnd(points_per_circle_);
+  }
+
+  // Miter limit.
+  double miter_limit = DEFAULT_MITER_LIMIT;
+  auto miter = pairs.find(BUFFER_STYLE_KEY_MITRE_LIMIT);
+  if (miter == pairs.cend()) miter = pairs.find(BUFFER_STYLE_KEY_MITER_LIMIT);
+  if (miter != pairs.cend()
+      && !parseDoubleOption(ctx, miter->second, miter->first.c_str(), &miter_limit)) {
+    return false;
+  }
+
+  // Join style
+  if (const auto& join = pairs.find(BUFFER_STYLE_KEY_JOIN); join != pairs.cend()) {
+    if (iequals(join->second, BUFFER_STYLE_VALUE_ROUND)) {
+      strategy_join_ = buff::join_round(points_per_circle_);
+    } else if (iequals(join->second, BUFFER_STYLE_VALUE_MITRE)
+        || iequals(join->second, BUFFER_STYLE_VALUE_MITER)) {
+      strategy_join_ = buff::join_miter(miter_limit);
+    } else if (iequals(join->second, BUFFER_STYLE_VALUE_BEVEL)) {
+      ctx->SetError(Substitute("Join value of '$0' is not supported.",
+          BUFFER_STYLE_VALUE_BEVEL).c_str());
+      return false;
+    } else {
+      ctx->SetError(Substitute("Invalid value '$0' for $1", join->second,
+          BUFFER_STYLE_KEY_JOIN).c_str());
+      return false;
+    }
+  } else {
+    strategy_join_ = DefaultStrategyJoin(points_per_circle_);
+  }
+
+  // Side style.
+  if (const auto& side = pairs.find(BUFFER_STYLE_KEY_SIDE); side != pairs.cend()) {
+    if (iequals(side->second, BUFFER_STYLE_VALUE_LEFT)) {
+      distance_style_ = DistanceStyle::ASYMMETRIC_LEFT;
+    } else if (iequals(side->second, BUFFER_STYLE_VALUE_RIGHT)) {
+      distance_style_ = DistanceStyle::ASYMMETRIC_RIGHT;
+    } else if (iequals(side->second, BUFFER_STYLE_VALUE_BOTH)) {
+      distance_style_ = DistanceStyle::ASYMMETRIC_BOTH;
+    } else {
+      ctx->SetError(Substitute("Invalid value '$0' for $1", side->second,
+          BUFFER_STYLE_KEY_SIDE).c_str());
+      return false;
+    }
+  }
+
+  return true;
+}
+
+std::variant<buff::distance_asymmetric<coord_type>, buff::distance_symmetric<coord_type>>
+    BufferWrapperWkb::BuildDistanceStrategy(double distance) const {
+  switch (distance_style_) {
+    case DistanceStyle::ASYMMETRIC_BOTH:
+      return buff::distance_asymmetric<coord_type>(distance, distance);
+      break;
+    case DistanceStyle::ASYMMETRIC_LEFT:
+      return buff::distance_asymmetric<coord_type>(distance, 0);
+      break;
+    case DistanceStyle::ASYMMETRIC_RIGHT:
+      return buff::distance_asymmetric<coord_type>(0, distance);
+      break;
+    default:
+      return buff::distance_symmetric<coord_type>(distance);
+      break;
+  }
+}
+
+bool BufferWrapperWkb::InitFromPrepareArgs(FunctionContext* ctx) {
+  if (ctx->GetNumArgs() > ARG_BUFFER_STYLE_IDX) {
+    if (!ctx->IsArgConstant(ARG_BUFFER_STYLE_IDX)) {
+      ctx->SetError("The 'buffer_style' argument must be constant.");
+      return false;
+    }
+
+    // Parse buffer style args which are space-separated key-value pairs.
+    if (!ParseBufferStyle(ctx)) {
+      return false;
+    }
+  }
+
+  if (ctx->GetNumArgs() > ARG_USE_SPHEROID_IDX) {
+    if (ctx->IsArgConstant(ARG_USE_SPHEROID_IDX)) {
+      BooleanVal* use_spheroid =
+          reinterpret_cast<BooleanVal*>(ctx->GetConstantArg(ARG_USE_SPHEROID_IDX));
+      if (use_spheroid->val) {
+        strategy_point_ = buff::geographic_point_circle<>(points_per_circle_);
+      }
+    } else {
+      ctx->SetError("The 'use_spheroid' argument must be constant.");
+      return false;
+    }
+  }
+
+  if (ctx->IsArgConstant(ARG_DIST_IDX)) {
+    DoubleVal* dist = reinterpret_cast<DoubleVal*>(ctx->GetConstantArg(ARG_DIST_IDX));
+    strategy_distance_ = BuildDistanceStrategy(dist->val);
+  }
+
   return true;
 }
 

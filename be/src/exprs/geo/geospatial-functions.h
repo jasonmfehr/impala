@@ -41,6 +41,8 @@ class GeospatialFunctions {
   // --- Prepare/Close lifecycle for WKB functions ---
   static void GeometryWrapperPrepare(FunctionContext* ctx,
       FunctionContext::FunctionStateScope scope);
+  static void GeometryWrapperBufferPrepare(FunctionContext* ctx,
+      FunctionContext::FunctionStateScope scope);
   static void GeometryWrapperClose(FunctionContext* ctx,
       FunctionContext::FunctionStateScope scope);
   static void RelationWrapperPrepare(FunctionContext* ctx,
@@ -141,6 +143,13 @@ class GeospatialFunctions {
   static StringVal st_ExteriorRing_WKB(FunctionContext* ctx, const StringVal& geom);
   static StringVal st_InteriorRingN_WKB(FunctionContext* ctx, const StringVal& geom,
       const IntVal& n);
+  static StringVal st_Buffer_WKB(FunctionContext* ctx, const StringVal& geom,
+      const DoubleVal& distance);
+  static StringVal st_Buffer_WKB(FunctionContext* ctx, const StringVal& geom,
+      const DoubleVal& distance, const BooleanVal& use_spheroid);
+  static StringVal st_Buffer_WKB(FunctionContext* ctx, const StringVal& geom,
+      const DoubleVal& distance, const BooleanVal& use_spheroid,
+      const StringVal& buffer_style);
 
   // Transformations
   static StringVal st_Envelope_WKB(FunctionContext* ctx, const StringVal& geom);
