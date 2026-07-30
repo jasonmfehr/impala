@@ -123,7 +123,7 @@ public class HiveEsriGeospatialBuiltins {
     // Functions that always run as Java (no C++ native in either mode).
     List<UDF> legacyUDFs = new ArrayList<>(Arrays.asList(
         new ST_AsGeoJson(), new ST_AsJson(),
-        new ST_Boundary(), new ST_Buffer(), new ST_CoordDim(),
+        new ST_Boundary(), new ST_CoordDim(),
         new ST_Difference(), new ST_DistanceSphere(),
         new ST_GeodesicLengthWGS84(), new ST_GeomCollection(), new ST_GeometryN(),
         new ST_Intersection(),
@@ -150,7 +150,7 @@ public class HiveEsriGeospatialBuiltins {
         new ST_InteriorRingN(), new ST_IsClosed(), new ST_IsEmpty(),
         new ST_IsRing(), new ST_IsSimple(), new ST_Length(),
         new ST_NumGeometries(), new ST_NumInteriorRing(), new ST_NumPoints(),
-        new ST_PointN(), new ST_StartPoint()
+        new ST_PointN(), new ST_StartPoint(), new ST_Buffer()
     );
 
     if (addNatives) {
@@ -378,6 +378,8 @@ public class HiveEsriGeospatialBuiltins {
       "impala::geo::GeospatialFunctions::";
   private static final String GEOM_WRAPPER_PREPARE =
       GEO_FN_PREFIX + "GeometryWrapperPrepare";
+  private static final String GEOM_WRAPPER_PREPARE_BUFFER =
+      GEO_FN_PREFIX + "GeometryWrapperBufferPrepare";
   private static final String GEOM_WRAPPER_CLOSE =
       GEO_FN_PREFIX + "GeometryWrapperClose";
   private static final String RELATION_WRAPPER_PREPARE =
@@ -534,5 +536,14 @@ public class HiveEsriGeospatialBuiltins {
         Type.GEOMETRY, Type.GEOMETRY);
     addNativeWithGeomState(db, "st_InteriorRingN", "_WKB", false,
         Type.GEOMETRY, Type.GEOMETRY, Type.INT);
+    addNative(db, "st_Buffer", "_WKB", false,
+        Type.GEOMETRY, GEOM_WRAPPER_PREPARE_BUFFER, GEOM_WRAPPER_CLOSE,
+        Type.GEOMETRY, Type.DOUBLE);
+    addNative(db, "st_Buffer", "_WKB", false,
+        Type.GEOMETRY, GEOM_WRAPPER_PREPARE_BUFFER, GEOM_WRAPPER_CLOSE,
+        Type.GEOMETRY, Type.DOUBLE, Type.BOOLEAN);
+    addNative(db, "st_Buffer", "_WKB", false,
+        Type.GEOMETRY, GEOM_WRAPPER_PREPARE_BUFFER, GEOM_WRAPPER_CLOSE,
+        Type.GEOMETRY, Type.DOUBLE, Type.BOOLEAN, Type.STRING);
   }
 }
