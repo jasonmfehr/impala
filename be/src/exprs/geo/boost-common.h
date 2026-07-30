@@ -25,7 +25,8 @@ namespace impala::geo {
 
 namespace bg = boost::geometry;
 
-using point2d = bg::model::d2::point_xy<double>;
+using coord_type = double;
+using point2d = bg::model::d2::point_xy<coord_type>;
 using box2d = bg::model::box<point2d>;
 using linestring2d = bg::model::linestring<point2d>;
 // Counter-clockwise exterior rings (holes clockwise): the OGC/GeoJSON right-hand rule.
@@ -33,5 +34,8 @@ using polygon2d = bg::model::polygon<point2d, false>;
 using multipoint2d = bg::model::multi_point<point2d>;
 using multi_linestring2d = bg::model::multi_linestring<linestring2d>;
 using multi_polygon2d = bg::model::multi_polygon<polygon2d>;
+
+constexpr std::size_t DEFAULT_POINTS_PER_CIRCLE = 32;
+constexpr double DEFAULT_MITER_LIMIT = 5.0;
 
 } // namespace impala::geo

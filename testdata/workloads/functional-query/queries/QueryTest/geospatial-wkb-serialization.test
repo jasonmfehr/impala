@@ -175,3 +175,18 @@ select ST_AsText(ST_GeomFromWKB(ST_AsBinary(ST_GeomFromText(
 ---- RESULTS
 'MULTIPOLYGON (((0 0, 10 0, 10 10, 0 10, 0 0), (2 2, 2 4, 4 4, 4 2, 2 2)), ((20 20, 30 20, 30 30, 20 20)))'
 ====
+---- QUERY
+select ST_NumPoints(ST_Buffer(ST_GeomFromText('point (0 0)'), 1, false, 'quad_segs=4 quad_segs=64'));
+---- RESULTS
+257
+====
+---- QUERY
+select ST_AsText(ST_Buffer(ST_GeomFromText('point (0 0)'), 1, NULL, 'quad_segs=4'));
+---- RESULTS
+'NULL'
+====
+---- QUERY
+select ST_AsText(ST_Buffer(ST_GeomFromText('point (0 0)'), 1, false, NULL));
+---- RESULTS
+'NULL'
+====
