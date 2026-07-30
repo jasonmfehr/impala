@@ -36,6 +36,7 @@ static GeometryWrapperWkb* ParseGeom(FunctionContext* ctx, const StringVal& geom
   if (geom.is_null) return nullptr;
   GeometryWrapperWkb* wrapper = reinterpret_cast<GeometryWrapperWkb*>(
       ctx->GetFunctionState(FunctionContext::THREAD_LOCAL));
+  DCHECK(wrapper != nullptr);
   if (!wrapper->FromWkb(geom)) return nullptr;
   return wrapper;
 }
@@ -46,6 +47,18 @@ void GeospatialFunctions::GeometryWrapperPrepare(FunctionContext* ctx,
     FunctionContext::FunctionStateScope scope) {
   if (scope != FunctionContext::THREAD_LOCAL) return;
   ctx->SetFunctionState(scope, new GeometryWrapperWkb());
+}
+
+void GeospatialFunctions::GeometryWrapperBufferPrepare(FunctionContext* ctx,
+    FunctionContext::FunctionStateScope scope) {
+  if (scope != FunctionContext::THREAD_LOCAL) return;
+
+  BufferWrapperWkb* wrapper = new BufferWrapperWkb();
+  if (!wrapper->InitFromPrepareArgs(ctx)) {
+    delete wrapper;
+    return;
+  }
+  ctx->SetFunctionState(scope, wrapper);
 }
 
 void GeospatialFunctions::GeometryWrapperClose(FunctionContext* ctx,
@@ -622,6 +635,31 @@ StringVal GeospatialFunctions::st_InteriorRingN_WKB(FunctionContext* ctx,
   StringVal result;
   if (!wrapper->GetInteriorRingN(ctx, n.val, &result)) return StringVal::null();
   return result;
+}
+
+StringVal GeospatialFunctions::st_Buffer_WKB(FunctionContext* ctx, const StringVal& geom,
+    const DoubleVal& distance) {
+  if (geom.is_null || distance.is_null) return StringVal::null();
+  GeometryWrapperWkb* wrapper = ParseGeom(ctx, geom);
+  if (!wrapper) return StringVal::null();
+  BufferWrapperWkb* buffer_wrapper = static_cast<BufferWrapperWkb*>(wrapper);
+
+  StringVal result;
+  if (!buffer_wrapper->Buffer(ctx, distance.val, &result)) return StringVal::null();
+  return result;
+}
+
+StringVal GeospatialFunctions::st_Buffer_WKB(FunctionContext* ctx, const StringVal& geom,
+    const DoubleVal& distance, const BooleanVal& use_spheroid) {
+  if (use_spheroid.is_null) return StringVal::null();
+  return st_Buffer_WKB(ctx, geom, distance);
+}
+
+StringVal GeospatialFunctions::st_Buffer_WKB(FunctionContext* ctx, const StringVal& geom,
+    const DoubleVal& distance, const BooleanVal& use_spheroid,
+    const StringVal& buffer_style) {
+  if (use_spheroid.is_null || buffer_style.is_null) return StringVal::null();
+  return st_Buffer_WKB(ctx, geom, distance);
 }
 
 } // namespace impala::geo
