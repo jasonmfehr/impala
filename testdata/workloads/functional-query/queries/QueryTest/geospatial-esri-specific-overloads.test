@@ -248,3 +248,15 @@ select ST_NumPoints(ST_Point('point empty'));
 ---- RESULTS
 0
 ====
+---- QUERY
+select ST_Area(ST_Buffer(ST_GeomFromText('point (0 0)'), 1));
+---- TYPES
+DOUBLE
+---- RESULTS
+3.139350203046865
+====
+---- QUERY
+select ST_AsText(ST_Buffer(ST_GeomFromText('polygon ((0 0, 3 0, 3 2, 5 2, 5 5, 2 5, 2 3, 0 3, 0 0))'), -1));
+---- RESULTS
+'MULTIPOLYGON (((3 3, 4 3, 4 4, 3 4, 3 3)), ((1 1, 2 1, 2 2, 1 2, 1 1)))'
+====

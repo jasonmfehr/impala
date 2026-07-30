@@ -37,9 +37,11 @@ endif()
 add_library(ExprsGeoTests STATIC
   relation-wrapper-wkb-test.cc
   wkb-serialization-test.cc
+  geometry-wrapper-wkb-test.cc
 )
 add_dependencies(ExprsGeoTests gen-deps)
 
 ADD_UNIFIED_BE_LSAN_TEST(relation-wrapper-wkb-test
   "RelationWrapperWkbTest.*:BoostGeometryLimitationsTest.*")
 ADD_UNIFIED_BE_LSAN_TEST(wkb-serialization-test "WkbMalformedTest.*:WkbRoundTripTest.*")
+ADD_UNIFIED_BE_LSAN_TEST(geometry-wrapper-wkb-test "BufferWrapperWkbTest.*")
