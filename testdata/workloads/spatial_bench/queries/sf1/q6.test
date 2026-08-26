@@ -1,0 +1,26 @@
+====
+---- QUERY
+SELECT
+    z.z_zonekey,
+    z.z_name,
+    COUNT(t.t_tripkey) AS total_pickups,
+    AVG(t.t_distance) AS avg_distance,
+    AVG(UNIX_TIMESTAMP(t.t_dropofftime) - UNIX_TIMESTAMP(t.t_pickuptime)) AS avg_duration
+FROM trip t, zone z
+WHERE ST_Intersects(
+    ST_GeomFromText('POLYGON((-112.2110 34.4197, -111.3110 34.4197, -111.3110 35.3197, -112.2110 35.3197, -112.2110 34.4197))'),
+    ST_GeomFromWKB(CAST(z.z_boundary AS BINARY))
+  )
+  AND ST_Within(
+    ST_GeomFromWKB(CAST(t.t_pickuploc AS BINARY)),
+    ST_GeomFromWKB(CAST(z.z_boundary AS BINARY))
+  )
+GROUP BY z.z_zonekey, z.z_name
+ORDER BY total_pickups DESC, z.z_zonekey ASC;
+---- TYPES
+BIGINT,VARCHAR,BIGINT,DOUBLE,BIGINT,DOUBLE
+---- RESULTS
+149106,'Coconino County',541,3.0406e-05,6316.591
+132418,'Yavapai County',292,2.7157e-05,5803.647
+82996,'Gila County',39,2.1282e-05,4619.769
+====
