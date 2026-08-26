@@ -1,0 +1,252 @@
+====
+---- QUERY
+SET COMPUTE_PROCESSING_COST=True;
+SET SLOT_COUNT_STRATEGY=PLANNER_CPU_ASK;
+SET MT_DOP=28;
+SET BATCH_SIZE=500;
+SELECT z.z_zonekey, z.z_name, COUNT(*) AS trip_count
+FROM zone z
+JOIN (
+    SELECT t.t_pickuploc
+    FROM trip t
+    ORDER BY t.t_tip DESC, t.t_tripkey ASC
+    LIMIT 1000
+) top_trips
+ON ST_Within(
+    ST_GeomFromWKB(CAST(top_trips.t_pickuploc AS BINARY)),
+    ST_GeomFromWKB(CAST(z.z_boundary AS BINARY))
+)
+GROUP BY z.z_zonekey, z.z_name
+ORDER BY trip_count DESC, z.z_zonekey ASC;
+---- TYPES
+BIGINT,VARCHAR,BIGINT
+---- RESULTS
+21286,'Nd\xe9l\xe9',44
+54540,'Blackall Tambo Regional',27
+80341,'\u4e50\u5c71\u5e02',25
+88075,'\u9521\u6797\u90ed\u52d2\u76df \u1830\u1822\u182f\u1822\u202f\u1836\u1822\u1828 \u182d\u1823\u1823\u182f \u1820\u1836\u1822\u182e\u1820\u182d',25
+32714,'Haraze-Mangueigne',16
+73242,'Boven Digoel',15
+70342,'Lac Iro',13
+13857,'\u5b9c\u5bbe\u5e02',11
+42406,'\u96c5\u5b89\u5e02',10
+146810,'\u0644\u0648\u0627\u0621 \u0642\u0635\u0628\u0629 \u0627\u0644\u0639\u0642\u0628\u0629',10
+64794,'Nakhl',8
+70577,'\u51c9\u5c71\u5f5d\u65cf\u81ea\u6cbb\u5dde \ua183\ua3ad\ua188\ua320\ua2a8\ua3e6\ua3f1\ua149\ua34f',8
+85010,'\u041e\u043b\u0451\u043a\u043c\u0438\u043d\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',8
+44250,'\u041b\u0443\u0446\u044c\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',7
+72057,'\u05e0\u05e4\u05ea \u05d1\u05d0\u05e8 \u05e9\u05d1\u05e2',7
+3507,'\u0428\u0435\u043f\u0442\u0438\u0446\u044c\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',6
+75746,'North Fly District',6
+116871,'Ouadda',6
+133802,'Merauke',6
+18552,'Shelby County',5
+69411,'\u0421\u0443\u043d\u0442\u0430\u0440\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',5
+69483,'\u0645\u062d\u0627\u0641\u0638\u0629 \u062d\u0642\u0644',5
+16916,'\u0417\u0430\u043f\u043e\u043b\u044f\u0440\u043d\u044b\u0439 \u0440\u0430\u0439\u043e\u043d',4
+18348,'\u041b\u044c\u0432\u0456\u0432\u0441\u044c\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',4
+69650,'\u0644\u0648\u0627\u0621 \u0627\u0644\u0642\u0648\u064a\u0631\u0629',4
+112061,'Bell County',4
+122280,'Pastoral Unincorporated Area',4
+135610,'\u041c\u0430\u043d\u043b\u0430\u0439 \u182e\u1829\u182f\u1820\u1822',4
+137503,'\u0412\u043e\u043b\u043e\u0434\u0438\u043c\u0438\u0440\u0441\u044c\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',4
+3413,'Maralinga Tjarutja',3
+18224,'Bojanala Platinum District Municipality',3
+26628,'Nuweiba',3
+27430,'\u7709\u5c71\u5e02',3
+36570,'Hamilton County',3
+49529,'\u548c\u7530\u5730\u533a \u062e\u0648\u062a\u06d5\u0646 \u06cb\u0649\u0644\u0627\u064a\u0649\u062a\u0649',3
+54543,'Lampasas County',3
+86090,'Cercle de Tombouctou',3
+124108,'Middle Fly District',3
+134761,'Ogoou\xe8 et Lacs',3
+137188,'Bamingui',3
+152655,'Kabalebo',3
+728,'Powiat Gryficki',2
+11261,'Cariboo Regional District',2
+16548,'Coryell County',2
+32754,'\u0423\u0441\u0442\u044c-\u042f\u043d\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',2
+38074,'\u963f\u62c9\u5584\u76df \u1820\u182f\u1820\u1831\u1820 \u1820\u1836\u1822\u182e\u1820\u182d',2
+40934,'Boulia Shire',2
+45085,'Julimes',2
+47021,'Longreach Regional',2
+65522,'Sitka',2
+70428,'Unorganized Borough',2
+72592,'Brown County',2
+74001,'\u041a\u043e\u0440\u044f\u043a\u0441\u043a\u0438\u0439 \u043e\u043a\u0440\u0443\u0433',2
+76920,'Northern Rockies Regional Municipality',2
+89639,'\u660c\u90fd\u5e02 \u0f46\u0f56\u0f0b\u0f58\u0f51\u0f7c\u0f0b\u0f66\u0f0b\u0f41\u0f74\u0f63\u0f0d',2
+101093,'ZF Mgcawu District Municipality',2
+102200,'\u81ea\u8d21\u5e02',2
+103465,'Al-Kharga Oasis',2
+122607,'\u5e38\u5fb7\u5e02',2
+122838,'Powiat Tomaszowski',2
+130732,'\u662d\u901a\u5e02',2
+143271,'Noya',2
+144,'Fanteakwa North District',1
+173,'Algoma District',1
+2010,'Shire Of Derby-West Kimberley',1
+2644,'\u1011\u1014\u103a\u1010\u101c\u1014\u103a',1
+3318,'Powiat Zamojski',1
+4065,'\u0440\u0430\u0439\u043e\u043d \u041f\u0435\u0447\u043e\u0440\u0430',1
+4728,'Socorro County',1
+5154,'\u0414\u0430\u0440\u0432\u0438 \u1833\u1820\u1837\u182a\u1822',1
+5701,'\u041c\u0430\u043c\u0441\u043a\u043e-\u0427\u0443\u0439\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+7123,'Endola',1
+8629,'\u042d\u0432\u0435\u043d\u043a\u0438\u0439\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+8942,'\u4ed9\u6cd5\u5fd7',1
+9139,'Fitri',1
+10656,'\u0420\u0456\u0432\u043d\u0435\u043d\u0441\u044c\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+10695,'Blantyre',1
+12933,'COGO',1
+13420,'Departamento Nogoy\xe1',1
+13687,'\u041a\u043e\u043b\u044c\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+16502,'N\u2019Guigmi',1
+17896,'Besalampy',1
+18171,'Kewaunee County',1
+18781,'Bossemb\xe9l\xe9',1
+19515,'Amajuba District Municipality',1
+20189,'Wajir North',1
+23246,'Mayom',1
+27514,'Zoueratt',1
+27566,'Shawnee County',1
+28310,'\u0422\u0430\u0439\u043c\u044b\u0440\u0441\u043a\u0438\u0439 \u0414\u043e\u043b\u0433\u0430\u043d\u043e-\u041d\u0435\u043d\u0435\u0446\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+31415,'Boulkiemd\xe9',1
+31618,'Provincia de Mamor\xe9',1
+32606,'\u0626\u0627\u0642\u0633\u06c7 \u06cb\u0649\u0644\u0627\u064a\u0649\u062a\u0649 - \u963f\u514b\u82cf\u5730\u533a',1
+33622,'Batha Ouest',1
+34098,'Abanga-Bign\xe8',1
+34449,'Calvillo',1
+36169,'\u041a\u0430\u0442\u043e\u043d\u049b\u0430\u0440\u0430\u0493\u0430\u0439 \u0430\u0443\u0434\u0430\u043d\u044b',1
+37597,'Jaisalmer',1
+37758,'Macon County',1
+39513,'Mills County',1
+40394,'\u0422\u0440\u043e\u0438\u0446\u043a\u043e-\u041f\u0435\u0447\u043e\u0440\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+41496,'Shire Of Wyndham-East Kimberley',1
+42573,'\u0634\u0647\u0631\u0633\u062a\u0627\u0646 \u0627\u0631\u0633\u0646\u062c\u0627\u0646',1
+44204,'Loreto',1
+46453,'Qusir',1
+46652,'\xc7i\xe7ekda\u011f\u0131',1
+51276,'Bhadrak',1
+51524,'Mezquital',1
+51743,'Quiriego',1
+51879,'\u0410\u043c\u0433\u0438\u043d\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',1
+52963,'Mbogwe',1
+53567,'Halfa',1
+54823,'Obo',1
+55293,'\u0645\u062d\u0627\u0641\u0638\u0629 \u0627\u0644\u0639\u0644\u0627',1
+56100,'\u0410\u043b\u0434\u0430\u043d\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',1
+56454,'\u041e\u043b\u044e\u0442\u043e\u0440\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+57884,'Garsen',1
+57989,'Williams County',1
+58393,'Machinga',1
+61294,'\u041a\u0430\u0440\u0433\u0430\u0441\u043e\u043a\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+62177,'\u0414\u0443\u0431\u0435\u043d\u0441\u044c\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+62938,'Umaria',1
+63449,'Municipio Angostura',1
+63532,'\u4e1c\u839e\u5e02',1
+63623,'Mappi',1
+63802,'Waterberg District Municipality',1
+64383,'Provincia de Ays\xe9n',1
+64614,'\u0422\u0438\u0433\u0438\u043b\u044c\u0441\u043a\u0438\u0439 \u043c\u0443\u043d\u0438\u0446\u0438\u043f\u0430\u043b\u044c\u043d\u044b\u0439 \u043e\u043a\u0440\u0443\u0433',1
+65310,'Barcaldine Regional',1
+66165,'Kv\xe6nangen',1
+66196,'Departamento General Roca',1
+66412,'Cercle de Bougouni',1
+66613,'\u0425\u0430\u043d\u0431\u043e\u0433\u0434 \u182c\u1820\u1828\u182a\u1823\u182d\u1833\u1824',1
+66996,'Mohave County',1
+68592,'\u1019\u1004\u103a\u1038\u1010\u1015\u103a',1
+69269,'Unorganized Division No. 22',1
+69608,'\u5f20\u5bb6\u53e3\u5e02',1
+69613,'Kaur',1
+70930,'\u0642\u0636\u0627\u0621 \u0627\u0644\u062d\u0648\u064a\u062c\u0629',1
+74246,'Bent County',1
+74520,'Departamento Burruyac\xfa',1
+74521,'Da\xefra Tamanrasset',1
+75073,'\u6d77\u897f\u8499\u53e4\u65cf\u85cf\u65cf\u81ea\u6cbb\u5dde \u0f58\u0f5a\u0f7c\u0f0b\u0f53\u0f74\u0f56\u0f0b\u0f66\u0f7c\u0f42\u0f0b\u0f62\u0f72\u0f42\u0f66\u0f0b\u0f46\u0f0b\u0f56\u0f7c\u0f51\u0f0b\u0f62\u0f72\u0f42\u0f66\u0f0b\u0f62\u0f44\u0f0b\u0f66\u0f90\u0fb1\u0f7c\u0f44\u0f0b\u0f41\u0f74\u0f63\u0f0d',1
+77175,'\u0411\u043e\u043b\u044c\u0448\u0435\u043c\u0443\u0440\u0442\u0438\u043d\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+82537,'Maynas',1
+82948,'Cloncurry Shire',1
+83968,'\u0645\u0646\u0637\u0642\u0629 \u062a\u062f\u0645\u0631',1
+84447,'Katako-Kombe',1
+86165,'\u963f\u91cc\u5730\u533a \u0f58\u0f44\u0f60\u0f0b\u0f62\u0f72\u0f66\u0f0b\u0f66\u0f0b\u0f41\u0f74\u0f63\u0f0b',1
+87701,'Bilma',1
+87722,'Nkasi',1
+88044,'DeKalb County',1
+89117,'\u0421\u0430\u043d\u0434\u044b\u049b\u0442\u0430\u0443 \u0430\u0443\u0434\u0430\u043d\u044b',1
+89826,'\u7389\u6811\u85cf\u65cf\u81ea\u6cbb\u5dde \u0f61\u0f74\u0f63\u0f0b\u0f64\u0f74\u0f63\u0f0b\u0f56\u0f7c\u0f51\u0f0b\u0f62\u0f72\u0f42\u0f66\u0f0b\u0f62\u0f44\u0f0b\u0f66\u0f90\u0fb1\u0f7c\u0f44\u0f0b\u0f41\u0f74\u0f63\u0f0d',1
+90929,'Municipio Independencia',1
+91325,'Daures',1
+91910,'\u6cf8\u5dde\u5e02',1
+92195,'\u1019\u1010\u1030\u1015\u102e',1
+93001,'Da\xefra Taleb Larbi',1
+93446,'San Diego County',1
+93504,'Provincia de Antofagasta',1
+94270,'Hastings County',1
+96735,'\u041d\u0435\u0440\u044e\u043d\u0433\u0440\u0438\u043d\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',1
+97265,'Saddle Hills County',1
+98496,'\u0421\u0440\u0435\u0434\u043d\u0435\u043a\u043e\u043b\u044b\u043c\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',1
+99136,'Arvidsjaurs kommun',1
+99755,'East Bank Berbice',1
+100212,'\u0421\u04af\u043c\u0431\u044d\u0440 \u1830\u1826\u182e\u182a\u1826\u1837',1
+100678,'\u0416\u0438\u0433\u0430\u043d\u0441\u043a\u0438\u0439 \u043d\u0430\u0446\u0438\u043e\u043d\u0430\u043b\u044c\u043d\u044b\u0439 \u044d\u0432\u0435\u043d\u043a\u0438\u0439\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',1
+101218,'\u06c1\u0632\u0627\u0631\u06c1 \u0688\u0648\u06cc\u0698\u0646',1
+101601,'Gotlands kommun',1
+101925,'Christian County',1
+103190,'Da\xefra d''In Salah',1
+103588,'Fufore',1
+104055,'Barkly Region',1
+105518,'\u0414\u043e\u0431\u0440\u0438\u0447\u043a\u0430',1
+106419,'\u0433\u043e\u0440\u043e\u0434\u0441\u043a\u043e\u0439 \u043e\u043a\u0440\u0443\u0433 \u0422\u044b\u043d\u0434\u0430',1
+107295,'Pulau Morotai',1
+109258,'Gran Chaco',1
+109633,'Inyo County',1
+111086,'Kehys-Kainuun seutukunta',1
+112660,'\u101f\u102c\u1038\u1001\u102b\u1038',1
+112730,'Rosario de la Frontera',1
+113357,'Inuvialuit Settlement Region',1
+115369,'Z\xe9mio',1
+116621,'Kawambwa District',1
+117535,'\u0634\u0647\u0631\u0633\u062a\u0627\u0646 \u0645\u06cc\u0627\u0645\u06cc',1
+117731,'North Cotabato',1
+119563,'Departamento Pehuenches',1
+119636,'Kariba',1
+120253,'\u5854\u57ce\u5730\u533a \u062a\u0627\u0631\u0628\u0627\u0639\u0627\u062a\u0627\u064a \u0627\u064a\u0645\u0627\u0639\u0649',1
+120718,'\u0642\u0644\u0627\u062a \u0688\u0648\u06cc\u0698\u0646',1
+121780,'Jam\xe9sie',1
+122178,'\u041d\u043e\u0432\u043e\u0443\u0437\u0435\u043d\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+122227,'Le Fjord-du-Saguenay',1
+122968,'T\xfcrkmenba\u015fy etraby',1
+123785,'Terme',1
+123980,'\u8fde\u4e91\u6e2f\u5e02',1
+126159,'\u0412\u0435\u0440\u0445\u043d\u0435\u0432\u0438\u043b\u044e\u0439\u0441\u043a\u0438\u0439 \u0443\u043b\u0443\u0441',1
+126363,'\u9ed4\u897f\u5357\u5e03\u4f9d\u65cf\u82d7\u65cf\u81ea\u6cbb\u5dde',1
+126544,'Kabupaten Nabire',1
+130971,'\u0645\u0639\u062a\u0645\u062f\u064a\u0629 \u0631\u0645\u0627\u062f\u0629',1
+131317,'\u0422\u044b\u043d\u0434\u0438\u043d\u0441\u043a\u0438\u0439 \u043c\u0443\u043d\u0438\u0446\u0438\u043f\u0430\u043b\u044c\u043d\u044b\u0439 \u043e\u043a\u0440\u0443\u0433',1
+131447,'Saucillo',1
+132841,'Perry County',1
+134158,'Kongsvinger',1
+134231,'\u041a\u043e\u043c\u0441\u043e\u043c\u043e\u043b\u044c\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+135943,'\u1021\u102f\u1010\u103a\u1016\u102d\u102f\u1019\u103c\u102d\u102f\u1037\u1014\u101a\u103a',1
+141725,'Antonio Quijarro',1
+142020,'ACURENAM',1
+142675,'Nuevo Zoqui\xe1pam',1
+143881,'\u963f\u52d2\u6cf0\u5730\u533a',1
+144304,'Jaipur(Rural)',1
+144794,'okres Ke\u017emarok',1
+145194,'\u0416\u0430\u0440\u0433\u0430\u043b\u0430\u043d\u0442 \u1835\u1822\u1837\u182d\u1820\u182f\u1820\u1829\u1832\u1824',1
+146817,'Franklin County',1
+147141,'Da\xefra d''Illizi',1
+147442,'Highland',1
+147894,'Maihar',1
+148132,'Shire Of Menzies',1
+148680,'Qasima',1
+149951,'Shire Of Wiluna',1
+149982,'\u041d\u043e\u0433\u0430\u0439\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+150535,'\u660c\u5409\u56de\u65cf\u81ea\u6cbb\u5dde \u0633\u0627\u0646\u062c\u0649 \u062e\u06c7\u064a\u0632\u06c7 \u0626\u0627\u067e\u062a\u0648\u0646\u0648\u0645 \u0626\u0648\u0628\u0644\u0627\u0633\u062a\u0649',1
+150998,'Kendrapara',1
+151379,'Delgo',1
+152830,'Sequatchie County',1
+153163,'\u0411\u0438\u043b\u0438\u0431\u0438\u043d\u0441\u043a\u0438\u0439 \u0440\u0430\u0439\u043e\u043d',1
+====

@@ -1,0 +1,23 @@
+====
+---- QUERY
+SET COMPUTE_PROCESSING_COST=True;
+SET SLOT_COUNT_STRATEGY=PLANNER_CPU_ASK;
+SET MT_DOP=28;
+-- Spatial Bench Q3 SF0.1
+SELECT
+    DATE_TRUNC('month', t.t_pickuptime) AS pickup_month,
+    COUNT(t.t_tripkey) AS total_trips,
+    AVG(t.t_distance) AS avg_distance,
+    ROUND(AVG(UNIX_TIMESTAMP(t.t_dropofftime) - UNIX_TIMESTAMP(t.t_pickuptime)), 3) AS avg_duration,
+    AVG(t.t_fare) AS avg_fare
+FROM trip t
+WHERE ST_Distance(
+    ST_GeomFromWKB(CAST(t.t_pickuploc AS BINARY)),
+    ST_GeomFromText('POLYGON((-111.9060 34.7347, -111.6160 34.7347, -111.6160 35.0047, -111.9060 35.0047, -111.9060 34.7347))')
+) <= 0.045
+GROUP BY pickup_month
+ORDER BY pickup_month;
+---- TYPES
+TIMESTAMP,BIGINT,DECIMAL,DOUBLE,DECIMAL
+---- RESULTS
+====

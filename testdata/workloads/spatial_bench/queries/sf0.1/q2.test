@@ -1,0 +1,18 @@
+====
+---- QUERY
+SET COMPUTE_PROCESSING_COST=True;
+SET SLOT_COUNT_STRATEGY=PLANNER_CPU_ASK;
+SET MT_DOP=28;
+SET BATCH_SIZE=100;
+-- Spatial Bench Q2 SF0.1
+SELECT COUNT(*) AS trip_count_in_coconino_county
+FROM trip t
+WHERE ST_Intersects(
+    ST_GeomFromWKB(CAST(t.t_pickuploc AS BINARY)),
+    (SELECT ST_GeomFromWKB(CAST(z.z_boundary AS BINARY)) FROM zone z WHERE z.z_name = 'Coconino County' LIMIT 1)
+);
+---- TYPES
+BIGINT
+---- RESULTS
+45
+====
