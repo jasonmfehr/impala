@@ -28,10 +28,13 @@ using namespace strings;
 namespace impala {
 
 string OAuthServersManager::BearerAuthFailureHeader(const Status& status) {
-  const string error_message =
+  string error_message =
       status.GetDetail().empty() ? status.msg().msg() : status.GetDetail();
+  while (!error_message.empty() && error_message.back() == '\n') {
+    error_message.pop_back();
+  }
   return Substitute("WWW-Authenticate: Bearer error=\"invalid_token\","
-      "error_description=\"$0 \"", error_message);
+      "error_description=\"$0\"", error_message);
 }
 
 Status OAuthServersManager::Init() {
