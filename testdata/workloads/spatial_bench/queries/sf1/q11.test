@@ -1,0 +1,21 @@
+====
+---- QUERY
+SELECT COUNT(*) AS cross_zone_trip_count
+FROM
+    trip t
+    JOIN zone pickup_zone
+        ON ST_Within(
+            ST_GeomFromWKB(CAST(t.t_pickuploc AS BINARY)),
+            ST_GeomFromWKB(CAST(pickup_zone.z_boundary AS BINARY))
+        )
+    JOIN zone dropoff_zone
+        ON ST_Within(
+            ST_GeomFromWKB(CAST(t.t_dropoffloc AS BINARY)),
+            ST_GeomFromWKB(CAST(dropoff_zone.z_boundary AS BINARY))
+        )
+WHERE pickup_zone.z_zonekey != dropoff_zone.z_zonekey;
+---- TYPES
+BIGINT
+---- RESULTS
+176391
+====
