@@ -86,3 +86,14 @@ class TestSpatialBenchScaleFactor1(TestSpatialBench):
   @pytest.mark.xfail(run=False, reason="Does Not End")
   def test_q9(self, vector):
     self.run_test_case(self.query(9), vector, use_db='spatial_bench')
+
+  @pytest.mark.xfail(run=False, reason="Does Not End")
+  def test_q10(self, vector):
+    self.run_test_case(self.query(10), vector, use_db='spatial_bench')
+
+  def test_q11(self, vector):
+    self.run_test_case(self.query(11), vector, use_db='spatial_bench')
+
+  @pytest.mark.xfail(run=False, reason="Requires K-Nearest Neighbor Function")
+  def test_q12(self, vector):
+    self.run_test_case(self.query(12), vector, use_db='spatial_bench')
