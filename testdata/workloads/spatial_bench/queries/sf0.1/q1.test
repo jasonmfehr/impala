@@ -1,0 +1,31 @@
+====
+---- QUERY
+SELECT
+    t.t_tripkey,
+    -- A point's coordinates are identical under either edge interpretation, so the lon/lat
+    -- projection stays on the geometry accessor, which is the more widely available one.
+    ST_X(ST_GeomFromWKB(CAST(t.t_pickuploc AS binary))) AS pickup_lon,
+    ST_Y(ST_GeomFromWKB(CAST(t.t_pickuploc AS binary))) AS pickup_lat,
+    t.t_pickuptime,
+    ST_Distance(
+        ST_GeomFromWKB(CAST(t.t_pickuploc AS binary)),
+        ST_GeomFromText('POINT (-111.7610 34.8697)')
+    ) AS distance_to_center -- metres
+FROM trip t
+WHERE ST_Distance(
+    ST_GeomFromWKB(CAST(t.t_pickuploc AS binary)),
+    ST_GeomFromText('POINT (-111.7610 34.8697)')
+) < 0.45
+
+ORDER BY distance_to_center ASC, t.t_tripkey ASC
+LIMIT 94;
+---- TYPES
+BIGINT,DOUBLE,DOUBLE,TIMESTAMP,DOUBLE
+---- RESULTS
+334628,-111.808010571,34.661789775,1997-12-15 05:32:36,0.21315875643589313
+563123, -111.71878609,34.60565961,1998-10-24 12:21:44,0.2673936082797101
+575608,-111.491093769,34.842752102,1992-11-16 19:07:45,0.27124815711676314
+524755,-111.603513878,34.608731225,1992-01-27 07:08:44,0.30480580727341605
+370640,-111.40420645,34.690177307,1993-08-14 16:26:30,0.3994121112630036
+319338,-111.911020514,34.479833343,1996-06-29 05:44:31,0.417734562684464
+====

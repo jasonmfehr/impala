@@ -4,6 +4,49 @@ set -euo pipefail
 # shellcheck disable=SC1091
 . "${IMPALA_HOME}/bin/impala-config.sh"
 
+SCALE_FACTOR="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --scale_factor)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --scale_factor"
+        exit 1
+      fi
+      SCALE_FACTOR="$2"
+      shift 2
+      ;;
+    --scale_factor=*)
+      SCALE_FACTOR="${1#*=}"
+      shift
+      ;;
+    -s)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for -s"
+        exit 1
+      fi
+      SCALE_FACTOR="$2"
+      shift 2
+      ;;
+    -s*)
+      SCALE_FACTOR="${1#-s}"
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      echo "Usage: $0 [--scale_factor <0.1|1|10|100>]"
+      exit 1
+      ;;
+  esac
+done
+
+case "${SCALE_FACTOR}" in
+  0.1|1|10|100) ;;
+  *)
+    echo "Invalid value for --scale_factor: '${SCALE_FACTOR}'. Allowed values are: 0.1, 1, 10, 100"
+    exit 1
+    ;;
+esac
+
 if [[ "${TARGET_FILESYSTEM:-}" != "hdfs" ]]; then
   echo "Target filesystem is not HDFS"
   exit 1
@@ -44,23 +87,25 @@ echo "[INFO] Installing Pip and Python dependencies."
 python -m pip install --upgrade pip
 python -m pip install -r "${IMPALA_HOME}/tests/spatial_bench/requirements.txt"
 
-echo "[INFO] Cloning Apache Sedona GitHub repository."
-git clone \
-  --branch master \
-  --single-branch \
-  --depth 1 \
-  https://github.com/apache/sedona \
-  "${TEMPORARY_DIR}/sedona"
+# echo "[INFO] Cloning Apache Sedona GitHub repository."
+# git clone \
+#   --branch master \
+#   --single-branch \
+#   --depth 1 \
+#   https://github.com/apache/sedona \
+#   "${TEMPORARY_DIR}/sedona"
 
 HF_DATA_DIR="${TEMPORARY_DIR}/spatialbench-data"
-echo "[INFO] Downloading spatial bench data to '${HF_DATA_DIR}' using Hugging Face CLI."
+DATASET_SUBDIR="v0.1.0/sf${SCALE_FACTOR}"
+echo "[INFO] Downloading spatial bench data from '${DATASET_SUBDIR}' to" \
+    "'${HF_DATA_DIR}' using Hugging Face CLI."
 hf download apache-sedona/spatialbench \
   --repo-type dataset \
-  --include "v0.1.0/sf1/**" \
+  --include "${DATASET_SUBDIR}/**" \
   --local-dir "${HF_DATA_DIR}"
 
 echo "[INFO] Copying spatial bench data to the remote directory."
-for file in $(find "${HF_DATA_DIR}/v0.1.0/sf1/" -type d | grep -v "/$"); do
+for file in $(find "${HF_DATA_DIR}/${DATASET_SUBDIR}/" -type d | grep -v "/$"); do
   TABLE_DIR=$(echo "[INFO] $file" | rev | cut -d"/" -f1 | rev)
   echo "[INFO] Creating HDFS directory for table '${TABLE_DIR}'."
   hdfs dfs -mkdir -p "${TESTDATA_REMOTE_DIR}/${TABLE_DIR}"
