@@ -1,0 +1,252 @@
+====
+---- QUERY
+SET COMPUTE_PROCESSING_COST=True;
+SET SLOT_COUNT_STRATEGY=PLANNER_CPU_ASK;
+SET MT_DOP=28;
+SET BATCH_SIZE=750;
+SELECT z.z_zonekey, z.z_name, COUNT(*) AS trip_count
+FROM zone z
+JOIN (
+    SELECT t.t_pickuploc
+    FROM trip t
+    ORDER BY t.t_tip DESC, t.t_tripkey ASC
+    LIMIT 1000
+) top_trips
+ON ST_Within(
+    ST_GeomFromWKB(CAST(top_trips.t_pickuploc AS BINARY)),
+    ST_GeomFromWKB(CAST(z.z_boundary AS BINARY))
+)
+GROUP BY z.z_zonekey, z.z_name
+ORDER BY trip_count DESC, z.z_zonekey ASC;
+---- TYPES
+BIGINT,VARCHAR,BIGINT
+---- RESULTS
+21286,'Ndélé',44
+54540,'Blackall Tambo Regional',27
+80341,'乐山市',25
+88075,'锡林郭勒盟 ᠰᠢᠯᠢ ᠶᠢᠨ ᠭᠣᠣᠯ ᠠᠶᠢᠮᠠᠭ',25
+32714,'Haraze-Mangueigne',16
+73242,'Boven Digoel',15
+70342,'Lac Iro',13
+13857,'宜宾市',11
+42406,'雅安市',10
+146810,'لواء قصبة العقبة',10
+64794,'Nakhl',8
+70577,'凉山彝族自治州 ꆃꎭꆈꌠꊨꏦꏱꅉꍏ',8
+85010,'Олёкминский улус',8
+44250,'Луцький район',7
+72057,'נפת באר שבע',7
+3507,'Шептицький район',6
+75746,'North Fly District',6
+116871,'Ouadda',6
+133802,'Merauke',6
+18552,'Shelby County',5
+69411,'Сунтарский улус',5
+69483,'محافظة حقل',5
+16916,'Заполярный район',4
+18348,'Львівський район',4
+69650,'لواء القويرة',4
+112061,'Bell County',4
+122280,'Pastoral Unincorporated Area',4
+135610,'Манлай ᠮᠩᠯᠠᠢ',4
+137503,'Володимирський район',4
+3413,'Maralinga Tjarutja',3
+18224,'Bojanala Platinum District Municipality',3
+26628,'Nuweiba',3
+27430,'眉山市',3
+36570,'Hamilton County',3
+49529,'和田地区 خوتەن ۋىلايىتى',3
+54543,'Lampasas County',3
+86090,'Cercle de Tombouctou',3
+124108,'Middle Fly District',3
+134761,'Ogoouè et Lacs',3
+137188,'Bamingui',3
+152655,'Kabalebo',3
+728,'Powiat Gryficki',2
+11261,'Cariboo Regional District',2
+16548,'Coryell County',2
+32754,'Усть-Янский улус',2
+38074,'阿拉善盟 ᠠᠯᠠᠱᠠ ᠠᠶᠢᠮᠠᠭ',2
+40934,'Boulia Shire',2
+45085,'Julimes',2
+47021,'Longreach Regional',2
+65522,'Sitka',2
+70428,'Unorganized Borough',2
+72592,'Brown County',2
+74001,'Корякский округ',2
+76920,'Northern Rockies Regional Municipality',2
+89639,'昌都市 ཆབ་མདོ་ས་ཁུལ།',2
+101093,'ZF Mgcawu District Municipality',2
+102200,'自贡市',2
+103465,'Al-Kharga Oasis',2
+122607,'常德市',2
+122838,'Powiat Tomaszowski',2
+130732,'昭通市',2
+143271,'Noya',2
+144,'Fanteakwa North District',1
+173,'Algoma District',1
+2010,'Shire Of Derby-West Kimberley',1
+2644,'ထန်တလန်',1
+3318,'Powiat Zamojski',1
+4065,'район Печора',1
+4728,'Socorro County',1
+5154,'Дарви ᠳᠠᠷᠪᠢ',1
+5701,'Мамско-Чуйский район',1
+7123,'Endola',1
+8629,'Эвенкийский район',1
+8942,'仙法志',1
+9139,'Fitri',1
+10656,'Рівненський район',1
+10695,'Blantyre',1
+12933,'COGO',1
+13420,'Departamento Nogoyá',1
+13687,'Кольский район',1
+16502,'N’Guigmi',1
+17896,'Besalampy',1
+18171,'Kewaunee County',1
+18781,'Bossembélé',1
+19515,'Amajuba District Municipality',1
+20189,'Wajir North',1
+23246,'Mayom',1
+27514,'Zoueratt',1
+27566,'Shawnee County',1
+28310,'Таймырский Долгано-Ненецкий район',1
+31415,'Boulkiemdé',1
+31618,'Provincia de Mamoré',1
+32606,'ئاقسۇ ۋىلايىتى - 阿克苏地区',1
+33622,'Batha Ouest',1
+34098,'Abanga-Bignè',1
+34449,'Calvillo',1
+36169,'Катонқарағай ауданы',1
+37597,'Jaisalmer',1
+37758,'Macon County',1
+39513,'Mills County',1
+40394,'Троицко-Печорский район',1
+41496,'Shire Of Wyndham-East Kimberley',1
+42573,'شهرستان ارسنجان',1
+44204,'Loreto',1
+46453,'Qusir',1
+46652,'Çiçekdağı',1
+51276,'Bhadrak',1
+51524,'Mezquital',1
+51743,'Quiriego',1
+51879,'Амгинский улус',1
+52963,'Mbogwe',1
+53567,'Halfa',1
+54823,'Obo',1
+55293,'محافظة العلا',1
+56100,'Алданский улус',1
+56454,'Олюторский район',1
+57884,'Garsen',1
+57989,'Williams County',1
+58393,'Machinga',1
+61294,'Каргасокский район',1
+62177,'Дубенський район',1
+62938,'Umaria',1
+63449,'Municipio Angostura',1
+63532,'东莞市',1
+63623,'Mappi',1
+63802,'Waterberg District Municipality',1
+64383,'Provincia de Aysén',1
+64614,'Тигильский муниципальный округ',1
+65310,'Barcaldine Regional',1
+66165,'Kvænangen',1
+66196,'Departamento General Roca',1
+66412,'Cercle de Bougouni',1
+66613,'Ханбогд ᠬᠠᠨᠪᠣᠭᠳᠤ',1
+66996,'Mohave County',1
+68592,'မင်းတပ်',1
+69269,'Unorganized Division No. 22',1
+69608,'张家口市',1
+69613,'Kaur',1
+70930,'قضاء الحويجة',1
+74246,'Bent County',1
+74520,'Departamento Burruyacú',1
+74521,'Daïra Tamanrasset',1
+75073,'海西蒙古族藏族自治州 མཚོ་ནུབ་སོག་རིགས་ཆ་བོད་རིགས་རང་སྐྱོང་ཁུལ།',1
+77175,'Большемуртинский район',1
+82537,'Maynas',1
+82948,'Cloncurry Shire',1
+83968,'منطقة تدمر',1
+84447,'Katako-Kombe',1
+86165,'阿里地区 མངའ་རིས་ས་ཁུལ་',1
+87701,'Bilma',1
+87722,'Nkasi',1
+88044,'DeKalb County',1
+89117,'Сандықтау ауданы',1
+89826,'玉树藏族自治州 ཡུལ་ཤུལ་བོད་རིགས་རང་སྐྱོང་ཁུལ།',1
+90929,'Municipio Independencia',1
+91325,'Daures',1
+91910,'泸州市',1
+92195,'မတူပီ',1
+93001,'Daïra Taleb Larbi',1
+93446,'San Diego County',1
+93504,'Provincia de Antofagasta',1
+94270,'Hastings County',1
+96735,'Нерюнгринский улус',1
+97265,'Saddle Hills County',1
+98496,'Среднеколымский улус',1
+99136,'Arvidsjaurs kommun',1
+99755,'East Bank Berbice',1
+100212,'Сүмбэр ᠰᠦᠮᠪᠦᠷ',1
+100678,'Жиганский национальный эвенкийский улус',1
+101218,'ہزارہ ڈویژن',1
+101601,'Gotlands kommun',1
+101925,'Christian County',1
+103190,'Daïra d'In Salah',1
+103588,'Fufore',1
+104055,'Barkly Region',1
+105518,'Добричка',1
+106419,'городской округ Тында',1
+107295,'Pulau Morotai',1
+109258,'Gran Chaco',1
+109633,'Inyo County',1
+111086,'Kehys-Kainuun seutukunta',1
+112660,'ဟားခါး',1
+112730,'Rosario de la Frontera',1
+113357,'Inuvialuit Settlement Region',1
+115369,'Zémio',1
+116621,'Kawambwa District',1
+117535,'شهرستان میامی',1
+117731,'North Cotabato',1
+119563,'Departamento Pehuenches',1
+119636,'Kariba',1
+120253,'塔城地区 تارباعاتاي ايماعى',1
+120718,'قلات ڈویژن',1
+121780,'Jamésie',1
+122178,'Новоузенский район',1
+122227,'Le Fjord-du-Saguenay',1
+122968,'Türkmenbaşy etraby',1
+123785,'Terme',1
+123980,'连云港市',1
+126159,'Верхневилюйский улус',1
+126363,'黔西南布依族苗族自治州',1
+126544,'Kabupaten Nabire',1
+130971,'معتمدية رمادة',1
+131317,'Тындинский муниципальный округ',1
+131447,'Saucillo',1
+132841,'Perry County',1
+134158,'Kongsvinger',1
+134231,'Комсомольский район',1
+135943,'အုတ်ဖိုမြို့နယ်',1
+141725,'Antonio Quijarro',1
+142020,'ACURENAM',1
+142675,'Nuevo Zoquiápam',1
+143881,'阿勒泰地区',1
+144304,'Jaipur(Rural)',1
+144794,'okres Kežmarok',1
+145194,'Жаргалант ᠵᠢᠷᠭᠠᠯᠠᠩᠲᠤ',1
+146817,'Franklin County',1
+147141,'Daïra d'Illizi',1
+147442,'Highland',1
+147894,'Maihar',1
+148132,'Shire Of Menzies',1
+148680,'Qasima',1
+149951,'Shire Of Wiluna',1
+149982,'Ногайский район',1
+150535,'昌吉回族自治州 سانجى خۇيزۇ ئاپتونوم ئوبلاستى',1
+150998,'Kendrapara',1
+151379,'Delgo',1
+152830,'Sequatchie County',1
+153163,'Билибинский район',1
+====

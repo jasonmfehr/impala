@@ -21,6 +21,8 @@ from tests.common.test_dimensions import create_single_exec_option_dimension
 
 import pytest
 
+from copy import deepcopy
+
 
 @SkipIfApacheHive.feature_not_supported
 class TestSpatialBench(ImpalaTestSuite):
@@ -45,6 +47,12 @@ class TestSpatialBench(ImpalaTestSuite):
   def query(cls, query_num):
     return "{}/q{}".format(cls.get_scale_factor(), query_num)
 
+  @classmethod
+  def new_vector(cls, vector):
+    new_vector = deepcopy(vector)
+    del new_vector.get_value('exec_option')['batch_size'] 
+    return new_vector
+
 
 class TestSpatialBenchScaleFactor1(TestSpatialBench):
   """Runs SpatialBench using scale factor 1."""
@@ -62,9 +70,8 @@ class TestSpatialBenchScaleFactor1(TestSpatialBench):
   def test_q3(self, vector):
     self.run_test_case(self.query(3), vector, use_db='spatial_bench')
 
-  @pytest.mark.xfail(run=False, reason="Causes OOM")
   def test_q4(self, vector):
-    self.run_test_case(self.query(4), vector, use_db='spatial_bench')
+    self.run_test_case(self.query(4), self.new_vector(vector), use_db='spatial_bench')
 
   @pytest.mark.xfail(run=False, reason="Actual results do not match expected")
   def test_q5(self, vector):
