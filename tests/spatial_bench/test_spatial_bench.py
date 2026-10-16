@@ -77,7 +77,6 @@ class TestSpatialBenchScaleFactor1(TestSpatialBench):
   def test_q5(self, vector):
     self.run_test_case(self.query(5), vector, use_db='spatial_bench')
 
-  @pytest.mark.xfail(run=False, reason="Causes OOM")
   def test_q6(self, vector):
     self.run_test_case(self.query(6), vector, use_db='spatial_bench')
 

@@ -1,11 +1,19 @@
 ====
 ---- QUERY
-SELECT b.b_buildingkey, b.b_name, COUNT(*) AS nearby_pickup_count
-FROM trip t
-JOIN building b
-ON ST_Distance(ST_GeomFromWKB(CAST(t.t_pickuploc AS BINARY)), ST_GeomFromWKB(CAST(b.b_boundary AS BINARY))) <= 0.0045
-GROUP BY b.b_buildingkey, b.b_name
-ORDER BY nearby_pickup_count DESC, b.b_buildingkey ASC
+SELECT
+    z.z_zonekey,
+    z.z_name AS pickup_zone,
+    AVG(UNIX_TIMESTAMP(t.t_dropofftime) - UNIX_TIMESTAMP(t.t_pickuptime)) AS avg_duration,
+    AVG(t.t_distance) AS avg_distance,
+    COUNT(t.t_tripkey) AS num_trips
+FROM
+    zone z
+    LEFT JOIN trip t
+    ON ST_Within(
+        ST_GeomFromWKB(CAST(t.t_pickuploc AS BINARY)), ST_GeomFromWKB(CAST(z.z_boundary AS BINARY))
+    )
+GROUP BY z.z_zonekey, z.z_name
+ORDER BY avg_duration DESC NULLS LAST, z.z_zonekey ASC
 LIMIT 100;
 ---- TYPES
 BIGINT,VARCHAR,DOUBLE,DOUBLE,BIGINT
