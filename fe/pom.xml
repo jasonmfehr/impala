@@ -183,6 +183,19 @@ under the License.
     </dependency>
 
     <dependency>
+      <groupId>org.apache.hive</groupId>
+      <artifactId>hive-exec</artifactId>
+      <version>${hive.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
       <groupId>javax.ws.rs</groupId>
       <artifactId>javax.ws.rs-api</artifactId>
       <version>2.1.1</version>
@@ -762,10 +775,7 @@ under the License.
             </goals>
             <configuration>
               <sources>
-                <!-- Make sure Eclipse knows where to find generated sources.
-                        Note that the flex plugin appears to do this for you, but we have
-                        to do this manually for the CUP and Thrift generated code
-                        -->
+                <!-- Make sure IDEs know where to find generated sources. -->
                 <source>${project.basedir}/generated-sources/gen-java</source>
                 <source>${project.basedir}/generated-sources/cup</source>
                 <source>${project.build.directory}/generated-sources/jflex</source>
@@ -1151,6 +1161,18 @@ under the License.
           <groupId>org.apache.hive</groupId>
           <artifactId>hive-classification</artifactId>
           <version>${hive.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>org.apache.hive</groupId>
+          <artifactId>hive-serde</artifactId>
+          <version>${hive.version}</version>
+          <scope>test</scope>
+          <exclusions>
+            <exclusion>
+              <groupId>*</groupId>
+              <artifactId>*</artifactId>
+            </exclusion>
+          </exclusions>
         </dependency>
 
         <dependency>
